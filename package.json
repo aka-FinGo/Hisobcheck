@@ -2,10 +2,10 @@
   "name": "payroll-bot",
   "version": "1.0.0",
   "scripts": {
-    "dev": "ts-node-dev --respawn src/index.ts",
-    "build": "tsc",
-    "start": "node dist/index.js"
-  },
+  "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+  "build": "tsc",
+  "start": "node dist/index.js"
+},
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
     "fastify": "^4.25.0",
