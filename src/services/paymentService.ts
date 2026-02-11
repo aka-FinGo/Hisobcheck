@@ -12,28 +12,37 @@ interface CreatePaymentInput {
 export async function createPayment(input: CreatePaymentInput) {
   const { employee_id, amount, currency, description, created_by } = input;
 
-  // 1️⃣ Limitni olish
+  // 1️⃣ System settings olish
   const { data: settings, error: settingsError } = await supabase
     .from("system_settings")
-    .select("*")
+    .select("auto_approve_limit")
     .limit(1)
     .single();
 
-  if (settingsError) {
+  if (settingsError || !settings) {
     console.error("Settings fetch error:", settingsError);
     throw new Error("System settings not found");
   }
 
-  const autoApproveLimit = Number(settings?.auto_approve_limit || 0);
+  const autoApproveLimit = Number(settings.auto_approve_limit || 0);
 
-  // 2️⃣ Status aniqlash
+  // 2️⃣ Yozayotgan user rolini aniqlash
+  const { data: creator } = await supabase
+    .from("employees")
+    .select("role")
+    .eq("id", created_by)
+    .single();
+
   let status: "pending" | "approved" = "pending";
 
-  if (amount <= autoApproveLimit) {
+  // Admin yozsa doim approved
+  if (creator?.role === "admin") {
+    status = "approved";
+  } else if (amount <= autoApproveLimit) {
     status = "approved";
   }
 
-  // 3️⃣ Payment yozish
+  // 3️⃣ Payment insert
   const { data: payment, error: paymentError } = await supabase
     .from("payments")
     .insert([
@@ -49,12 +58,12 @@ export async function createPayment(input: CreatePaymentInput) {
     .select()
     .single();
 
-  if (paymentError) {
+  if (paymentError || !payment) {
     console.error("Payment insert error:", paymentError);
     throw new Error("Payment creation failed");
   }
 
-  // 4️⃣ Agar avtomatik tasdiqlangan bo‘lsa notification yuboramiz
+  // 4️⃣ Notification (faqat approved bo‘lsa)
   if (status === "approved") {
     const { data: employee, error: employeeError } = await supabase
       .from("employees")
@@ -62,12 +71,7 @@ export async function createPayment(input: CreatePaymentInput) {
       .eq("id", employee_id)
       .single();
 
-    if (employeeError) {
-      console.error("Employee fetch error:", employeeError);
-      return payment;
-    }
-
-    if (employee && employee.telegram_id) {
+    if (!employeeError && employee?.telegram_id) {
       try {
         await notifyUser(
           employee.telegram_id,
@@ -75,8 +79,8 @@ export async function createPayment(input: CreatePaymentInput) {
           `📝 Izoh: ${description || "—"}\n` +
           `✅ Holati: Tasdiqlandi`
         );
-      } catch (notifyError) {
-        console.error("Notification error:", notifyError);
+      } catch (err) {
+        console.error("Notification error:", err);
       }
     }
   }
