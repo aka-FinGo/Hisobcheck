@@ -1,29 +1,36 @@
-import Fastify from "fastify";
-import { config } from "./config";
-import { registerWebhook, setTelegramWebhook } from "./webhook";
-import { paymentRoutes } from "./routes/payments";
-import { adminRoutes } from "./routes/admin";
-import { dashboardRoutes } from "./routes/dashboard";
-import { authRoutes } from "./routes/auth";
+import { Telegraf } from 'telegraf';
+import { config } from './config';
+import { checkConnection } from './db/supabase';
 
-const app = Fastify({ logger: true });
+// Botni yaratamiz
+const bot = new Telegraf(config.BOT_TOKEN);
 
-app.register(authRoutes);
-app.register(paymentRoutes);
-app.register(adminRoutes);
-app.register(dashboardRoutes);
+// Bot ishga tushganda
+bot.start(async (ctx) => {
+  ctx.reply(`👋 Salom, ${ctx.from.first_name}! \nMen Aristokrat Mebel boshqaruv tizimiman.`);
+});
 
-registerWebhook(app);
+// Bazani tekshirish komandasi
+bot.command('status', async (ctx) => {
+    const isConnected = await checkConnection();
+    if (isConnected) {
+        ctx.reply("✅ Tizim: Aloqa a'lo darajada. Baza ulangan.");
+    } else {
+        ctx.reply("❌ Tizim: Bazaga ulanishda xatolik bor.");
+    }
+});
 
-const start = async () => {
-  await app.listen({
-    port: config.port,
-    host: "0.0.0.0"
-  });
+// Xatoliklarni ushlash
+bot.catch((err) => {
+  console.error('Bot xatosi:', err);
+});
 
-  await setTelegramWebhook();
+// Botni ishga tushirish
+bot.launch().then(() => {
+    console.log('🚀 Bot ishga tushdi!');
+    checkConnection();
+});
 
-  console.log("🚀 Server started");
-};
-
-start();
+// Server to'xtatilganda botni chiroyli o'chirish
+process.once('SIGINT', () => bot.stop('SIGINT'));
+process.once('SIGTERM', () => bot.stop('SIGTERM'));
