@@ -1,11 +1,13 @@
-import dotenv from "dotenv";
+import dotenv from 'dotenv';
 dotenv.config();
 
 export const config = {
-  botToken: process.env.BOT_TOKEN!,
-  webAppUrl: process.env.WEBAPP_URL!,
-  supabaseUrl: process.env.SUPABASE_URL!,
-  supabaseServiceKey: process.env.SUPABASE_SERVICE_ROLE!,
-  port: Number(process.env.PORT) || 3000,
-  isProd: process.env.NODE_ENV === "production"
+  BOT_TOKEN: process.env.BOT_TOKEN || '',
+  SUPABASE_URL: process.env.SUPABASE_URL || '',
+  SUPABASE_KEY: process.env.SUPABASE_KEY || '',
+  ADMIN_ID: process.env.ADMIN_ID ? parseInt(process.env.ADMIN_ID) : 0
 };
+
+if (!config.BOT_TOKEN) {
+  throw new Error("⚠️ BOT_TOKEN topilmadi! .env faylni yoki server sozlamalarini tekshiring.");
+}
