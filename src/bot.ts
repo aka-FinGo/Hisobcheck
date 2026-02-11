@@ -1,15 +1,16 @@
 import { Telegraf } from "telegraf";
+import { config } from "./config";
 
-export const bot = new Telegraf(process.env.BOT_TOKEN!);
+export const bot = new Telegraf(config.botToken);
 
 bot.start(async (ctx) => {
-  await ctx.reply("Dashboardni ochish:", {
+  await ctx.reply("Payroll Dashboard:", {
     reply_markup: {
       inline_keyboard: [
         [
           {
             text: "📊 Dashboard",
-            web_app: { url: process.env.WEBAPP_URL! }
+            web_app: { url: config.webAppUrl }
           }
         ]
       ]
