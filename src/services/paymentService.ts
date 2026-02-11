@@ -15,33 +15,23 @@ export async function createPayment(data: any) {
     status = "approved";
   }
 
-  const { data: payment } = await supabase
-    .from("payments")
-    .insert([
-      {
-        employee_id,
-        amount,
-        currency,
-        description,
-        created_by,
-        status
-      }
-    ])
-    .select()
-    .single();
+  const { data: employee, error } = await supabase
+  .from("employees")
+  .select("telegram_id")
+  .eq("id", employee_id)
+  .single();
 
-  if (status === "approved") {
-    const { data: employee } = await supabase
-      .from("employees")
-      .select("telegram_id")
-      .eq("id", employee_id)
-      .single();
+if (error) {
+  console.error("Employee fetch error:", error);
+  return payment;
+}
 
-    await notifyUser(
-      employee.telegram_id,
-      `Siz nomingizga ${amount} ${currency} yozildi.\nHolati: Tasdiqlandi`
-    );
-  }
+if (employee && employee.telegram_id) {
+  await notifyUser(
+    employee.telegram_id,
+    `Siz nomingizga ${amount} ${currency} yozildi.\nHolati: Tasdiqlandi`
+  );
+}
 
   return payment;
 }
