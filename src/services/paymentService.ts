@@ -1,37 +1,85 @@
 import { supabase } from "../db/supabase";
 import { notifyUser } from "./notifyService";
 
-export async function createPayment(data: any) {
-  const { employee_id, amount, currency, description, created_by } = data;
+interface CreatePaymentInput {
+  employee_id: string;
+  amount: number;
+  currency: string;
+  description?: string;
+  created_by: string;
+}
 
-  const { data: settings } = await supabase
+export async function createPayment(input: CreatePaymentInput) {
+  const { employee_id, amount, currency, description, created_by } = input;
+
+  // 1️⃣ Limitni olish
+  const { data: settings, error: settingsError } = await supabase
     .from("system_settings")
     .select("*")
+    .limit(1)
     .single();
 
-  let status = "pending";
+  if (settingsError) {
+    console.error("Settings fetch error:", settingsError);
+    throw new Error("System settings not found");
+  }
 
-  if (amount <= settings.auto_approve_limit) {
+  const autoApproveLimit = Number(settings?.auto_approve_limit || 0);
+
+  // 2️⃣ Status aniqlash
+  let status: "pending" | "approved" = "pending";
+
+  if (amount <= autoApproveLimit) {
     status = "approved";
   }
 
-  const { data: employee, error } = await supabase
-  .from("employees")
-  .select("telegram_id")
-  .eq("id", employee_id)
-  .single();
+  // 3️⃣ Payment yozish
+  const { data: payment, error: paymentError } = await supabase
+    .from("payments")
+    .insert([
+      {
+        employee_id,
+        amount,
+        currency,
+        description: description || "",
+        created_by,
+        status
+      }
+    ])
+    .select()
+    .single();
 
-if (error) {
-  console.error("Employee fetch error:", error);
-  return payment;
-}
+  if (paymentError) {
+    console.error("Payment insert error:", paymentError);
+    throw new Error("Payment creation failed");
+  }
 
-if (employee && employee.telegram_id) {
-  await notifyUser(
-    employee.telegram_id,
-    `Siz nomingizga ${amount} ${currency} yozildi.\nHolati: Tasdiqlandi`
-  );
-}
+  // 4️⃣ Agar avtomatik tasdiqlangan bo‘lsa notification yuboramiz
+  if (status === "approved") {
+    const { data: employee, error: employeeError } = await supabase
+      .from("employees")
+      .select("telegram_id, full_name")
+      .eq("id", employee_id)
+      .single();
+
+    if (employeeError) {
+      console.error("Employee fetch error:", employeeError);
+      return payment;
+    }
+
+    if (employee && employee.telegram_id) {
+      try {
+        await notifyUser(
+          employee.telegram_id,
+          `💰 Siz nomingizga ${amount} ${currency} yozildi.\n\n` +
+          `📝 Izoh: ${description || "—"}\n` +
+          `✅ Holati: Tasdiqlandi`
+        );
+      } catch (notifyError) {
+        console.error("Notification error:", notifyError);
+      }
+    }
+  }
 
   return payment;
 }
