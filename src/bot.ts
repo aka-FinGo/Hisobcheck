@@ -1,19 +1,60 @@
-import { Telegraf } from 'telegraf';
+import { Telegraf, Markup } from 'telegraf';
 import { config } from './config';
+import { getUser, isAdmin } from './services/authService';
 
-// Xatolikni tuzatish: config.botToken EMAS, config.BOT_TOKEN
 export const bot = new Telegraf(config.BOT_TOKEN);
 
-// Bot ishga tushgandagi xabar
-bot.start((ctx) => {
-  ctx.reply(`👋 Salom, ${ctx.from.first_name}! \nMen Aristokrat Mebel ERP tizimiman.`);
+// 1. Admin Menyusi
+const adminMenu = Markup.keyboard([
+  ['👥 Ishchilar', '➕ Ishchi qo\'shish'],
+  ['🏗 Zakazlar', '💰 To\'lov qilish'],
+  ['📊 Hisobot']
+]).resize();
+
+// 2. Ishchi Menyusi
+const workerMenu = Markup.keyboard([
+  ['📝 Ish yozish', '💰 Mening hisobim'],
+  ['📞 Admin bilan aloqa']
+]).resize();
+
+// 3. /start komandasi
+bot.start(async (ctx) => {
+  const userId = ctx.from.id;
+  const user = await getUser(userId);
+  const isSuperAdmin = isAdmin(userId);
+
+  // A) Agar Admin bo'lsa
+  if (isSuperAdmin) {
+    return ctx.reply(`👋 Salom, Xo'jayin! \nBoshqaruv paneliga xush kelibsiz.`, adminMenu);
+  }
+
+  // B) Agar bazada bor ishchi bo'lsa
+  if (user && user.is_active) {
+    return ctx.reply(`👋 Salom, ${user.full_name}! \nIshlaringizga rivoj.`, workerMenu);
+  }
+
+  // C) Agar begona bo'lsa
+  ctx.reply("⛔️ Kechirasiz, siz tizimda yo'qsiz. Iltimos, Admin bilan bog'laning.");
 });
 
-bot.help((ctx) => {
-  ctx.reply("Buyruqlar:\n/start - Boshlash\n/status - Tizim holati");
+// 4. Admin funksiyalari (Hozircha shablon)
+bot.hears('👥 Ishchilar', async (ctx) => {
+  if (!isAdmin(ctx.from.id)) return;
+  ctx.reply("Ishchilar ro'yxati tez orada shu yerda bo'ladi...");
 });
 
-// Xatolarni ushlash
-bot.catch((err, ctx) => {
-  console.log(`Ooops, ${ctx.updateType} da xatolik:`, err);
+bot.hears('➕ Ishchi qo\'shish', async (ctx) => {
+  if (!isAdmin(ctx.from.id)) return;
+  ctx.reply("Yangi ishchi qo'shish uchun: \n/add Ism Familiya Telefon\nko'rinishida yozing. \nMasalan: /add Ali Valiyev +998901234567");
+});
+
+// 5. Ishchi funksiyalari (Hozircha shablon)
+bot.hears('💰 Mening hisobim', async (ctx) => {
+  const user = await getUser(ctx.from.id);
+  if (!user) return;
+  ctx.reply(`Sizning balansingiz: Hisoblanmoqda...`);
+});
+
+bot.catch((err) => {
+  console.log('Bot xatosi:', err);
 });
