@@ -1,16 +1,26 @@
 import { Telegraf } from 'telegraf';
+import express from 'express'; // Web server qo'shdik
 import { config } from './config';
 import { checkConnection } from './db/supabase';
 
-// Botni yaratamiz
+// 1. Botni yaratamiz
 const bot = new Telegraf(config.BOT_TOKEN);
 
-// Bot ishga tushganda
+// 2. Web serverni yaratamiz (Render uchun shart!)
+const app = express();
+app.get('/', (req, res) => res.send('Bot is working! 🚀'));
+
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+    console.log(`Server ${PORT}-portda ishlayapti...`);
+});
+
+// Bot komandalari
 bot.start(async (ctx) => {
   ctx.reply(`👋 Salom, ${ctx.from.first_name}! \nMen Aristokrat Mebel boshqaruv tizimiman.`);
 });
 
-// Bazani tekshirish komandasi
 bot.command('status', async (ctx) => {
     const isConnected = await checkConnection();
     if (isConnected) {
@@ -20,7 +30,6 @@ bot.command('status', async (ctx) => {
     }
 });
 
-// Xatoliklarni ushlash
 bot.catch((err) => {
   console.error('Bot xatosi:', err);
 });
@@ -31,6 +40,6 @@ bot.launch().then(() => {
     checkConnection();
 });
 
-// Server to'xtatilganda botni chiroyli o'chirish
+// Server to'xtatilganda
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
