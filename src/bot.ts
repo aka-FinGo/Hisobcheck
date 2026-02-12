@@ -1,99 +1,129 @@
 import { Telegraf, Markup } from 'telegraf';
 import { config } from './config';
 import { getUser, isAdmin } from './services/authService';
-import { createEmployee, getAllEmployees } from './services/employeeService';
+import { getAllEmployees, registerRequest, approveEmployee, deleteEmployee } from './services/employeeService';
 
 export const bot = new Telegraf(config.BOT_TOKEN);
 
-// Admin menyusi
+// Admin Menyusi
 const adminMenu = Markup.keyboard([
-  ['👥 Ishchilar', '➕ Ishchi qo\'shish'],
-  ['🏗 Zakazlar', '💰 To\'lov qilish'],
+  ['👥 Ishchilar', '🏗 Zakazlar'],
   ['📊 Hisobot']
 ]).resize();
 
-// Ishchi menyusi
+// Ishchi Menyusi
 const workerMenu = Markup.keyboard([
   ['📝 Ish yozish', '💰 Mening hisobim'],
   ['📞 Admin bilan aloqa']
 ]).resize();
 
+// 1. START KOMANDASI
 bot.start(async (ctx) => {
   const userId = ctx.from.id;
-  const isSuperAdmin = (userId === config.ADMIN_ID);
 
-  if (isSuperAdmin) {
-    return ctx.reply(`👋 Salom, Xo'jayin! \nBoshqaruv paneliga xush kelibsiz.`, adminMenu);
+  // A) Agar Admin bo'lsa
+  if (isAdmin(userId)) {
+    return ctx.reply(`👋 Salom, Xo'jayin!`, adminMenu);
   }
 
+  // B) Bazani tekshiramiz
   const user = await getUser(userId);
-  
+
+  // Agar ishchi bazada bor va AKTIV bo'lsa
   if (user && user.is_active) {
-    return ctx.reply(`👋 Salom, ${user.full_name}! \nIshlaringizga rivoj.`, workerMenu);
+    return ctx.reply(`👋 Salom, ${user.full_name}! Ishga kirishamizmi?`, workerMenu);
   }
 
-  ctx.reply("⛔️ Kechirasiz, siz tizimda yo'qsiz. Admin bilan bog'laning.");
-});
+  // Agar ishchi bazada bor, lekin hali TASDIQLANMAGAN bo'lsa
+  if (user && !user.is_active) {
+    return ctx.reply("⏳ Sizning so'rovingiz Adminga yuborilgan. Iltimos, tasdiqlashini kuting.");
+  }
 
-// 1. ISHCHI QO'SHISH TUGMASI
-bot.hears('➕ Ishchi qo\'shish', async (ctx) => {
-  if (!isAdmin(ctx.from.id)) return;
-  
+  // C) Agar umuman yangi bo'lsa -> Ro'yxatdan o'tish tugmasi
   ctx.reply(
-    "Yangi ishchi qo'shish uchun quyidagi formatda yozing:\n\n" +
-    "👉 `/add Ism Familiya Telefon`\n\n" +
-    "Masalan: `/add Ali Valiyev +998901234567`",
-    { parse_mode: 'Markdown' }
+    "⛔️ Siz tizimda yo'qsiz.\nIshga kirish uchun ro'yxatdan o'ting.",
+    Markup.keyboard([
+      [Markup.button.contactRequest('📱 Telefon raqamni yuborish')]
+    ]).resize()
   );
 });
 
-// 2. /add KOMANDASI (Bazaga yozish)
-bot.command('add', async (ctx) => {
-  if (!isAdmin(ctx.from.id)) return;
+// 2. TELEFON RAQAMNI QABUL QILISH (Avtomatik registratsiya)
+bot.on('contact', async (ctx) => {
+  const userId = ctx.from.id;
+  const contact = ctx.message.contact;
 
-  // Xabarni bo'laklaymiz: "/add Ali Valiyev +99890..."
-  const parts = ctx.message.text.split(' ');
-  
-  // Tekshiramiz, yetarli ma'lumot bormi?
-  if (parts.length < 3) {
-    return ctx.reply("⚠️ Xato format! Iltimos, Ism va Telefonni kiriting.");
+  // Agar birovning kontaktini yuborsa (o'ziniki bo'lmasa)
+  if (contact.user_id !== userId) {
+    return ctx.reply("Iltimos, pastdagi tugma orqali O'Z raqamingizni yuboring.");
   }
 
-  const phone = parts.pop(); // Oxiridagi so'z - telefon deb olamiz
-  const name = parts.slice(1).join(' '); // Qolgani - Ism Familiya
+  const fullName = [ctx.from.first_name, ctx.from.last_name].filter(Boolean).join(' ');
+  const phone = contact.phone_number.startsWith('+') ? contact.phone_number : `+${contact.phone_number}`;
 
-  if (!phone || !name) return ctx.reply("Ma'lumotlar chala.");
-
-  ctx.reply("⏳ Bazaga yozilyapti...");
-
-  const result = await createEmployee(name, phone);
+  // Bazaga "kutilmoqda" statusi bilan yozamiz
+  const result = await registerRequest(userId, fullName, phone);
 
   if (result.error) {
-    ctx.reply(`❌ Xatolik: ${result.error}`);
+    return ctx.reply(`⚠️ ${result.error}`);
+  }
+
+  // Ishchiga javob
+  ctx.reply("✅ So'rovingiz qabul qilindi! Admin tasdiqlagach, bot ishga tushadi.", Markup.removeKeyboard());
+
+  // ADMINGA XABAR YUBORAMIZ
+  bot.telegram.sendMessage(
+    config.ADMIN_ID,
+    `🔔 <b>Yangi ishchi so'rovi!</b>\n\n👤 Ism: ${fullName}\n📱 Tel: ${phone}\n\nUni jamoaga qo'shamizmi?`,
+    {
+      parse_mode: 'HTML',
+      ...Markup.inlineKeyboard([
+        [
+          Markup.button.callback('✅ Tasdiqlash', `approve_${userId}`),
+          Markup.button.callback('❌ Rad etish', `reject_${userId}`)
+        ]
+      ])
+    }
+  );
+});
+
+// 3. ADMIN TASDIQLASHI (Knopkalar logikasi)
+bot.action(/approve_(\d+)/, async (ctx) => {
+  const userId = parseInt(ctx.match[1]); // ID ni ajratib olamiz
+  
+  const success = await approveEmployee(userId);
+  
+  if (success) {
+    // Adminga o'zgarish
+    ctx.editMessageText(`✅ <b>Qabul qilindi!</b>\nIshchi bazaga qo'shildi.`, { parse_mode: 'HTML' });
+    // Ishchiga xabar
+    bot.telegram.sendMessage(userId, "🎉 Tabriklaymiz! Siz tizimga qabul qilindingiz.\nBoshlash uchun /start ni bosing.");
   } else {
-    ctx.reply(`✅ **${name}** muvaffaqiyatli qo'shildi!\nEndi u botga kirib "Start" bossa, tizim uni taniydi.`);
+    ctx.answerCbQuery("Xatolik bo'ldi.");
   }
 });
-// 3. ISHCHILAR RO'YXATINI KO'RISH
+
+bot.action(/reject_(\d+)/, async (ctx) => {
+  const userId = parseInt(ctx.match[1]);
+  await deleteEmployee(userId);
+  
+  ctx.editMessageText(`❌ <b>Rad etildi.</b>`, { parse_mode: 'HTML' });
+  bot.telegram.sendMessage(userId, "Afsuski, sizning so'rovingiz rad etildi.");
+});
+
+// 4. ISHCHILAR RO'YXATI
 bot.hears('👥 Ishchilar', async (ctx) => {
   if (!isAdmin(ctx.from.id)) return;
-
   const employees = await getAllEmployees();
-
-  if (employees.length === 0) {
-    return ctx.reply("Hozircha ishchilar yo'q.");
-  }
-
-  // O'zgartirish: Markdown o'rniga HTML ishlatamiz (xatosiz ishlashi uchun)
-  let msg = "👷‍♂️ <b>Jamoa a'zolari:</b>\n\n";
   
+  let msg = "👷‍♂️ <b>Jamoa a'zolari:</b>\n\n";
   employees.forEach((emp, index) => {
-    // Ism va telefonni oddiy matn sifatida qo'shamiz
-    msg += `${index + 1}. ${emp.full_name} (<code>${emp.phone}</code>) - ${emp.role}\n`;
+    const status = emp.is_active ? "✅" : "⏳ (Kutilmoqda)";
+    msg += `${index + 1}. ${emp.full_name} (<code>${emp.phone}</code>) - ${status}\n`;
   });
-
-  // parse_mode: 'HTML' qildik
   ctx.reply(msg, { parse_mode: 'HTML' });
 });
 
-
+bot.catch((err) => {
+  console.log('Bot xatosi:', err);
+});
