@@ -2,6 +2,7 @@ import { Telegraf, Markup } from 'telegraf';
 import { config } from './config';
 import { getUser, isAdmin } from './services/authService';
 import { getAllEmployees, registerRequest, approveEmployee, deleteEmployee } from './services/employeeService';
+import { createOrder, getActiveOrders, closeOrder } from './services/orderService';
 
 export const bot = new Telegraf(config.BOT_TOKEN);
 
@@ -126,4 +127,66 @@ bot.hears('👥 Ishchilar', async (ctx) => {
 
 bot.catch((err) => {
   console.log('Bot xatosi:', err);
+});
+
+
+
+// ... kodlar davomi ...
+
+// 1. ZAKAZLAR MENU (Admin uchun)
+bot.hears('🏗 Zakazlar', async (ctx) => {
+  if (!isAdmin(ctx.from.id)) return;
+
+  const orders = await getActiveOrders();
+  
+  let msg = "📂 <b>Aktiv Zakazlar:</b>\n\n";
+  if (orders.length === 0) msg += "Hozircha ochiq zakazlar yo'q.";
+  
+  orders.forEach((o) => {
+    msg += `🔹 <b>${o.order_number}</b> - ${o.client_name}\n`;
+  });
+
+  msg += "\n👇 <b>Boshqaruv:</b>\n" +
+         "Yangi qo'shish uchun: <code>/zakaz Raqam Mijoz</code>\n" +
+         "Yopish uchun: <code>/yopish Raqam</code>";
+
+  ctx.reply(msg, { parse_mode: 'HTML' });
+});
+
+// 2. YANGI ZAKAZ QO'SHISH (/zakaz 100_01 Ali aka)
+bot.command('zakaz', async (ctx) => {
+  if (!isAdmin(ctx.from.id)) return;
+
+  const parts = ctx.message.text.split(' ');
+  if (parts.length < 3) {
+    return ctx.reply("⚠️ Xato! Format: <code>/zakaz 100_01 Ali aka</code>", { parse_mode: 'HTML' });
+  }
+
+  const orderNumber = parts[1];
+  const clientName = parts.slice(2).join(' ');
+
+  const result = await createOrder(orderNumber, clientName);
+
+  if (result.error) {
+    ctx.reply(`❌ ${result.error}`);
+  } else {
+    ctx.reply(`✅ <b>${orderNumber}</b> zakazi ochildi! Endi ishchilar unga ish yozishi mumkin.`, { parse_mode: 'HTML' });
+  }
+});
+
+// 3. ZAKAZNI YOPISH (/yopish 100_01)
+bot.command('yopish', async (ctx) => {
+  if (!isAdmin(ctx.from.id)) return;
+
+  const parts = ctx.message.text.split(' ');
+  if (parts.length < 2) return ctx.reply("Zakaz raqamini yozing. Masalan: /yopish 100_01");
+
+  const orderNumber = parts[1];
+  const success = await closeOrder(orderNumber);
+
+  if (success) {
+    ctx.reply(`🏁 <b>${orderNumber}</b> zakazi yopildi va arxivlandi.`, { parse_mode: 'HTML' });
+  } else {
+    ctx.reply("❌ Xatolik. Bunday zakaz topilmadi.");
+  }
 });
