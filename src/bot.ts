@@ -3,6 +3,16 @@ import { config } from './config';
 import { getUser, isAdmin } from './services/authService';
 import { getAllEmployees, registerRequest, approveEmployee, deleteEmployee } from './services/employeeService';
 import { createOrder, getActiveOrders, closeOrder } from './services/orderService';
+import { getActiveOrders } from './services/orderService';
+import { saveWorkLog, getWorkTypes } from './services/workService';
+
+// VAQTINCHALIK XOTIRA (Kim qaysi zakazni tanlab turibdi?)
+interface Draft {
+  orderId?: string;
+  orderNumber?: string;
+  workType?: string;
+}
+const drafts = new Map<number, Draft>();
 
 export const bot = new Telegraf(config.BOT_TOKEN);
 
@@ -189,4 +199,108 @@ bot.command('yopish', async (ctx) => {
   } else {
     ctx.reply("❌ Xatolik. Bunday zakaz topilmadi.");
   }
+});
+// ------------------------------------------
+// ISH YOZISH JARAYONI
+// ------------------------------------------
+
+// 1. "📝 Ish yozish" bosilganda -> Zakazlarni chiqarish
+bot.hears('📝 Ish yozish', async (ctx) => {
+  const orders = await getActiveOrders();
+
+  if (orders.length === 0) {
+    return ctx.reply("Hozircha aktiv zakazlar yo'q. Admin zakaz ochishi kerak.");
+  }
+
+  // Zakazlarni tugma (Inline Button) qilib chiqaramiz
+  const buttons = orders.map(o => [
+    Markup.button.callback(`📂 ${o.order_number} (${o.client_name})`, `sel_order_${o.id}_${o.order_number}`)
+  ]);
+
+  ctx.reply("Qaysi zakaz bo'yicha ish qildingiz?", Markup.inlineKeyboard(buttons));
+});
+
+// 2. Zakaz tanlanganda -> Ish turlarini chiqarish
+bot.action(/^sel_order_(.+)_(.+)$/, async (ctx) => {
+  const orderId = ctx.match[1];
+  const orderNumber = ctx.match[2];
+  const userId = ctx.from.id;
+
+  // Xotiraga yozib qo'yamiz
+  drafts.set(userId, { orderId, orderNumber });
+
+  // Ish turlarini chiqaramiz
+  const workTypes = getWorkTypes();
+  const buttons = workTypes.map(wt => [
+    Markup.button.callback(`🔨 ${wt}`, `sel_work_${wt}`)
+  ]);
+
+  // Eski xabarni o'zgartiramiz
+  ctx.editMessageText(
+    `Zakaz: <b>${orderNumber}</b>\nEndi qilgan ishingiz turini tanlang:`,
+    { 
+      parse_mode: 'HTML',
+      ...Markup.inlineKeyboard(buttons)
+    }
+  );
+});
+
+// 3. Ish turi tanlanganda -> Miqdorni so'rash
+bot.action(/^sel_work_(.+)$/, async (ctx) => {
+  const workType = ctx.match[1];
+  const userId = ctx.from.id;
+  
+  const draft = drafts.get(userId);
+  if (!draft) return ctx.reply("Xatolik. Iltimos, boshqatdan boshlang.");
+
+  // Xotirani to'ldiramiz
+  draft.workType = workType;
+  drafts.set(userId, draft);
+
+  ctx.editMessageText(
+    `Zakaz: <b>${draft.orderNumber}</b>\n` +
+    `Ish: <b>${workType}</b>\n\n` +
+    `Qancha ish qildingiz? (Raqam yozing, masalan: 15.5)`,
+    { parse_mode: 'HTML' }
+  );
+});
+
+// 4. Raqam yozilganda -> Bazaga saqlash
+bot.on('text', async (ctx) => {
+  const userId = ctx.from.id;
+  const text = ctx.message.text;
+  const draft = drafts.get(userId);
+
+  // Agar bu odam hozir ish yozish jarayonida bo'lmasa, oddiy matn deb qabul qilamiz
+  if (!draft || !draft.workType) return;
+
+  // Kiritilgan narsa raqammi?
+  // Vergulni nuqtaga aylantiramiz (12,5 -> 12.5)
+  const amount = parseFloat(text.replace(',', '.'));
+
+  if (isNaN(amount) || amount <= 0) {
+    return ctx.reply("⚠️ Iltimos, to'g'ri raqam yozing (masalan: 10 yoki 12.5).");
+  }
+
+  // BAZAGA YOZAMIZ
+  const result = await saveWorkLog(userId, draft.orderId!, draft.workType, amount);
+
+  if (result.error) {
+    ctx.reply(`❌ Xatolik: ${result.error}`);
+  } else {
+    // Chiroyli chek chiqaramiz
+    const formattedTotal = new Intl.NumberFormat('uz-UZ').format(result.total || 0);
+    
+    ctx.reply(
+      `✅ <b>Qabul qilindi!</b>\n\n` +
+      `📂 Zakaz: ${draft.orderNumber}\n` +
+      `🔨 Ish: ${draft.workType}\n` +
+      `📏 Hajm: ${amount}\n` +
+      `💰 Hisoblandi: <b>${formattedTotal} so'm</b>`,
+      { parse_mode: 'HTML' }
+    );
+  }
+
+  // Xotirani tozaylaymiz
+  drafts.delete(userId);
 });
