@@ -74,7 +74,6 @@ bot.command('add', async (ctx) => {
     ctx.reply(`✅ **${name}** muvaffaqiyatli qo'shildi!\nEndi u botga kirib "Start" bossa, tizim uni taniydi.`);
   }
 });
-
 // 3. ISHCHILAR RO'YXATINI KO'RISH
 bot.hears('👥 Ishchilar', async (ctx) => {
   if (!isAdmin(ctx.from.id)) return;
@@ -85,14 +84,16 @@ bot.hears('👥 Ishchilar', async (ctx) => {
     return ctx.reply("Hozircha ishchilar yo'q.");
   }
 
-  let msg = "👷‍♂️ **Jamoa a'zolari:**\n\n";
+  // O'zgartirish: Markdown o'rniga HTML ishlatamiz (xatosiz ishlashi uchun)
+  let msg = "👷‍♂️ <b>Jamoa a'zolari:</b>\n\n";
+  
   employees.forEach((emp, index) => {
-    msg += `${index + 1}. ${emp.full_name} (${emp.phone}) - ${emp.role}\n`;
+    // Ism va telefonni oddiy matn sifatida qo'shamiz
+    msg += `${index + 1}. ${emp.full_name} (<code>${emp.phone}</code>) - ${emp.role}\n`;
   });
 
-  ctx.reply(msg, { parse_mode: 'Markdown' });
+  // parse_mode: 'HTML' qildik
+  ctx.reply(msg, { parse_mode: 'HTML' });
 });
 
-bot.catch((err) => {
-  console.log('Bot xatosi:', err);
-});
+
