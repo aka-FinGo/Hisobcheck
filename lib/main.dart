@@ -6,9 +6,11 @@ import 'screens/home_screen.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  const supabaseUrl = String.fromEnvironment('SUPABASE_URL');
-  const supabaseKey = String.fromEnvironment('SUPABASE_KEY');
+  // GitHub Actions'dagi --dart-define orqali kelayotgan kalitlar
+  const String supabaseUrl = String.fromEnvironment('SUPABASE_URL');
+  const String supabaseKey = String.fromEnvironment('SUPABASE_KEY');
 
+  // Agar kalitlar kelsa, Supabase'ni ishga tushiramiz
   if (supabaseUrl.isNotEmpty && supabaseKey.isNotEmpty) {
     await Supabase.initialize(
       url: supabaseUrl,
@@ -26,8 +28,11 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Hisobcheck',
-      theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.blue),
+      title: 'Aristokrat Mebel',
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue.shade900),
+        useMaterial3: true,
+      ),
       home: Supabase.instance.client.auth.currentUser != null
           ? const HomeScreen()
           : const LoginScreen(),
