@@ -1,16 +1,10 @@
-import sys
+import os
 
 def main():
-    try:
-        print("Loyiha muvaffaqiyatli ishga tushdi!")
-        # Bu yerga o'z logikangizni yozasiz
-        # Masalan:
-        result = 10 + 20
-        print(f"Hisoblash natijasi: {result}")
-        
-    except Exception as e:
-        print(f"Xatolik yuz berdi: {e}")
-        sys.exit(1) # Xatolik bo'lsa exit code 1 qaytaradi
+    print("---------------------------------------")
+    print("Salom! GitHub Actions muvaffaqiyatli ishladi.")
+    print("Kod xatosiz bajarildi.")
+    print("---------------------------------------")
 
 if __name__ == "__main__":
     main()
