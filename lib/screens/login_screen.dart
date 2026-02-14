@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'home_screen.dart'; // Bir xil papkada turgani uchun shunday yoziladi
+import 'home_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -14,7 +14,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   bool _isLoading = false;
 
-  Future<void> _login() async {
+  Future<void> _authenticate() async {
     setState(() => _isLoading = true);
     try {
       await Supabase.instance.client.auth.signInWithPassword(
@@ -22,12 +22,10 @@ class _LoginScreenState extends State<LoginScreen> {
         password: _passwordController.text.trim(),
       );
       if (mounted) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const HomeScreen()),
-        );
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomeScreen()));
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Xatolik!")));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Email yoki parol xato!")));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -36,16 +34,28 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Kirish")),
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            TextField(controller: _emailController, decoration: const InputDecoration(labelText: "Email")),
-            TextField(controller: _passwordController, decoration: const InputDecoration(labelText: "Parol"), obscureText: true),
-            const SizedBox(height: 20),
-            _isLoading ? const CircularProgressIndicator() : ElevatedButton(onPressed: _login, child: const Text("Kirish"))
-          ],
+      body: Center(
+        child: Container(
+          maxWidth: 400,
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text("HisobCheck Login", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 30),
+              TextField(controller: _emailController, decoration: const InputDecoration(labelText: "Email", border: OutlineInputBorder())),
+              const SizedBox(height: 16),
+              TextField(controller: _passwordController, decoration: const InputDecoration(labelText: "Parol", border: OutlineInputBorder()), obscureText: true),
+              const SizedBox(height: 24),
+              _isLoading 
+                ? const CircularProgressIndicator() 
+                : ElevatedButton(
+                    onPressed: _authenticate, 
+                    style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50)),
+                    child: const Text("KIRISH")
+                  ),
+            ],
+          ),
         ),
       ),
     );
