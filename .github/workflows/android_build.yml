@@ -1,49 +1,46 @@
-name: Android APK Build
+name: Fast Flutter Web Build
 
 on:
   push:
-    branches: [ "main" ]
-  workflow_dispatch:
+    branches: [ main, master ]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true # Yangi kod kelsa, eskisini to'xtatadi (tezlik uchun)
 
 jobs:
-  build:
+  build-and-deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
-
     steps:
-    # 1. Kodni yuklab olish
-    - uses: actions/checkout@v4
+      - name: Kodni olish
+        uses: actions/checkout@v3
 
-    # 2. Java o'rnatish
-    - name: Java o'rnatish
-      uses: actions/setup-java@v4
-      with:
-        distribution: 'zulu'
-        java-version: '17'
+      - name: Flutter o'rnatish (Cache bilan)
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true # MUHIM: Har safar Flutterni boshqatdan yuklamaydi!
 
-    # 3. Flutter o'rnatish
-    - name: Flutter o'rnatish
-      uses: subosito/flutter-action@v2
-      with:
-        flutter-version: '3.19.0'
-        channel: 'stable'
-    # 4. 🔥 MUHIM: Android fayllarini yaratish
-    # Bu buyruq avtomatik ravishda 'flutter pub get' ni ham ishga tushiradi
-    - name: Create Flutter Project
-      run: flutter create --project-name hisobcheck . --platforms android
+      - name: Loyihani yaratish (Faqat Web uchun)
+        run: flutter create --project-name hisobcheck --platforms web .
 
-    # 5. Kutubxonalarni majburan FLUTTER orqali yuklash
-    # (Oldingi xatoni tuzatish qismi)
-    - name: Kutubxonalarni yuklash
-      run: flutter pub get
+      - name: Web Build (HTML renderer - Tezroq)
+        # --web-renderer html bu buildni tezlashtiradi (lekin grafika sal oddiyroq bo'ladi)
+        run: flutter build web --release --web-renderer html --base-href "/${{ github.event.repository.name }}/"
 
-    # 6. APK build qilish
-    - name: APK build qilish
-      run: flutter build apk --release --no-tree-shake-icons
+      - name: Upload Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
 
-    # 7. Faylni saqlab olish
-    - name: APKni saqlab olish (Artifacts)
-      uses: actions/upload-artifact@v4
-      with:
-        name: release-apk
-        path: build/app/outputs/flutter-apk/app-release.apk
-        compression-level: 0
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
