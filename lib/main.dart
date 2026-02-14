@@ -1,38 +1,111 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
-// Bu yerga o'z URL va KEYlaringizni yozing
-const supabaseUrl = 'https://ignoqalmhfbhrgixxfcb.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlnbm9xYWxtaGZiaHJnaXh4ZmNiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEwMDI3NjAsImV4cCI6MjA4NjU3ODc2MH0.UdjqZDSklvGYQ4fnVVNueXKs7utmqZxGBdwA3f8x8XM';
-
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-
-  // 1. Supabasega ulanish
-  await Supabase.initialize(
-    url: supabaseUrl,
-    anonKey: supabaseKey,
-  );
-
-  runApp(const MyApp());
+void main() {
+  runApp(const HisobCheckApp());
 }
 
-final supabase = Supabase.instance.client;
-
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class HisobCheckApp extends StatelessWidget {
+  const HisobCheckApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Moliyachi',
+      debugShowCheckedModeBanner: false,
+      title: 'HisobCheck',
       theme: ThemeData(
         primarySwatch: Colors.blue,
         useMaterial3: true,
       ),
-      // Hozircha bo'sh ekran ko'rsatib turamiz
-      home: const Scaffold(
-        body: Center(child: Text("Supabasega ulandi!")),
+      home: const HomePage(),
+    );
+  }
+}
+
+class HomePage extends StatefulWidget {
+  const HomePage({super.key});
+
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  // 1. O'zgaruvchilar (Inputlar uchun)
+  final TextEditingController _birinchiRaqamController = TextEditingController();
+  final TextEditingController _ikkinchiRaqamController = TextEditingController();
+  
+  String _natija = "Natija shu yerda chiqadi";
+
+  // 2. MANTIQ (Funksiya shu yerda yoziladi)
+  void _hisoblash() {
+    // Matnni raqamga aylantiramiz
+    double? raqam1 = double.tryParse(_birinchiRaqamController.text);
+    double? raqam2 = double.tryParse(_ikkinchiRaqamController.text);
+
+    if (raqam1 == null || raqam2 == null) {
+      setState(() {
+        _natija = "Iltimos, to'g'ri raqam kiriting!";
+      });
+      return;
+    }
+
+    // Hozircha oddiy qo'shish amali (Siz istagan formulani shu yerga yozamiz)
+    double summa = raqam1 + raqam2;
+
+    // Ekranni yangilash
+    setState(() {
+      _natija = "Jami: $summa so'm";
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text("HisobCheck Lite")),
+      body: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Birinchi Input
+            TextField(
+              controller: _birinchiRaqamController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                labelText: "Birinchi summa",
+              ),
+            ),
+            const SizedBox(height: 20),
+            
+            // Ikkinchi Input
+            TextField(
+              controller: _ikkinchiRaqamController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                labelText: "Ikkinchi summa",
+              ),
+            ),
+            const SizedBox(height: 30),
+
+            // Tugma
+            ElevatedButton(
+              onPressed: _hisoblash,
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 15),
+              ),
+              child: const Text("HISOBLASH", style: TextStyle(fontSize: 18)),
+            ),
+            
+            const SizedBox(height: 30),
+            
+            // Natija
+            Text(
+              _natija,
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.blue),
+            ),
+          ],
+        ),
       ),
     );
   }
