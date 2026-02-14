@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 // Bu yerga o'z URL va KEYlaringizni yozing
-const supabaseUrl = 'SU_SIZNING_SUPABASE_URL';
-const supabaseKey = 'SU_SIZNING_ANON_KEY';
+const supabaseUrl = 'https://ignoqalmhfbhrgixxfcb.supabase.co';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlnbm9xYWxtaGZiaHJnaXh4ZmNiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEwMDI3NjAsImV4cCI6MjA4NjU3ODc2MH0.UdjqZDSklvGYQ4fnVVNueXKs7utmqZxGBdwA3f8x8XM';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
