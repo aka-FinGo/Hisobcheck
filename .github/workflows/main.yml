@@ -1,0 +1,41 @@
+name: Fast Web Deploy
+
+on:
+  push:
+    branches: [ main, master ]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  build-deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+      
+      # Loyiha nomini kichkina harflar bilan tuzatib yaratish
+      - run: flutter create --project-name hisobcheck --platforms web .
+      
+      # Eng tez build qilish usuli (HTML renderer)
+      - run: flutter build web --release --web-renderer html --base-href "/${{ github.event.repository.name }}/"
+      
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+          
+      - id: deployment
+        uses: actions/deploy-pages@v4
