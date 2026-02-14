@@ -13,12 +13,29 @@ class HisobCheckApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'HisobCheck',
       theme: ThemeData(
-        primarySwatch: Colors.blue,
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
       ),
       home: const HomePage(),
     );
   }
+}
+
+// Tranzaksiya modeli (Ma'lumot turi)
+class Transaction {
+  final String id;
+  final String title;
+  final double amount;
+  final bool isExpense; // True = Chiqim, False = Kirim
+  final DateTime date;
+
+  Transaction({
+    required this.id,
+    required this.title,
+    required this.amount,
+    required this.isExpense,
+    required this.date,
+  });
 }
 
 class HomePage extends StatefulWidget {
@@ -29,84 +46,166 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  // 1. O'zgaruvchilar (Inputlar uchun)
-  final TextEditingController _birinchiRaqamController = TextEditingController();
-  final TextEditingController _ikkinchiRaqamController = TextEditingController();
+  // Tranzaksiyalar ro'yxati (Baza o'rnida turadi)
+  final List<Transaction> _transactions = [];
+
+  final _titleController = TextEditingController();
+  final _amountController = TextEditingController();
   
-  String _natija = "Natija shu yerda chiqadi";
+  // Hozirgi balansni hisoblash
+  double get _totalBalance {
+    double balance = 0;
+    for (var tx in _transactions) {
+      if (tx.isExpense) {
+        balance -= tx.amount;
+      } else {
+        balance += tx.amount;
+      }
+    }
+    return balance;
+  }
 
-  // 2. MANTIQ (Funksiya shu yerda yoziladi)
-  void _hisoblash() {
-    // Matnni raqamga aylantiramiz
-    double? raqam1 = double.tryParse(_birinchiRaqamController.text);
-    double? raqam2 = double.tryParse(_ikkinchiRaqamController.text);
+  // Yangi tranzaksiya qo'shish oynasi
+  void _startAddNewTransaction(BuildContext ctx) {
+    showModalBottomSheet(
+      context: ctx,
+      builder: (_) {
+        return Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              TextField(
+                decoration: const InputDecoration(labelText: 'Nima uchun? (Izoh)'),
+                controller: _titleController,
+              ),
+              TextField(
+                decoration: const InputDecoration(labelText: 'Summa'),
+                controller: _amountController,
+                keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  ElevatedButton.icon(
+                    onPressed: () => _submitData(true), // Chiqim
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade100),
+                    icon: const Icon(Icons.arrow_downward, color: Colors.red),
+                    label: const Text("Chiqim", style: TextStyle(color: Colors.red)),
+                  ),
+                  ElevatedButton.icon(
+                    onPressed: () => _submitData(false), // Kirim
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.green.shade100),
+                    icon: const Icon(Icons.arrow_upward, color: Colors.green),
+                    label: const Text("Kirim", style: TextStyle(color: Colors.green)),
+                  ),
+                ],
+              )
+            ],
+          ),
+        );
+      },
+    );
+  }
 
-    if (raqam1 == null || raqam2 == null) {
-      setState(() {
-        _natija = "Iltimos, to'g'ri raqam kiriting!";
-      });
-      return;
+  void _submitData(bool isExpense) {
+    final enteredTitle = _titleController.text;
+    final enteredAmount = double.tryParse(_amountController.text);
+
+    if (enteredTitle.isEmpty || enteredAmount == null || enteredAmount <= 0) {
+      return; // Agar ma'lumot xato bo'lsa, hech narsa qilma
     }
 
-    // Hozircha oddiy qo'shish amali (Siz istagan formulani shu yerga yozamiz)
-    double summa = raqam1 + raqam2;
-
-    // Ekranni yangilash
     setState(() {
-      _natija = "Jami: $summa so'm";
+      _transactions.add(
+        Transaction(
+          id: DateTime.now().toString(),
+          title: enteredTitle,
+          amount: enteredAmount,
+          isExpense: isExpense,
+          date: DateTime.now(),
+        ),
+      );
     });
+
+    // Inputlarni tozalash va oynani yopish
+    _titleController.clear();
+    _amountController.clear();
+    Navigator.of(context).pop();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("HisobCheck Lite")),
-      body: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // Birinchi Input
-            TextField(
-              controller: _birinchiRaqamController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                labelText: "Birinchi summa",
-              ),
-            ),
-            const SizedBox(height: 20),
-            
-            // Ikkinchi Input
-            TextField(
-              controller: _ikkinchiRaqamController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                labelText: "Ikkinchi summa",
-              ),
-            ),
-            const SizedBox(height: 30),
-
-            // Tugma
-            ElevatedButton(
-              onPressed: _hisoblash,
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 15),
-              ),
-              child: const Text("HISOBLASH", style: TextStyle(fontSize: 18)),
-            ),
-            
-            const SizedBox(height: 30),
-            
-            // Natija
-            Text(
-              _natija,
-              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.blue),
-            ),
-          ],
-        ),
+      appBar: AppBar(
+        title: const Text("HisobCheck"),
+        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
       ),
+      body: Column(
+        children: [
+          // 1. Balans Kartasi
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.blue.shade800,
+              borderRadius: BorderRadius.circular(15),
+              boxShadow: const [BoxShadow(blurRadius: 10, color: Colors.black26)],
+            ),
+            child: Column(
+              children: [
+                const Text("Umumiy Balans", style: TextStyle(color: Colors.white70, fontSize: 16)),
+                const SizedBox(height: 10),
+                Text(
+                  "${_totalBalance.toStringAsFixed(0)} so'm",
+                  style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+          ),
+
+          // 2. Ro'yxat
+          Expanded(
+            child: _transactions.isEmpty
+                ? const Center(child: Text("Hozircha hisob-kitob yo'q!"))
+                : ListView.builder(
+                    itemCount: _transactions.length,
+                    itemBuilder: (ctx, index) {
+                      final tx = _transactions[index];
+                      return Card(
+                        margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                        child: ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: tx.isExpense ? Colors.red : Colors.green,
+                            child: Icon(
+                              tx.isExpense ? Icons.remove : Icons.add,
+                              color: Colors.white,
+                            ),
+                          ),
+                          title: Text(tx.title, style: const TextStyle(fontWeight: FontWeight.bold)),
+                          subtitle: Text(tx.date.toString().substring(0, 16)),
+                          trailing: Text(
+                            "${tx.isExpense ? '-' : '+'}${tx.amount} so'm",
+                            style: TextStyle(
+                              color: tx.isExpense ? Colors.red : Colors.green,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _startAddNewTransaction(context),
+        child: const Icon(Icons.add),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
 }
