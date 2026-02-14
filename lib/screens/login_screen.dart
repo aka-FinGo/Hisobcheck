@@ -36,7 +36,8 @@ class _LoginScreenState extends State<LoginScreen> {
     return Scaffold(
       body: Center(
         child: Container(
-          maxWidth: 400,
+          // MANA SHU JOYI TUZATILDI:
+          constraints: const BoxConstraints(maxWidth: 400), 
           padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
