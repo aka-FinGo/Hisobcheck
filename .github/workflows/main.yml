@@ -22,16 +22,19 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       
+      # Flutterni to'g'ri o'rnatish
       - uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
+          flutter-version: '3.19.0' # Versiyani aniq ko'rsatamiz (xatolik bo'lmasligi uchun)
           cache: true
       
-      # Loyiha nomini kichkina harflar bilan tuzatib yaratish
-      - run: flutter create --project-name hisobcheck --platforms web .
+      - name: Loyihani yaratish
+        run: flutter create --project-name hisobcheck --platforms web .
       
-      # Eng tez build qilish usuli (HTML renderer)
-      - run: flutter build web --release --web-renderer html --base-href "/${{ github.event.repository.name }}/"
+      # TUZATILGAN QATOR: --web-renderer olib tashlandi
+      - name: Build Web
+        run: flutter build web --release --base-href "/${{ github.event.repository.name }}/"
       
       - uses: actions/upload-pages-artifact@v3
         with:
