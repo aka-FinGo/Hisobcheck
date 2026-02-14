@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'login_screen.dart';
+import 'admin_approvals.dart';
+import 'add_withdrawal.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -11,16 +14,13 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final _supabase = Supabase.instance.client;
   bool _isLoading = true;
-  
-  // User ma'lumotlari
   String _userName = '';
   String _userRole = 'worker';
   String _userId = '';
 
-  // Hisob-kitob ma'lumotlari
-  double _totalEarned = 0;   // Jami ishlagan (tasdiqlangan)
-  double _totalWithdrawn = 0; // Jami olgan (avanslar)
-  double _pendingAmount = 0;  // Tasdiq kutilayotgan ishlar
+  double _totalEarned = 0;
+  double _totalWithdrawn = 0;
+  double _pendingAmount = 0;
 
   @override
   void initState() {
@@ -28,7 +28,6 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadAllData();
   }
 
-  // 1. Ma'lumotlarni bazadan yangilash
   Future<void> _loadAllData() async {
     setState(() => _isLoading = true);
     try {
@@ -36,10 +35,8 @@ class _HomeScreenState extends State<HomeScreen> {
       if (user == null) return;
       _userId = user.id;
 
-      // Profilni olish
       final profile = await _supabase.from('profiles').select().eq('id', _userId).single();
       
-      // Balansni hisoblash (Work logs va Withdrawals)
       final workLogs = await _supabase.from('work_logs').select().eq('worker_id', _userId);
       final withdrawals = await _supabase.from('withdrawals').select().eq('worker_id', _userId);
 
@@ -67,8 +64,18 @@ class _HomeScreenState extends State<HomeScreen> {
         _isLoading = false;
       });
     } catch (e) {
-      debugPrint("Xato yuz berdi: $e");
       setState(() => _isLoading = false);
+    }
+  }
+
+  // CHIQISH TUGMASI LOGIKASI
+  Future<void> _handleSignOut() async {
+    await _supabase.auth.signOut();
+    if (mounted) {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => const LoginScreen()),
+        (route) => false, // Hamma sahifalarni o'chirib yuboradi
+      );
     }
   }
 
@@ -79,10 +86,9 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       backgroundColor: Colors.grey.shade100,
       appBar: AppBar(
-        title: const Text("Aristokrat Mebel", style: TextStyle(fontWeight: FontWeight.bold)),
-        centerTitle: true,
+        title: Text(_userRole == 'admin' ? "Admin: $_userName" : "Hisob: $_userName"),
         actions: [
-          IconButton(onPressed: () => _supabase.auth.signOut(), icon: const Icon(Icons.logout, color: Colors.red)),
+          IconButton(onPressed: _handleSignOut, icon: const Icon(Icons.logout, color: Colors.red)),
         ],
       ),
       body: RefreshIndicator(
@@ -91,36 +97,32 @@ class _HomeScreenState extends State<HomeScreen> {
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(16.0),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 1. BALANS KARTASI
               _buildBalanceCard(),
-              const SizedBox(height: 25),
-
-              const Text("Asosiy Amallar", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 15),
-
-              // 2. ISHCHI TUGMALARI
+              const SizedBox(height: 20),
               Row(
                 children: [
-                  _buildActionBtn("Ish Qo'shish", Icons.add_task, Colors.blue.shade800, _showWorkDialog),
-                  const SizedBox(width: 12),
-                  _buildActionBtn("Hamyon", Icons.wallet, Colors.green.shade700, () {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Tez kunda...")));
-                  }),
+                  _buildMenuBtn("Ish Qo'shish", Icons.add_circle, Colors.blue, _showWorkDialog),
+                  const SizedBox(width: 10),
+                  _buildMenuBtn("Tarix", Icons.history, Colors.grey, () {}),
                 ],
               ),
-
-              // 3. ADMIN BO'LIMI (Faqat admin uchun)
+              
+              // ADMIN BO'LIMI
               if (_userRole == 'admin') ...[
                 const SizedBox(height: 30),
-                const Text("Admin Boshqaruvi", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.red)),
+                const Divider(),
+                const Text("ADMIN BOSHQARUVI", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
                 const SizedBox(height: 15),
                 Row(
                   children: [
-                    _buildActionBtn("Yangi Zakaz", Icons.post_add, Colors.red.shade700, () {}),
-                    const SizedBox(width: 12),
-                    _buildActionBtn("Tasdiqlash", Icons.rule, Colors.purple.shade700, () {}),
+                    _buildMenuBtn("Tasdiqlash", Icons.fact_check, Colors.purple, () {
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminApprovalsScreen()));
+                    }),
+                    const SizedBox(width: 10),
+                    _buildMenuBtn("Pul Berish", Icons.payments, Colors.green, () {
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const AddWithdrawalScreen()));
+                    }),
                   ],
                 ),
               ],
@@ -131,80 +133,51 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // --- UI QISMLARI ---
-
   Widget _buildBalanceCard() {
-    double balance = _totalEarned - _totalWithdrawn;
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: LinearGradient(colors: [Colors.blue.shade900, Colors.blue.shade700]),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: Colors.blue.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5))],
+        color: _userRole == 'admin' ? Colors.red.shade900 : Colors.blue.shade900,
+        borderRadius: BorderRadius.circular(15),
       ),
       child: Column(
         children: [
-          const Text("Sizning Qoldig'ingiz", style: TextStyle(color: Colors.white70, fontSize: 16)),
-          const SizedBox(height: 8),
-          Text("${balance.toStringAsFixed(0)} so'm", 
-               style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 20),
+          const Text("Hozirgi Qoldiq", style: TextStyle(color: Colors.white70)),
+          Text("${(_totalEarned - _totalWithdrawn).toStringAsFixed(0)} so'm", 
+               style: const TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.bold)),
+          const Divider(color: Colors.white24, height: 20),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _balanceMiniStat("Ishlangan", _totalEarned, Colors.greenAccent),
-              _balanceMiniStat("Olingan", _totalWithdrawn, Colors.orangeAccent),
+              Text("Ishlangan: $_totalEarned", style: const TextStyle(color: Colors.greenAccent)),
+              Text("Olingan: $_totalWithdrawn", style: const TextStyle(color: Colors.orangeAccent)),
             ],
           ),
-          if (_pendingAmount > 0) ...[
-            const Divider(color: Colors.white24, height: 25),
-            Text("Tasdiq kutilmoqda: ${_pendingAmount.toStringAsFixed(0)} so'm", 
-                 style: const TextStyle(color: Colors.white60, fontStyle: FontStyle.italic)),
-          ]
+          if (_pendingAmount > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Text("Kutilmoqda: $_pendingAmount", style: const TextStyle(color: Colors.white60, fontSize: 12)),
+            )
         ],
       ),
     );
   }
 
-  Widget _balanceMiniStat(String label, double amount, Color color) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: const TextStyle(color: Colors.white60, fontSize: 12)),
-        Text("${amount.toStringAsFixed(0)}", style: TextStyle(color: color, fontSize: 16, fontWeight: FontWeight.bold)),
-      ],
-    );
-  }
-
-  Widget _buildActionBtn(String title, IconData icon, Color color, VoidCallback onTap) {
+  Widget _buildMenuBtn(String title, IconData icon, Color color, VoidCallback onTap) {
     return Expanded(
-      child: Material(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(15),
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 20),
-            decoration: BoxDecoration(
-              border: Border.all(color: color.withOpacity(0.2)),
-              borderRadius: BorderRadius.circular(15),
-            ),
-            child: Column(
-              children: [
-                Icon(icon, color: color, size: 32),
-                const SizedBox(height: 8),
-                Text(title, style: TextStyle(color: color, fontWeight: FontWeight.bold)),
-              ],
-            ),
-          ),
+      child: ElevatedButton.icon(
+        onPressed: onTap,
+        icon: Icon(icon),
+        label: Text(title),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: color, 
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 15)
         ),
       ),
     );
   }
-
-  // --- ISH QO'SHISH MODAL OYNASI ---
 
   void _showWorkDialog() async {
     final orders = await _supabase.from('orders').select();
@@ -219,75 +192,53 @@ class _HomeScreenState extends State<HomeScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
       builder: (context) => StatefulBuilder(
         builder: (context, setModalState) => Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom + 20, left: 25, right: 25, top: 25),
+          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom + 20, left: 20, right: 20, top: 20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(width: 50, height: 5, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(10))),
+              const Text("Ishni Kiritish", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
               const SizedBox(height: 20),
-              const Text("Yangi Ish Qo'shish", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 25),
-              
               DropdownButtonFormField<String>(
                 decoration: const InputDecoration(labelText: "Zakaz raqami", border: OutlineInputBorder()),
                 items: orders.map((o) => DropdownMenuItem(value: o['id'].toString(), child: Text(o['order_number']))).toList(),
                 onChanged: (v) => selectedOrderId = v,
               ),
               const SizedBox(height: 15),
-              
               DropdownButtonFormField<Map<String, dynamic>>(
                 decoration: const InputDecoration(labelText: "Ish turi", border: OutlineInputBorder()),
-                items: taskTypes.map((t) => DropdownMenuItem(value: t, child: Text("${t['name']} (${t['default_rate']} so'm)"))).toList(),
+                items: taskTypes.map((t) => DropdownMenuItem(value: t, child: Text(t['name']))).toList(),
                 onChanged: (v) => setModalState(() => selectedTask = v),
               ),
               const SizedBox(height: 15),
-              
               TextField(
                 controller: areaController,
-                decoration: const InputDecoration(labelText: "Kvadrat metr (m2)", border: OutlineInputBorder(), prefixIcon: Icon(Icons.square_foot)),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                onChanged: (_) => setModalState(() {}),
+                decoration: const InputDecoration(labelText: "Kvadrat (m2)", border: OutlineInputBorder()),
+                keyboardType: TextInputType.number,
               ),
-              
-              if (selectedTask != null && areaController.text.isNotEmpty) ...[
-                const SizedBox(height: 20),
-                Text("Taxminiy hisob: ${(double.tryParse(areaController.text) ?? 0) * selectedTask!['default_rate']} so'm",
-                     style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.green)),
-              ],
-
               const SizedBox(height: 25),
               ElevatedButton(
                 onPressed: () async {
                   if (selectedOrderId == null || selectedTask == null || areaController.text.isEmpty) return;
                   
-                  final area = double.parse(areaController.text);
-                  final rate = selectedTask!['default_rate'];
-
+                  // ADMIN O'ZI UCHUN QILSA AVTOMATIK TASDIQLANADI
                   await _supabase.from('work_logs').insert({
                     'worker_id': _userId,
                     'order_id': int.parse(selectedOrderId!),
                     'task_type': selectedTask!['name'],
-                    'area_m2': area,
-                    'rate': rate,
-                    'is_approved': false,
+                    'area_m2': double.parse(areaController.text),
+                    'rate': selectedTask!['default_rate'],
+                    'is_approved': _userRole == 'admin', 
                   });
 
                   if (mounted) {
                     Navigator.pop(context);
-                    _loadAllData(); // Balansni yangilash
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ish yuborildi. Admin tasdiqlashini kuting.")));
+                    _loadAllData();
                   }
                 },
-                style: ElevatedButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 55),
-                  backgroundColor: Colors.blue.shade900,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                child: const Text("YUBORISH", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50)),
+                child: const Text("YUBORISH"),
               ),
             ],
           ),
