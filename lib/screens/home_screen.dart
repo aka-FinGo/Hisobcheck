@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'login_screen.dart';
 import 'admin_approvals.dart';
 import 'add_withdrawal.dart';
+import 'history_screen.dart'; // SHU IMPORT JUDA MUHIM!
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -68,13 +69,12 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // CHIQISH TUGMASI LOGIKASI
   Future<void> _handleSignOut() async {
     await _supabase.auth.signOut();
     if (mounted) {
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (context) => const LoginScreen()),
-        (route) => false, // Hamma sahifalarni o'chirib yuboradi
+        (route) => false,
       );
     }
   }
@@ -105,14 +105,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   _buildMenuBtn("Ish Qo'shish", Icons.add_circle, Colors.blue, _showWorkDialog),
                   const SizedBox(width: 10),
                   _buildMenuBtn("Tarix", Icons.history, Colors.grey.shade700, () {
-  Navigator.push(
-    context,
-    MaterialPageRoute(builder: (context) => const HistoryScreen()),
-  );
-}),
-
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const HistoryScreen()),
+                    );
+                  }),
+                ],
+              ),
               
-              // ADMIN BO'LIMI
               if (_userRole == 'admin') ...[
                 const SizedBox(height: 30),
                 const Divider(),
@@ -226,7 +226,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 onPressed: () async {
                   if (selectedOrderId == null || selectedTask == null || areaController.text.isEmpty) return;
                   
-                  // ADMIN O'ZI UCHUN QILSA AVTOMATIK TASDIQLANADI
                   await _supabase.from('work_logs').insert({
                     'worker_id': _userId,
                     'order_id': int.parse(selectedOrderId!),
