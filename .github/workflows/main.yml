@@ -28,14 +28,12 @@ jobs:
           flutter-version: '3.19.0'
           cache: true
       
-      - name: Create Project and Add Dependencies
+      - name: Install Dependencies
         run: |
           flutter create --project-name hisobcheck --platforms web .
           flutter pub add supabase_flutter
-    flutter pub add intl
+          flutter pub add intl
       
-      # MUHIM: --dart-define orqali GitHub Secrets kodga uzatiladi
-      # --web-renderer html CORS xatolarini (oq ekranni) oldini oladi
       - name: Build Web
         run: |
           flutter build web --release \
