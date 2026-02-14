@@ -104,9 +104,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   _buildMenuBtn("Ish Qo'shish", Icons.add_circle, Colors.blue, _showWorkDialog),
                   const SizedBox(width: 10),
-                  _buildMenuBtn("Tarix", Icons.history, Colors.grey, () {}),
-                ],
-              ),
+                  _buildMenuBtn("Tarix", Icons.history, Colors.grey.shade700, () {
+  Navigator.push(
+    context,
+    MaterialPageRoute(builder: (context) => const HistoryScreen()),
+  );
+}),
+
               
               // ADMIN BO'LIMI
               if (_userRole == 'admin') ...[
