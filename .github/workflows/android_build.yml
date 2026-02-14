@@ -3,33 +3,42 @@ name: Android APK Build
 on:
   push:
     branches: [ "main" ]
+  workflow_dispatch: # Bu tugma orqali qo'lda ishga tushirish imkonini beradi
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
+    # 1. Kodni yuklab olish (v4 ga yangilandi)
+    - uses: actions/checkout@v4
 
+    # 2. Java o'rnatish (v4 ga yangilandi)
     - name: Java o'rnatish
-      uses: actions/setup-java@v3
+      uses: actions/setup-java@v4
       with:
         distribution: 'zulu'
         java-version: '17'
 
+    # 3. Flutter o'rnatish
     - name: Flutter o'rnatish
       uses: subosito/flutter-action@v2
       with:
-        flutter-version: '3.19.0' # Yoki eng yangi versiya
+        flutter-version: '3.19.0'
+        channel: 'stable'
 
+    # 4. Kutubxonalarni yuklash
     - name: Kutubxonalarni yuklash
       run: flutter pub get
 
+    # 5. APK build qilish (Release versiya)
     - name: APK build qilish
       run: flutter build apk --release --no-tree-shake-icons
 
+    # 6. Faylni saqlab olish (v4 ga yangilandi - MUHIM QISM)
     - name: APKni saqlab olish (Artifacts)
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: release-apk
         path: build/app/outputs/flutter-apk/app-release.apk
+        compression-level: 0 # Tezroq yuklash uchun siqishni o'chiramiz
