@@ -26,11 +26,10 @@ jobs:
       with:
         flutter-version: '3.19.0'
         channel: 'stable'
-      flutter create --project-name hisobcheck . --platforms android
     # 4. 🔥 MUHIM: Android fayllarini yaratish
     # Bu buyruq avtomatik ravishda 'flutter pub get' ni ham ishga tushiradi
-    - name: Loyiha strukturasini tuzatish
-      run: flutter create . --platforms android
+    - name: Create Flutter Project
+      run: flutter create --project-name hisobcheck . --platforms android
 
     # 5. Kutubxonalarni majburan FLUTTER orqali yuklash
     # (Oldingi xatoni tuzatish qismi)
