@@ -20,21 +20,28 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
-      # Flutterni to'g'ri o'rnatish
       - uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
-          flutter-version: '3.19.0' # Versiyani aniq ko'rsatamiz (xatolik bo'lmasligi uchun)
+          flutter-version: '3.19.0'
           cache: true
       
-      - name: Loyihani yaratish
-        run: flutter create --project-name hisobcheck --platforms web .
+      - name: Create Project and Add Dependencies
+        run: |
+          flutter create --project-name hisobcheck --platforms web .
+          flutter pub add supabase_flutter
       
-      # TUZATILGAN QATOR: --web-renderer olib tashlandi
+      # MUHIM: --dart-define orqali GitHub Secrets kodga uzatiladi
+      # --web-renderer html CORS xatolarini (oq ekranni) oldini oladi
       - name: Build Web
-        run: flutter build web --release --base-href "/${{ github.event.repository.name }}/"
+        run: |
+          flutter build web --release \
+            --web-renderer html \
+            --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
+            --dart-define=SUPABASE_KEY=${{ secrets.SUPABASE_KEY }} \
+            --base-href "/${{ github.event.repository.name }}/"
       
       - uses: actions/upload-pages-artifact@v3
         with:
