@@ -1,9 +1,29 @@
+name: moliyachi
+description: "Mebel sexi uchun moliyaviy ERP tizimi"
+publish_to: 'none' # GitHubga yuklanishi uchun buni yozish kerak
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0' # MANA SHU QATOR YETISHMAYOTGAN EDI
+
 dependencies:
   flutter:
     sdk: flutter
-  
-  # 1. Supabase bilan ishlash uchun
+
+  # 1. Supabase (Baza)
   supabase_flutter: ^2.6.0
-  
-  # 2. Sana va raqamlarni chiroyli formatlash uchun (masalan: 1,000,000 so'm)
+
+  # 2. Formatlash (Sana va Summa)
   intl: ^0.19.0
+
+  # 3. Ikonkalar
+  cupertino_icons: ^1.0.6
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
