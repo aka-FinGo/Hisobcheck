@@ -1,0 +1,9 @@
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # 1. Supabase bilan ishlash uchun
+  supabase_flutter: ^2.6.0
+  
+  # 2. Sana va raqamlarni chiroyli formatlash uchun (masalan: 1,000,000 so'm)
+  intl: ^0.19.0
