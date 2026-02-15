@@ -68,7 +68,7 @@ class _LoginScreenState extends State<LoginScreen> {
           password: _pass.text.trim(),
           data: {'full_name': _name.text.trim()}, // Ismni ham saqlaymiz
         );
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ro'yxatdan o'tdingiz! Emailingizni tasdiqlang.")));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ro'yxatdan o'tdingiz!")));
         setState(() => _isLogin = true); // Ro'yxatdan o'tgach Login oynasiga qaytaramiz
       }
       
@@ -83,8 +83,9 @@ class _LoginScreenState extends State<LoginScreen> {
       if (mounted) setState(() => _isLoading = false);
     }
   }
-  // --- DAVOMI PASTDA ---
-    @override
+
+  // --- [ 4. UI QISMI ] ---
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
@@ -100,6 +101,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 const Text("ARISTOKRAT MEBEL", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
                 const SizedBox(height: 30),
 
+                // ISM KIRITISH (Faqat ro'yxatdan o'tishda chiqadi)
                 if (!_isLogin) ...[
                   TextField(
                     controller: _name,
@@ -108,12 +110,14 @@ class _LoginScreenState extends State<LoginScreen> {
                   const SizedBox(height: 15),
                 ],
 
+                // EMAIL INPUT
                 TextField(
                   controller: _email,
                   decoration: const InputDecoration(labelText: "Email", border: OutlineInputBorder(), prefixIcon: Icon(Icons.email_outlined)),
                 ),
                 const SizedBox(height: 15),
 
+                // PAROL INPUT (KO'ZCHA BILAN)
                 TextField(
                   controller: _pass,
                   obscureText: _obscurePassword,
@@ -128,6 +132,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
 
+                // REMEMBER ME
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -157,14 +162,13 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 const Divider(height: 40),
                 
-                // TUZATILGAN JOY:
+                // TELEGRAM TUGMASI (To'g'rilangan)
                 OutlinedButton.icon(
                   onPressed: () {
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Tez kunda Telegram orqali kirish ulanadi!")));
                   },
                   icon: const Icon(Icons.send_rounded, color: Colors.blue),
                   label: const Text("Telegram orqali kirish"),
-                  // style: OutlinedButton.iconStyleFrom... EMAS, balki shunchaki:
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size(double.infinity, 55),
                     side: const BorderSide(color: Colors.blue),
@@ -177,3 +181,4 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
     );
   }
+}
