@@ -32,21 +32,20 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> {
     });
   }
 
-  // ZAKAZNI TAHRIRLASH
-  void _editOrder(Map<String, dynamic> order) {
-    final areaCtrl = TextEditingController(text: order['total_area_m2'].toString());
+  // Zakazni tahrirlash (Status yoki Kvadrat)
+  void _editOrder(dynamic order) {
     final statusCtrl = TextEditingController(text: order['status']);
+    final areaCtrl = TextEditingController(text: order['total_area_m2'].toString());
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text("Zakaz №${order['order_number']}"),
+        title: Text("Zakaz: ${order['order_number']}"),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(controller: areaCtrl, decoration: const InputDecoration(labelText: "Kvadrat (m²)")),
+            TextField(controller: areaCtrl, decoration: const InputDecoration(labelText: "Kvadrat (m²)"), keyboardType: TextInputType.number),
             const SizedBox(height: 10),
-            // Statusni o'zgartirish (Dropdown qilish ham mumkin)
             TextField(controller: statusCtrl, decoration: const InputDecoration(labelText: "Status (new, completed)")),
           ],
         ),
@@ -73,32 +72,43 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> {
       appBar: AppBar(title: Text(widget.client['full_name'])),
       body: Column(
         children: [
-          ListTile(
-            title: const Text("Mijoz Ma'lumotlari", style: TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: Text("Tel: ${widget.client['phone']}\nManzil: ${widget.client['address'] ?? '-'}"),
-            tileColor: Colors.grey.shade200,
+          Container(
+            padding: const EdgeInsets.all(16),
+            color: Colors.blue.shade50,
+            width: double.infinity,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text("Telefon: ${widget.client['phone'] ?? '-'}", style: const TextStyle(fontSize: 16)),
+                Text("Manzil: ${widget.client['address'] ?? '-'}", style: const TextStyle(fontSize: 16)),
+              ],
+            ),
           ),
           const Divider(),
           Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : ListView.builder(
-                    itemCount: _orders.length,
-                    itemBuilder: (context, index) {
-                      final order = _orders[index];
-                      return Card(
-                        margin: const EdgeInsets.all(8),
-                        child: ListTile(
-                          title: Text("${order['order_number']} (${order['project_type']})"),
-                          subtitle: Text("Kvadrat: ${order['total_area_m2']} m²\nStatus: ${order['status']}"),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.edit, color: Colors.blue),
-                            onPressed: () => _editOrder(order),
-                          ),
+            child: _isLoading 
+            ? const Center(child: CircularProgressIndicator())
+            : _orders.isEmpty 
+              ? const Center(child: Text("Zakazlar yo'q"))
+              : ListView.builder(
+                  itemCount: _orders.length,
+                  itemBuilder: (context, index) {
+                    final order = _orders[index];
+                    return Card(
+                      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      child: ListTile(
+                        leading: Icon(order['status'] == 'completed' ? Icons.check_circle : Icons.timelapse, 
+                                      color: order['status'] == 'completed' ? Colors.green : Colors.orange),
+                        title: Text("№ ${order['order_number']} (${order['project_type']})"),
+                        subtitle: Text("Hajm: ${order['total_area_m2']} m²"),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.edit, color: Colors.blue),
+                          onPressed: () => _editOrder(order),
                         ),
-                      );
-                    },
-                  ),
+                      ),
+                    );
+                  },
+                ),
           ),
         ],
       ),
