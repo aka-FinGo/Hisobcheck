@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+// Sahifalarni import qilish
 import 'login_screen.dart';
 import 'admin_approvals.dart';
 import 'add_withdrawal.dart';
 import 'history_screen.dart';
 import 'wallet_screen.dart';
+import 'remnant_screen.dart'; // LDSP qoldiqlari sahifasi
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -14,22 +17,25 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  // --- [ 1. SOZLAMALAR VA O'ZGARUVCHILAR ] ---
   final _supabase = Supabase.instance.client;
   bool _isLoading = true;
+  
   String _userName = '';
   String _userRole = 'worker';
   String _userId = '';
 
-  double _totalEarned = 0;
-  double _totalWithdrawn = 0;
-  double _pendingAmount = 0;
+  double _totalEarned = 0;    // Jami ishlagan puli
+  double _totalWithdrawn = 0; // Jami olgan puli (avans)
+  double _pendingAmount = 0;  // Tasdiq kutilayotgan pullar
 
   @override
   void initState() {
     super.initState();
-    _loadAllData();
+    _loadAllData(); // Dastur ochilishi bilan ma'lumotlarni yuklash
   }
 
+  // --- [ 2. MA'LUMOTLARNI YUKLASH (DATABASE LOGIC) ] ---
   Future<void> _loadAllData() async {
     setState(() => _isLoading = true);
     try {
@@ -37,8 +43,10 @@ class _HomeScreenState extends State<HomeScreen> {
       if (user == null) return;
       _userId = user.id;
 
+      // Foydalanuvchi profilini olish (Ismi va Roli)
       final profile = await _supabase.from('profiles').select().eq('id', _userId).single();
       
+      // Ishlar va To'lovlar ro'yxatini olish
       final workLogs = await _supabase.from('work_logs').select().eq('worker_id', _userId);
       final withdrawals = await _supabase.from('withdrawals').select().eq('worker_id', _userId);
 
@@ -67,9 +75,11 @@ class _HomeScreenState extends State<HomeScreen> {
       });
     } catch (e) {
       setState(() => _isLoading = false);
+      debugPrint("Ma'lumot yuklashda xato: $e");
     }
   }
 
+  // --- [ 3. AKKAUNTDAN CHIQISH FUNKSIYASI ] ---
   Future<void> _handleSignOut() async {
     await _supabase.auth.signOut();
     if (mounted) {
@@ -80,6 +90,8 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  // --- 2-QISM (UI VA TUGMALAR) PASTDA ---
+  // --- [ 4. ASOSIY EKRAN QURILISHI (BUILD) ] ---
   @override
   Widget build(BuildContext context) {
     if (_isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
@@ -99,44 +111,51 @@ class _HomeScreenState extends State<HomeScreen> {
           padding: const EdgeInsets.all(16.0),
           child: Column(
             children: [
+              // --- BALANS KARTASI ---
               _buildBalanceCard(),
-              const SizedBox(height: 20),
+              const SizedBox(height: 25),
               
-              // 1-QATOR: ISH VA TARIX
+              const Align(alignment: Alignment.centerLeft, child: Text(" MENYU", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
+              const SizedBox(height: 10),
+
+              // --- 1-QATOR TUGMALARI: ISH VA TARIX ---
               Row(
                 children: [
-                  _buildMenuBtn("Ish Qo'shish", Icons.add_circle, Colors.blue, _showWorkDialog),
-                  const SizedBox(width: 10),
-                  _buildMenuBtn("Tarix", Icons.history, Colors.grey.shade700, () {
+                  _buildMenuBtn("Ish Qo'shish", Icons.add_box, Colors.blue, _showWorkDialog),
+                  const SizedBox(width: 12),
+                  _buildMenuBtn("Tarix", Icons.history, Colors.grey.shade800, () {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const HistoryScreen()));
                   }),
                 ],
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
 
-              // 2-QATOR: HAMYON
+              // --- 2-QATOR TUGMALARI: HAMYON VA QOLDIQLAR ---
               Row(
                 children: [
-                  _buildMenuBtn("Hamyon", Icons.account_balance_wallet, Colors.green.shade700, () {
+                  _buildMenuBtn("Hamyon", Icons.wallet, Colors.green.shade700, () {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const WalletScreen()));
                   }),
-                  const SizedBox(width: 10),
-                  const Expanded(child: SizedBox()),
+                  const SizedBox(width: 12),
+                  _buildMenuBtn("Qoldiqlar", Icons.inventory_2, Colors.brown, () {
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => const RemnantScreen()));
+                  }),
                 ],
               ),
               
+              // --- [ 5. ADMIN BO'LIMI (Faqat admin ko'radi) ] ---
               if (_userRole == 'admin') ...[
-                const SizedBox(height: 30),
-                const Divider(),
-                const Text("ADMIN BOSHQARUVI", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
+                const SizedBox(height: 35),
+                const Divider(thickness: 1),
+                const Text("ADMINISTRATOR BOSHQARUVI", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.redAccent, fontSize: 12)),
                 const SizedBox(height: 15),
                 Row(
                   children: [
                     _buildMenuBtn("Tasdiqlash", Icons.fact_check, Colors.purple, () {
                       Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminApprovalsScreen()));
                     }),
-                    const SizedBox(width: 10),
-                    _buildMenuBtn("Pul Berish", Icons.payments, Colors.green, () {
+                    const SizedBox(width: 12),
+                    _buildMenuBtn("Pul Berish", Icons.send_money, Colors.teal, () {
                       Navigator.push(context, MaterialPageRoute(builder: (_) => const AddWithdrawalScreen()));
                     }),
                   ],
@@ -149,54 +168,69 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // --- COMPILER SO'RAYOTGAN METODLAR MANA SHU YERDA ---
+  // --- [ 6. YORDAMCHI VIDJETLAR (HELPER WIDGETS) ] ---
 
+  // Balans kartasi (Dizayn)
   Widget _buildBalanceCard() {
+    double balance = _totalEarned - _totalWithdrawn;
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(25),
       decoration: BoxDecoration(
         color: _userRole == 'admin' ? Colors.red.shade900 : Colors.blue.shade900,
-        borderRadius: BorderRadius.circular(15),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Column(
         children: [
-          const Text("Hozirgi Qoldiq", style: TextStyle(color: Colors.white70)),
-          Text("${(_totalEarned - _totalWithdrawn).toStringAsFixed(0)} so'm", 
-               style: const TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.bold)),
-          const Divider(color: Colors.white24, height: 20),
+          const Text("Joriy Hisobingiz", style: TextStyle(color: Colors.white70, fontSize: 16)),
+          const SizedBox(height: 5),
+          Text("${balance.toStringAsFixed(0)} so'm", style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold)),
+          const Divider(color: Colors.white24, height: 30),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text("Ishlangan: $_totalEarned", style: const TextStyle(color: Colors.greenAccent)),
-              Text("Olingan: $_totalWithdrawn", style: const TextStyle(color: Colors.orangeAccent)),
+              _miniStat("Ishlangan", _totalEarned, Colors.greenAccent),
+              _miniStat("Olingan", _totalWithdrawn, Colors.orangeAccent),
             ],
           ),
-          if (_pendingAmount > 0)
-            Padding(
-              padding: const EdgeInsets.only(top: 10),
-              child: Text("Kutilmoqda: $_pendingAmount", style: const TextStyle(color: Colors.white60, fontSize: 12)),
-            )
+          if (_pendingAmount > 0) ...[
+            const SizedBox(height: 10),
+            Text("Kutilmoqda: ${_pendingAmount.toStringAsFixed(0)}", style: const TextStyle(color: Colors.white54, fontSize: 12, fontStyle: FontStyle.italic)),
+          ]
         ],
       ),
     );
   }
 
+  Widget _miniStat(String label, double val, Color col) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(label, style: const TextStyle(color: Colors.white60, fontSize: 12)),
+      Text("${val.toStringAsFixed(0)}", style: TextStyle(color: col, fontWeight: FontWeight.bold, fontSize: 16)),
+    ]);
+  }
+
+  // Umumiy tugma vidjeti
   Widget _buildMenuBtn(String title, IconData icon, Color color, VoidCallback onTap) {
     return Expanded(
-      child: ElevatedButton.icon(
-        onPressed: onTap,
-        icon: Icon(icon),
-        label: Text(title),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: color, 
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: 15)
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 20),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(15), border: Border.all(color: color.withOpacity(0.3))),
+          child: Column(
+            children: [
+              Icon(icon, color: color, size: 30),
+              const SizedBox(height: 8),
+              Text(title, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 13)),
+            ],
+          ),
         ),
       ),
     );
   }
 
+  // --- [ 7. ISH QO'SHISH MODAL OYNASI ] ---
   void _showWorkDialog() async {
     final orders = await _supabase.from('orders').select();
     final taskTypes = await _supabase.from('task_types').select();
@@ -210,14 +244,15 @@ class _HomeScreenState extends State<HomeScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
       builder: (context) => StatefulBuilder(
         builder: (context, setModalState) => Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom + 20, left: 20, right: 20, top: 20),
+          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom + 25, left: 25, right: 25, top: 25),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text("Ishni Kiritish", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 20),
+              const Text("Bajarilgan ishni kiritish", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 25),
               DropdownButtonFormField<String>(
                 decoration: const InputDecoration(labelText: "Zakaz raqami", border: OutlineInputBorder()),
                 items: orders.map((o) => DropdownMenuItem(value: o['id'].toString(), child: Text(o['order_number']))).toList(),
@@ -232,14 +267,14 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 15),
               TextField(
                 controller: areaController,
-                decoration: const InputDecoration(labelText: "Kvadrat (m2)", border: OutlineInputBorder()),
+                decoration: const InputDecoration(labelText: "Hajmi (m2)", border: OutlineInputBorder(), prefixIcon: Icon(Icons.straighten)),
                 keyboardType: TextInputType.number,
+                onChanged: (_) => setModalState(() {}),
               ),
               const SizedBox(height: 25),
               ElevatedButton(
                 onPressed: () async {
                   if (selectedOrderId == null || selectedTask == null || areaController.text.isEmpty) return;
-                  
                   await _supabase.from('work_logs').insert({
                     'worker_id': _userId,
                     'order_id': int.parse(selectedOrderId!),
@@ -248,14 +283,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     'rate': selectedTask!['default_rate'],
                     'is_approved': _userRole == 'admin', 
                   });
-
-                  if (mounted) {
-                    Navigator.pop(context);
-                    _loadAllData();
-                  }
+                  if (mounted) { Navigator.pop(context); _loadAllData(); }
                 },
-                style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50)),
-                child: const Text("YUBORISH"),
+                style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 55), backgroundColor: Colors.blue.shade900, foregroundColor: Colors.white),
+                child: const Text("BAZAGA YUBORISH"),
               ),
             ],
           ),
