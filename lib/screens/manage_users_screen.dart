@@ -13,6 +13,7 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
   List<dynamic> _users = [];
   bool _isLoading = true;
 
+  // Tizimdagi mavjud rollar
   final List<String> _roles = ['worker', 'admin', 'bek', 'painter', 'assembler'];
 
   @override
@@ -53,15 +54,16 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
               
               // SUPER ADMINNI TEKSHIRISH
               final bool isSuperAdmin = user['is_super_admin'] == true;
-              // O'zi o'zini o'zgartira olmasligi uchun (ixtiyoriy)
               final bool isMe = user['id'] == _supabase.auth.currentUser?.id;
 
               return Card(
-                color: isSuperAdmin ? Colors.amber.shade50 : null, // Super adminni rangi ajralib turadi
+                color: isSuperAdmin ? Colors.amber.shade50 : null,
+                margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 child: ListTile(
                   leading: CircleAvatar(
                     backgroundColor: isSuperAdmin ? Colors.amber : Colors.blue,
-                    child: Icon(isSuperAdmin ? Icons.crown : Icons.person, color: Colors.white),
+                    // TUZATILGAN JOY: Icons.crown o'rniga Icons.workspace_premium ishlatildi
+                    child: Icon(isSuperAdmin ? Icons.workspace_premium : Icons.person, color: Colors.white),
                   ),
                   title: Text(
                     "${user['full_name'] ?? 'Noma\'lum'} ${isMe ? '(Siz)' : ''}", 
@@ -69,7 +71,6 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
                   ),
                   subtitle: Text(isSuperAdmin ? "BOSHLIQ (Daxlsiz)" : "Rol: ${user['role']}"),
                   
-                  // AGAR SUPER ADMIN BO'LSA, TUGMA O'RNIGA QULF KO'RINADI
                   trailing: isSuperAdmin
                       ? const Chip(
                           label: Text("Daxlsiz"), 
