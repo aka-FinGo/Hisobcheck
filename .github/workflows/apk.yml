@@ -1,7 +1,7 @@
 name: Android APK Yasash
 
 on:
-  workflow_dispatch: # Bu faqat qo'lda tugma bosilganda ishlaydi
+  workflow_dispatch: # Faqat tugma bosilganda ishlaydi
 
 jobs:
   build-android:
@@ -27,6 +27,12 @@ jobs:
         flutter pub add supabase_flutter
         flutter pub add intl
         flutter pub add shared_preferences
+
+    # --- MUHIM TUZATISH QISMI ---
+    - name: Android papkasini yangilash (Fix Gradle)
+      run: |
+        rm -rf android
+        flutter create . --platforms android
 
     - name: APK yasash
       run: flutter build apk --release
