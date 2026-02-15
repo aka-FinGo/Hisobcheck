@@ -3,9 +3,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'login_screen.dart';
 import 'admin_approvals.dart';
 import 'add_withdrawal.dart';
-import 'history_screen.dart';
-import 'wallet_screen.dart';
-import 'remnant_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -15,7 +12,6 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  // --- [ 1. SOZLAMALAR ] ---
   final _supabase = Supabase.instance.client;
   bool _isLoading = true;
   String _userName = '';
@@ -31,7 +27,6 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadAllData();
   }
 
-  // --- [ 2. MA'LUMOTLARNI YUKLASH ] ---
   Future<void> _loadAllData() async {
     setState(() => _isLoading = true);
     try {
@@ -63,7 +58,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // --- [ 3. ASOSIY EKRAN ] ---
   @override
   Widget build(BuildContext context) {
     if (_isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
@@ -92,15 +86,21 @@ class _HomeScreenState extends State<HomeScreen> {
               _buildBalanceCard(),
               const SizedBox(height: 20),
               
-              // ISHCHI AMALLARI
-              _buildMenuBtn("Ish Qo'shish", Icons.add_circle, Colors.blue, _showWorkDialog),
+              // 1. ISH QO'SHISH TUGMASI (Row ichiga olindi)
+              Row(
+                children: [
+                  _buildMenuBtn("Ish Qo'shish", Icons.add_circle, Colors.blue, _showWorkDialog),
+                ],
+              ),
               
-              // ADMIN PANEL
+              // 2. ADMIN PANEL
               if (_userRole == 'admin') ...[
                 const SizedBox(height: 30),
                 const Divider(),
-                const Text("ADMIN PANEL", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
-                const SizedBox(height: 15),
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 10),
+                  child: Text("ADMIN PANEL", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
+                ),
                 Row(
                   children: [
                     _buildMenuBtn("Tasdiqlash", Icons.fact_check, Colors.purple, () {
@@ -120,7 +120,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // --- [ 4. BALANS KARTASI ] ---
   Widget _buildBalanceCard() {
     return Container(
       width: double.infinity, padding: const EdgeInsets.all(20),
@@ -137,12 +136,23 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // --- [ 5. MENU TUGMASI ] ---
+  // TUGMA VIDJETI: Expanded faqat Row ichida ishlaydi
   Widget _buildMenuBtn(String t, IconData i, Color c, VoidCallback onTap) {
-    return Expanded(child: ElevatedButton.icon(onPressed: onTap, icon: Icon(i), label: Text(t), style: ElevatedButton.styleFrom(backgroundColor: c, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 15))));
+    return Expanded(
+      child: ElevatedButton.icon(
+        onPressed: onTap, 
+        icon: Icon(i), 
+        label: Text(t), 
+        style: ElevatedButton.styleFrom(
+          backgroundColor: c, 
+          foregroundColor: Colors.white, 
+          padding: const EdgeInsets.symmetric(vertical: 15),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
+        )
+      )
+    );
   }
 
-  // --- [ 6. ISH QO'SHISH MODAL OYNASI (BEK MANTIQI BILAN) ] ---
   void _showWorkDialog() async {
     final orders = await _supabase.from('orders').select();
     final taskTypes = await _supabase.from('task_types').select();
@@ -167,8 +177,6 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               const Center(child: Text("Bajarilgan ishni kiritish", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold))),
               const SizedBox(height: 25),
-              
-              // 1. ZAKAZ TANLASH
               DropdownButtonFormField<String>(
                 decoration: const InputDecoration(labelText: "Zakaz raqami", border: OutlineInputBorder()),
                 items: orders.map((o) => DropdownMenuItem(
@@ -177,17 +185,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 )).toList(),
                 onChanged: (v) {
                   selectedOrderId = v;
-                  // Tanlangan zakazning kvadratini topamiz
                   final selectedOrder = orders.firstWhere((o) => o['id'].toString() == v);
                   setModalState(() {
-                    // Kvadratni Bek belgilagan qiymat bilan avtomatik to'ldiramiz
                     areaController.text = selectedOrder['total_area_m2']?.toString() ?? "0";
                   });
                 },
               ),
               const SizedBox(height: 15),
-              
-              // 2. ISH TURI TANLASH
               DropdownButtonFormField<Map<String, dynamic>>(
                 decoration: const InputDecoration(labelText: "Ish turi", border: OutlineInputBorder()),
                 items: taskTypes.map((t) => DropdownMenuItem(
@@ -197,36 +201,19 @@ class _HomeScreenState extends State<HomeScreen> {
                 onChanged: (v) => setModalState(() => selectedTask = v),
               ),
               const SizedBox(height: 15),
-              
-              // 3. HAJM (FAQAT KO'RISH UCHUN - READ ONLY)
               TextField(
                 controller: areaController,
-                readOnly: true, // Ishchi buni o'zgartira olmaydi
+                readOnly: true,
                 decoration: InputDecoration(
                   labelText: "Hajmi (m2) - Bek tomonidan belgilangan", 
-                  filled: true,
-                  fillColor: Colors.grey.shade100,
-                  border: const OutlineInputBorder(), 
-                  prefixIcon: const Icon(Icons.lock_outline)
+                  filled: true, fillColor: Colors.grey.shade100,
+                  border: const OutlineInputBorder(), prefixIcon: const Icon(Icons.lock_outline)
                 ),
               ),
-              
-              // TAXMINIY HISOB
-              if (selectedTask != null && areaController.text.isNotEmpty) ...[
-                const SizedBox(height: 20),
-                Text(
-                  "Hisoblangan summa: ${(double.tryParse(areaController.text) ?? 0) * (selectedTask!['default_rate'] ?? 0)} so'm",
-                  style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 16),
-                ),
-              ],
-
               const SizedBox(height: 25),
-              
-              // YUBORISH
               ElevatedButton(
                 onPressed: () async {
                   if (selectedOrderId == null || selectedTask == null || areaController.text.isEmpty) return;
-
                   try {
                     await _supabase.from('work_logs').insert({
                       'worker_id': _userId,
@@ -236,15 +223,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       'rate': selectedTask!['default_rate'],
                       'is_approved': _userRole == 'admin', 
                     });
-
-                    if (mounted) {
-                      Navigator.pop(context);
-                      _loadAllData();
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Muvaffaqiyatli saqlandi!")));
-                    }
-                  } catch (e) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xatolik: $e")));
-                  }
+                    if (mounted) { Navigator.pop(context); _loadAllData(); }
+                  } catch (e) { print(e); }
                 },
                 style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 55), backgroundColor: Colors.blue.shade900, foregroundColor: Colors.white),
                 child: const Text("BAZAGA YUBORISH"),
