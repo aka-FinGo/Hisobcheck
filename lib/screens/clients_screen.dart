@@ -21,18 +21,21 @@ class _ClientsScreenState extends State<ClientsScreen> {
 
   Future<void> _loadClients() async {
     setState(() => _isLoading = true);
-    final data = await _supabase.from('clients').select().order('created_at', ascending: false);
-    setState(() {
-      _clients = data;
-      _isLoading = false;
-    });
+    try {
+      final data = await _supabase.from('clients').select().order('created_at', ascending: false);
+      setState(() {
+        _clients = data;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() => _isLoading = false);
+    }
   }
 
-  // YANGI MIJOZ QO'SHISH DIALOGI
+  // --- MIJOZ QO'SHISH ---
   void _addClientDialog() {
     final nameCtrl = TextEditingController();
     final phoneCtrl = TextEditingController();
-    final addressCtrl = TextEditingController();
 
     showDialog(
       context: context,
@@ -41,11 +44,9 @@ class _ClientsScreenState extends State<ClientsScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: "Ismi (m: Anvar aka)", prefixIcon: Icon(Icons.person))),
+            TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: "Ismi (m: Anvar aka)", border: OutlineInputBorder())),
             const SizedBox(height: 10),
-            TextField(controller: phoneCtrl, decoration: const InputDecoration(labelText: "Telefon", prefixIcon: Icon(Icons.phone)), keyboardType: TextInputType.phone),
-            const SizedBox(height: 10),
-            TextField(controller: addressCtrl, decoration: const InputDecoration(labelText: "Manzil", prefixIcon: Icon(Icons.location_on))),
+            TextField(controller: phoneCtrl, decoration: const InputDecoration(labelText: "Telefon", border: OutlineInputBorder()), keyboardType: TextInputType.phone),
           ],
         ),
         actions: [
@@ -53,15 +54,17 @@ class _ClientsScreenState extends State<ClientsScreen> {
           ElevatedButton(
             onPressed: () async {
               if (nameCtrl.text.isEmpty) return;
-              await _supabase.from('clients').insert({
-                'full_name': nameCtrl.text,
-                'phone': phoneCtrl.text,
-                'address': addressCtrl.text,
-              });
-              Navigator.pop(context);
-              _loadClients();
+              try {
+                await _supabase.from('clients').insert({
+                  'full_name': nameCtrl.text,
+                  'phone': phoneCtrl.text,
+                });
+                Navigator.pop(context);
+                _loadClients();
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e")));
+              }
             },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade900, foregroundColor: Colors.white),
             child: const Text("SAQLASH"),
           ),
         ],
@@ -69,54 +72,16 @@ class _ClientsScreenState extends State<ClientsScreen> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text("Buyurtmachilar Bazasi")),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _addClientDialog,
-        backgroundColor: Colors.blue.shade900,
-        child: const Icon(Icons.person_add, color: Colors.white),
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView.builder(
-              itemCount: _clients.length,
-              itemBuilder: (context, index) {
-                final client = _clients[index];
-                return Card(
-                  margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  child: ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: Colors.blue.shade100,
-                      child: Text(client['full_name'][0].toUpperCase()),
-                    ),
-                    title: Text(client['full_name'], style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text("${client['phone'] ?? ''} | ${client['address'] ?? ''}"),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.add_task, color: Colors.green),
-                      onPressed: () {
-                        // BU YERDA SHU MIJOZGA ZAKAZ QO'SHISH OCHILADI (Keyingi bosqich)
-                        _showAddOrderDialog(client);
-                      },
-                    ),
-                  ),
-                );
-              },
-            ),
-    );
-  }
-
-  // MIJOZGA ZAKAZ BIRIKTIRISH (Anvar aka -> Oshxona -> 50kv)
+  // --- ZAKAZ OCHISH (BEK UCHUN) ---
   void _showAddOrderDialog(dynamic client) {
     final orderNumCtrl = TextEditingController();
-    final typeCtrl = TextEditingController(); // Oshxona, Yotoqxona...
-    final areaCtrl = TextEditingController(); // Kvadrat (Bek kiritadi)
+    final typeCtrl = TextEditingController(); // Oshxona...
+    final areaCtrl = TextEditingController(); // Kvadrat...
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text("${client['full_name']}ga zakaz ochish"),
+        title: Text("${client['full_name']}ga zakaz"),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -131,29 +96,63 @@ class _ClientsScreenState extends State<ClientsScreen> {
           TextButton(onPressed: () => Navigator.pop(context), child: const Text("Bekor")),
           ElevatedButton(
             onPressed: () async {
-              if (orderNumCtrl.text.isEmpty || areaCtrl.text.isEmpty) return;
+              if (orderNumCtrl.text.isEmpty || areaCtrl.text.isEmpty) {
+                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Raqam va Kvadrat kiritilishi shart!")));
+                 return;
+              }
               
-              // 1. ZAKAZ YARATISH
-              await _supabase.from('orders').insert({
-                'order_number': orderNumCtrl.text,
-                'client_id': client['id'],
-                'project_type': typeCtrl.text,
-                'total_area_m2': double.parse(areaCtrl.text),
-                'status': 'new', // Yangi zakaz
-              });
-
-              // 2. AGAR BU BEK BO'LSA, UNGA ISH HAQI YOZISH MANTIG'I SHU YERDA BO'LADI
-              // Hozircha faqat zakazni yaratdik.
-
-              if (mounted) {
+              try {
+                await _supabase.from('orders').insert({
+                  'order_number': orderNumCtrl.text,
+                  'client_id': client['id'],
+                  'project_type': typeCtrl.text,
+                  'total_area_m2': double.parse(areaCtrl.text),
+                  'status': 'new',
+                });
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Zakaz yaratildi va Bek uchun maydon tayyorlandi!")));
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Zakaz muvaffaqiyatli ochildi!")));
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e")));
               }
             },
-            child: const Text("ZAKAZ OCHISH"),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
+            child: const Text("ZAKAZNI OCHISH"),
           ),
         ],
       ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text("Mijozlar & Zakazlar")),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _addClientDialog,
+        child: const Icon(Icons.person_add),
+      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : ListView.builder(
+              itemCount: _clients.length,
+              itemBuilder: (context, index) {
+                final client = _clients[index];
+                return Card(
+                  margin: const EdgeInsets.all(8),
+                  child: ListTile(
+                    leading: CircleAvatar(child: Text(client['full_name'][0])),
+                    title: Text(client['full_name'], style: const TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: Text(client['phone'] ?? ''),
+                    trailing: ElevatedButton.icon(
+                      onPressed: () => _showAddOrderDialog(client),
+                      icon: const Icon(Icons.add_task, size: 16),
+                      label: const Text("Zakaz"),
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade50),
+                    ),
+                  ),
+                );
+              },
+            ),
     );
   }
 }
