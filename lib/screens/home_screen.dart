@@ -4,6 +4,7 @@ import 'login_screen.dart';
 import 'admin_approvals.dart';
 import 'add_withdrawal.dart';
 import 'manage_users_screen.dart'; // Rol boshqarish sahifasi
+import 'package:flutter/services.dart'; // Status bar rangi uchun kerak
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -62,18 +63,98 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       backgroundColor: Colors.grey.shade100,
+            // --- [ YANGILANGAN HEADER BAR ] ---
       appBar: AppBar(
-        title: Text("Hisobcheck ($_userRole)"),
+        backgroundColor: Colors.blue.shade900, // To'q ko'k rang (Brend)
+        elevation: 0, // Soyani olib tashlaymiz (zamonaviy flat dizayn)
+        toolbarHeight: 70, // Biroz balandroq qilamiz
+        
+        // Status bar rangini to'g'irlash (Soat va zaryad oq rangda bo'ladi)
+        systemOverlayStyle: const SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: Brightness.light, 
+        ),
+
+        // 1. CHAP TOMON: Ism va Rol
+        title: Row(
+          children: [
+            // Avatarka o'rniga Ikonka
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                _userRole == 'admin' ? Icons.workspace_premium : Icons.person,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(width: 12),
+            
+            // Ism va Rol matnlari
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _userName.isNotEmpty ? _userName : "Yuklanmoqda...",
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                ),
+                // Rol uchun kichkina "Badge"
+                Container(
+                  margin: const EdgeInsets.only(top: 2),
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: _userRole == 'admin' ? Colors.amber : Colors.green,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    _userRole.toUpperCase(),
+                    style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.black87),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+
+        // 2. O'NG TOMON: Tugmalar
         actions: [
+          // Yangilash tugmasi
           IconButton(
-            onPressed: () async {
-              await _supabase.auth.signOut();
-              if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
-            }, 
-            icon: const Icon(Icons.logout, color: Colors.red)
-          )
+            onPressed: _loadAllData,
+            icon: const Icon(Icons.refresh, color: Colors.white70),
+            tooltip: "Yangilash",
+          ),
+          
+          // Chiqish menyusi (Pop-up Menu)
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert, color: Colors.white),
+            onSelected: (value) async {
+              if (value == 'logout') {
+                await _supabase.auth.signOut();
+                if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+              }
+            },
+            itemBuilder: (BuildContext context) => [
+              const PopupMenuItem(
+                value: 'profile',
+                child: Row(
+                  children: [Icon(Icons.person, color: Colors.blue), SizedBox(width: 10), Text("Profil sozlamalari")],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'logout',
+                child: Row(
+                  children: [Icon(Icons.logout, color: Colors.red), SizedBox(width: 10), Text("Chiqish")],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(width: 10),
         ],
       ),
+
       body: RefreshIndicator(
         onRefresh: _loadAllData,
         child: SingleChildScrollView(
