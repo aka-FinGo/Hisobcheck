@@ -10,47 +10,78 @@ class AddWithdrawalScreen extends StatefulWidget {
 
 class _AddWithdrawalScreenState extends State<AddWithdrawalScreen> {
   final _supabase = Supabase.instance.client;
-  String? _selectedWorker;
-  final _amount = TextEditingController();
-  List<dynamic> _workers = [];
+  List<dynamic> _users = [];
+  String? _selectedUserId;
+  final _amountCtrl = TextEditingController();
+  final _descCtrl = TextEditingController();
+  bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
-    _loadWorkers();
+    _loadUsers();
   }
 
-  Future<void> _loadWorkers() async {
-    final data = await _supabase.from('profiles').select().eq('role', 'worker');
-    setState(() => _workers = data);
+  Future<void> _loadUsers() async {
+    final data = await _supabase.from('profiles').select();
+    setState(() => _users = data);
+  }
+
+  Future<void> _submit() async {
+    if (_selectedUserId == null || _amountCtrl.text.isEmpty) return;
+    setState(() => _isLoading = true);
+
+    try {
+      await _supabase.from('withdrawals').insert({
+        'worker_id': _selectedUserId,
+        'amount': double.parse(_amountCtrl.text),
+        'description': _descCtrl.text.isEmpty ? 'Avans' : _descCtrl.text,
+      });
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Pul muvaffaqiyatli berildi!")));
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xatolik: $e")));
+    } finally {
+      setState(() => _isLoading = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Pul berish")),
+      appBar: AppBar(title: const Text("Pul Berish (Avans/Oylik)")),
       body: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
             DropdownButtonFormField<String>(
-              items: _workers.map((w) => DropdownMenuItem(value: w['id'].toString(), child: Text(w['full_name']))).toList(),
-              onChanged: (v) => _selectedWorker = v,
-              decoration: const InputDecoration(labelText: "Ishchini tanlang"),
+              decoration: const InputDecoration(labelText: "Xodimni tanlang", border: OutlineInputBorder()),
+              items: _users.map((u) => DropdownMenuItem(
+                value: u['id'].toString(),
+                child: Text(u['full_name'] ?? 'Noma\'lum'),
+              )).toList(),
+              onChanged: (v) => setState(() => _selectedUserId = v),
             ),
-            TextField(controller: _amount, decoration: const InputDecoration(labelText: "Summa"), keyboardType: TextInputType.number),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () async {
-                if (_selectedWorker == null || _amount.text.isEmpty) return;
-                await _supabase.from('withdrawals').insert({
-                  'worker_id': _selectedWorker,
-                  'amount': double.parse(_amount.text),
-                  'created_by_admin': true,
-                });
-                Navigator.pop(context);
-              }, 
-              child: const Text("SAQLASH")
+            const SizedBox(height: 15),
+            TextField(
+              controller: _amountCtrl,
+              decoration: const InputDecoration(labelText: "Summa (so'm)", border: OutlineInputBorder()),
+              keyboardType: TextInputType.number,
+            ),
+            const SizedBox(height: 15),
+            TextField(
+              controller: _descCtrl,
+              decoration: const InputDecoration(labelText: "Izoh (ixtiyoriy)", border: OutlineInputBorder()),
+            ),
+            const SizedBox(height: 25),
+            _isLoading 
+            ? const CircularProgressIndicator()
+            : ElevatedButton(
+              onPressed: _submit,
+              style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50), backgroundColor: Colors.green, foregroundColor: Colors.white),
+              child: const Text("TASDIQLASH VA BERISH"),
             )
           ],
         ),
