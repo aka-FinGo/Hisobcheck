@@ -10,12 +10,15 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  // --- [ 1. BOSHQARUVCHI VA HOLATLAR ] ---
+  // --- [ 1. BOSHQARUVCHILAR ] ---
   final _email = TextEditingController();
   final _pass = TextEditingController();
+  final _name = TextEditingController(); // Ro'yxatdan o'tish uchun
+
   bool _isLoading = false;
-  bool _obscurePassword = true; // Parolni yashirish holati
-  bool _rememberMe = false;     // Eslab qolish holati
+  bool _isLogin = true;         // Kirish yoki Ro'yxatdan o'tish rejimini belgilaydi
+  bool _obscurePassword = true; // Parolni ko'rsatish/yashirish
+  bool _rememberMe = false;     // Eslab qolish checkboxi
 
   @override
   void initState() {
@@ -23,7 +26,7 @@ class _LoginScreenState extends State<LoginScreen> {
     _loadSavedCredentials(); // Saqlangan ma'lumotlarni yuklash
   }
 
-  // --- [ 2. ESLAB QOLISH MANTIQI ] ---
+  // --- [ 2. ESLAB QOLISH VA YUKLASH ] ---
   Future<void> _loadSavedCredentials() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
@@ -46,27 +49,41 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // --- [ 3. KIRISH FUNKSIYASI ] ---
+  // --- [ 3. ASOSIY AUTH FUNKSIYASI ] ---
   Future<void> _auth() async {
+    if (_email.text.isEmpty || _pass.text.isEmpty) return;
     setState(() => _isLoading = true);
+    
     try {
-      await Supabase.instance.client.auth.signInWithPassword(
-        email: _email.text.trim(), 
-        password: _pass.text.trim(),
-      );
+      if (_isLogin) {
+        // Tizimga kirish (Login)
+        await Supabase.instance.client.auth.signInWithPassword(
+          email: _email.text.trim(), 
+          password: _pass.text.trim(),
+        );
+      } else {
+        // Ro'yxatdan o'tish (Sign Up)
+        await Supabase.instance.client.auth.signUp(
+          email: _email.text.trim(), 
+          password: _pass.text.trim(),
+          data: {'full_name': _name.text.trim()}, // Ismni ham saqlaymiz
+        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ro'yxatdan o'tdingiz! Emailingizni tasdiqlang.")));
+        setState(() => _isLogin = true); // Ro'yxatdan o'tgach Login oynasiga qaytaramiz
+      }
       
-      await _saveCredentials(); // Muvaffaqiyatli kirsa, ma'lumotlarni saqlash
+      await _saveCredentials(); // Ma'lumotlarni xotiraga yozish
 
-      if (mounted) {
+      if (mounted && _isLogin) {
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const MainWrapper()));
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Email yoki parol xato!")));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xatolik: $e")));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
-
+  // --- DAVOMI PASTDA ---
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -77,21 +94,30 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Container(
             constraints: const BoxConstraints(maxWidth: 400),
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.lock_person_rounded, size: 80, color: Colors.blue),
-                const SizedBox(height: 20),
-                const Text("Xush kelibsiz!", style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
+                // LOGOTIP O'RNIGA IKONKA
+                Icon(Icons.house_siding_rounded, size: 80, color: Colors.blue.shade900),
+                const SizedBox(height: 10),
+                const Text("ARISTOKRAT MEBEL", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
                 const SizedBox(height: 30),
 
-                // Email Input
+                // ISM KIRITISH (Faqat ro'yxatdan o'tishda chiqadi)
+                if (!_isLogin) ...[
+                  TextField(
+                    controller: _name,
+                    decoration: const InputDecoration(labelText: "To'liq ismingiz", border: OutlineInputBorder(), prefixIcon: Icon(Icons.person_outline)),
+                  ),
+                  const SizedBox(height: 15),
+                ],
+
+                // EMAIL INPUT
                 TextField(
-                  controller: _email, 
-                  decoration: const InputDecoration(labelText: "Email", border: OutlineInputBorder(), prefixIcon: Icon(Icons.email_outlined))
+                  controller: _email,
+                  decoration: const InputDecoration(labelText: "Email", border: OutlineInputBorder(), prefixIcon: Icon(Icons.email_outlined)),
                 ),
                 const SizedBox(height: 15),
 
-                // Parol Input (Ko'zcha bilan)
+                // PAROL INPUT (KO'ZCHA BILAN)
                 TextField(
                   controller: _pass,
                   obscureText: _obscurePassword,
@@ -106,34 +132,44 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
 
-                // Eslab qolish Checkbox
+                // REMEMBER ME VA LOGIN TOGGLE
                 Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Checkbox(
-                      value: _rememberMe, 
-                      onChanged: (val) => setState(() => _rememberMe = val!)
+                    Row(
+                      children: [
+                        Checkbox(value: _rememberMe, onChanged: (v) => setState(() => _rememberMe = v!)),
+                        const Text("Eslab qolish"),
+                      ],
                     ),
-                    const Text("Eslab qolish"),
                   ],
                 ),
 
-                const SizedBox(height: 10),
-                _isLoading ? const CircularProgressIndicator() : ElevatedButton(
-                  onPressed: _auth, 
-                  style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 55), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                  child: const Text("TIZIMGA KIRISH")
+                const SizedBox(height: 20),
+                _isLoading 
+                  ? const CircularProgressIndicator() 
+                  : ElevatedButton(
+                      onPressed: _auth,
+                      style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 55), backgroundColor: Colors.blue.shade900, foregroundColor: Colors.white),
+                      child: Text(_isLogin ? "KIRISH" : "RO'YXATDAN O'TISH"),
+                    ),
+
+                const SizedBox(height: 20),
+                TextButton(
+                  onPressed: () => setState(() => _isLogin = !_isLogin),
+                  child: Text(_isLogin ? "Hisobingiz yo'qmi? Ro'yxatdan o'ting" : "Hisobingiz bormi? Kirish"),
                 ),
 
-                const SizedBox(height: 25),
-                const Text("yoki", style: TextStyle(color: Colors.grey)),
-                const SizedBox(height: 15),
-
-                // --- [ 4. TELEGRAM LOGIN TUGMASI ] ---
+                const Divider(height: 40),
+                
+                // TELEGRAM TUGMASI (Placeholder)
                 OutlinedButton.icon(
-                  onPressed: () { /* Telegram mantiqi keyinroq */ },
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Tez kunda Telegram orqali kirish ulanadi!")));
+                  },
                   icon: const Icon(Icons.send_rounded, color: Colors.blue),
                   label: const Text("Telegram orqali kirish"),
-                  style: OutlinedButton.styleFrom(minimumSize: const Size(double.infinity, 55), side: const BorderSide(color: Colors.blue)),
+                  style: OutlinedButton.iconStyleFrom(minimumSize: const Size(double.infinity, 55)),
                 ),
               ],
             ),
