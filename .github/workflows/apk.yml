@@ -72,11 +72,15 @@ jobs:
         </manifest>
         EOF
 
+    # 4. [YANGILANGAN QISM] APK yasash (Secrets bilan)
     - name: APK yasash
-      run: flutter build apk --release
+      run: |
+        flutter build apk --release \
+          --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
+          --dart-define=SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}
 
     - name: APKni saqlash
       uses: actions/upload-artifact@v4
       with:
-        name: aristokrat-mebel-fix-v2
+        name: aristokrat-mebel-final
         path: build/app/outputs/flutter-apk/app-release.apk
