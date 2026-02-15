@@ -3,7 +3,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'login_screen.dart';
 import 'admin_approvals.dart';
 import 'add_withdrawal.dart';
-import 'history_screen.dart'; // SHU IMPORT JUDA MUHIM!
+import 'history_screen.dart'; 
+import 'wallet_screen.dart';// SHU IMPORT JUDA MUHIM!
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -79,7 +80,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  @override
+    @override
   Widget build(BuildContext context) {
     if (_isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
@@ -100,6 +101,8 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               _buildBalanceCard(),
               const SizedBox(height: 20),
+              
+              // 1-QATOR: ISH VA TARIX
               Row(
                 children: [
                   _buildMenuBtn("Ish Qo'shish", Icons.add_circle, Colors.blue, _showWorkDialog),
@@ -113,6 +116,23 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
               
+              const SizedBox(height: 10), // Qatorlar orasidagi masofa
+
+              // 2-QATOR: HAMYON (MANA SHU YERDA!)
+              Row(
+                children: [
+                  _buildMenuBtn("Hamyon", Icons.account_balance_wallet, Colors.green.shade700, () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const WalletScreen()),
+                    );
+                  }),
+                  const SizedBox(width: 10),
+                  const Expanded(child: SizedBox()), // Joyni teng taqsimlash uchun bo'sh katak
+                ],
+              ),
+              
+              // ADMIN BO'LIMI
               if (_userRole == 'admin') ...[
                 const SizedBox(height: 30),
                 const Divider(),
@@ -136,117 +156,3 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
-
-  Widget _buildBalanceCard() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: _userRole == 'admin' ? Colors.red.shade900 : Colors.blue.shade900,
-        borderRadius: BorderRadius.circular(15),
-      ),
-      child: Column(
-        children: [
-          const Text("Hozirgi Qoldiq", style: TextStyle(color: Colors.white70)),
-          Text("${(_totalEarned - _totalWithdrawn).toStringAsFixed(0)} so'm", 
-               style: const TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.bold)),
-          const Divider(color: Colors.white24, height: 20),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text("Ishlangan: $_totalEarned", style: const TextStyle(color: Colors.greenAccent)),
-              Text("Olingan: $_totalWithdrawn", style: const TextStyle(color: Colors.orangeAccent)),
-            ],
-          ),
-          if (_pendingAmount > 0)
-            Padding(
-              padding: const EdgeInsets.only(top: 10),
-              child: Text("Kutilmoqda: $_pendingAmount", style: const TextStyle(color: Colors.white60, fontSize: 12)),
-            )
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMenuBtn(String title, IconData icon, Color color, VoidCallback onTap) {
-    return Expanded(
-      child: ElevatedButton.icon(
-        onPressed: onTap,
-        icon: Icon(icon),
-        label: Text(title),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: color, 
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: 15)
-        ),
-      ),
-    );
-  }
-
-  void _showWorkDialog() async {
-    final orders = await _supabase.from('orders').select();
-    final taskTypes = await _supabase.from('task_types').select();
-
-    if (!mounted) return;
-
-    String? selectedOrderId;
-    Map<String, dynamic>? selectedTask;
-    final areaController = TextEditingController();
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) => Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom + 20, left: 20, right: 20, top: 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text("Ishni Kiritish", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 20),
-              DropdownButtonFormField<String>(
-                decoration: const InputDecoration(labelText: "Zakaz raqami", border: OutlineInputBorder()),
-                items: orders.map((o) => DropdownMenuItem(value: o['id'].toString(), child: Text(o['order_number']))).toList(),
-                onChanged: (v) => selectedOrderId = v,
-              ),
-              const SizedBox(height: 15),
-              DropdownButtonFormField<Map<String, dynamic>>(
-                decoration: const InputDecoration(labelText: "Ish turi", border: OutlineInputBorder()),
-                items: taskTypes.map((t) => DropdownMenuItem(value: t, child: Text(t['name']))).toList(),
-                onChanged: (v) => setModalState(() => selectedTask = v),
-              ),
-              const SizedBox(height: 15),
-              TextField(
-                controller: areaController,
-                decoration: const InputDecoration(labelText: "Kvadrat (m2)", border: OutlineInputBorder()),
-                keyboardType: TextInputType.number,
-              ),
-              const SizedBox(height: 25),
-              ElevatedButton(
-                onPressed: () async {
-                  if (selectedOrderId == null || selectedTask == null || areaController.text.isEmpty) return;
-                  
-                  await _supabase.from('work_logs').insert({
-                    'worker_id': _userId,
-                    'order_id': int.parse(selectedOrderId!),
-                    'task_type': selectedTask!['name'],
-                    'area_m2': double.parse(areaController.text),
-                    'rate': selectedTask!['default_rate'],
-                    'is_approved': _userRole == 'admin', 
-                  });
-
-                  if (mounted) {
-                    Navigator.pop(context);
-                    _loadAllData();
-                  }
-                },
-                style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50)),
-                child: const Text("YUBORISH"),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
