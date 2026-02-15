@@ -1,4 +1,4 @@
-name: Android APK Yasash (Fix White Screen)
+name: Android APK Build
 
 on:
   workflow_dispatch:
@@ -10,36 +10,33 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Java o'rnatish
+    - name: Set up Java
       uses: actions/setup-java@v4
       with:
         distribution: 'zulu'
         java-version: '17'
 
-    - name: Flutter o'rnatish
+    - name: Set up Flutter
       uses: subosito/flutter-action@v2
       with:
         flutter-version: '3.19.0'
 
-    # 1. Pubspec nomini to'g'irlash
-    - name: Loyiha nomini kichik harf qilish
+    - name: Fix project name
       run: sed -i 's/name: Hisobcheck/name: hisobcheck/g' pubspec.yaml
 
-    - name: Kutubxonalarni yuklash
+    - name: Get dependencies
       run: |
         flutter pub get
         flutter pub add supabase_flutter
         flutter pub add intl
         flutter pub add shared_preferences
 
-    # 2. Android papkasini yangilash
-    - name: Android papkasini yaratish
+    - name: Recreate Android folder
       run: |
         rm -rf android
         flutter create --project-name hisobcheck --platforms android .
 
-    # 3. [ENG MUHIM QISM] Manifestni majburlab yozish (Internet bilan)
-    - name: AndroidManifest.xml ni internet bilan yozish
+    - name: Add Internet Permission
       run: |
         cat <<EOF > android/app/src/main/AndroidManifest.xml
         <manifest xmlns:android="http://schemas.android.com/apk/res/android">
@@ -72,15 +69,14 @@ jobs:
         </manifest>
         EOF
 
-    # 4. [YANGILANGAN QISM] APK yasash (Secrets bilan)
-    - name: APK yasash
+    - name: Build APK with Secrets
       run: |
         flutter build apk --release \
           --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
           --dart-define=SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}
 
-    - name: APKni saqlash
+    - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: aristokrat-mebel-final
+        name: hisobcheck-final-apk
         path: build/app/outputs/flutter-apk/app-release.apk
