@@ -33,6 +33,7 @@ jobs:
           flutter create --project-name hisobcheck --platforms web .
           flutter pub add supabase_flutter
           flutter pub add intl
+          flutter pub add shared_preferences
       
       - name: Build Web
         run: |
