@@ -1,0 +1,38 @@
+name: Android APK Yasash
+
+on:
+  workflow_dispatch: # Bu faqat qo'lda tugma bosilganda ishlaydi
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Java o'rnatish
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'zulu'
+        java-version: '17'
+
+    - name: Flutter o'rnatish
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.19.0'
+
+    - name: Kutubxonalarni yuklash
+      run: |
+        flutter pub get
+        flutter pub add supabase_flutter
+        flutter pub add intl
+        flutter pub add shared_preferences
+
+    - name: APK yasash
+      run: flutter build apk --release
+
+    - name: APKni saqlash (Artifacts)
+      uses: actions/upload-artifact@v4
+      with:
+        name: aristokrat-mebel-apk
+        path: build/app/outputs/flutter-apk/app-release.apk
