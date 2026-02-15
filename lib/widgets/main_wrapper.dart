@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import '../screens/home_screen.dart';
 import '../screens/history_screen.dart';
-import '../screens/wallet_screen.dart';
 import '../screens/remnant_screen.dart';
+import '../screens/wallet_screen.dart';
 
 class MainWrapper extends StatefulWidget {
   const MainWrapper({super.key});
@@ -12,66 +12,33 @@ class MainWrapper extends StatefulWidget {
 }
 
 class _MainWrapperState extends State<MainWrapper> {
-  // --- [ 1. HOZIRGI SAHIFA INDEKSI ] ---
   int _selectedIndex = 0;
 
-  // --- [ 2. SAHIFALAR RO'YXATI ] ---
+  // Sahifalar ro'yxati
   final List<Widget> _pages = [
-    const HomeScreen(),     // Indeks 0: Asosiy oyna
-    const HistoryScreen(),  // Indeks 1: Ishlar tarixi
-    const RemnantScreen(),  // Indeks 2: LDSP Qoldiqlar
-    const WalletScreen(),   // Indeks 3: Shaxsiy hamyon
+    const HomeScreen(),
+    const HistoryScreen(),
+    const RemnantScreen(),
+    const WalletScreen(),
   ];
 
-  // --- [ 3. SAHIFANI O'ZGARTIRISH FUNKSIYASI ] ---
-  void _onItemTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
-  }
-
-  // --- 2-QISM (UI) PASTDA ---
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // Tanlangan sahifani ko'rsatish
-      body: IndexedStack(
-        index: _selectedIndex,
-        children: _pages,
-      ),
-
-      // --- [ 4. PASTKI MENYU DIZAYNI ] ---
+      body: IndexedStack(index: _selectedIndex, children: _pages),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
-        onTap: _onItemTapped,
-        type: BottomNavigationBarType.fixed, // 4 tadan ko'p tugma bo'lsa shart
+        onTap: (index) => setState(() => _selectedIndex = index),
+        type: BottomNavigationBarType.fixed,
         selectedItemColor: Colors.blue.shade900,
         unselectedItemColor: Colors.grey,
-        showUnselectedLabels: true,
         items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.dashboard_outlined),
-            activeIcon: Icon(Icons.dashboard),
-            label: 'Asosiy',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.history_outlined),
-            activeIcon: Icon(Icons.history),
-            label: 'Tarix',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.inventory_2_outlined),
-            activeIcon: Icon(Icons.inventory_2),
-            label: 'Qoldiqlar',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.account_balance_wallet_outlined),
-            activeIcon: Icon(Icons.account_balance_wallet),
-            label: 'Hamyon',
-          ),
+          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Asosiy'),
+          BottomNavigationBarItem(icon: Icon(Icons.history), label: 'Tarix'),
+          BottomNavigationBarItem(icon: Icon(Icons.layers), label: 'Qoldiqlar'),
+          BottomNavigationBarItem(icon: Icon(Icons.wallet), label: 'Hamyon'),
         ],
       ),
     );
   }
 }
-
