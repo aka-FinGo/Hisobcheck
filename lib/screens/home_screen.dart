@@ -6,7 +6,7 @@ import 'admin_approvals.dart';
 import 'add_withdrawal.dart';
 import 'manage_users_screen.dart'; // Xodimlar boshqaruvi
 import 'clients_screen.dart';      // Mijozlar ro'yxati
-
+import '../widgets/balance_card.dart'; // Import qilamiz
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -152,8 +152,10 @@ class _HomeScreenState extends State<HomeScreen> {
           padding: const EdgeInsets.all(16),
           child: Column(
             children: [
-              _buildBalanceCard(),
-              const SizedBox(height: 20),
+              BalanceCard(
+  earned: _totalEarned, 
+  withdrawn: _totalWithdrawn
+),
               
               // ISH QO'SHISH TUGMASI
               _buildMenuBtn("Ish Qo'shish", Icons.add_circle, Colors.blue, _showWorkDialog),
