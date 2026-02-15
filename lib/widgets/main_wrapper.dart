@@ -3,7 +3,7 @@ import '../screens/home_screen.dart';
 import '../screens/history_screen.dart';
 import '../screens/remnant_screen.dart';
 import '../screens/wallet_screen.dart';
-
+import '../screens/clients_screen.dart';
 class MainWrapper extends StatefulWidget {
   const MainWrapper({super.key});
 
@@ -19,7 +19,7 @@ class _MainWrapperState extends State<MainWrapper> {
     const HomeScreen(),
     const HistoryScreen(),
     const RemnantScreen(),
-    const WalletScreen(),
+    const ClientsScreen(),
   ];
 
   @override
@@ -36,7 +36,7 @@ class _MainWrapperState extends State<MainWrapper> {
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Asosiy'),
           BottomNavigationBarItem(icon: Icon(Icons.history), label: 'Tarix'),
           BottomNavigationBarItem(icon: Icon(Icons.layers), label: 'Qoldiqlar'),
-          BottomNavigationBarItem(icon: Icon(Icons.wallet), label: 'Hamyon'),
+          BottomNavigationBarItem(icon: Icon(Icons.people), label: 'Mijozlar'),
         ],
       ),
     );
