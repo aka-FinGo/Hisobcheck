@@ -1,4 +1,4 @@
-name: Android APK Yasash
+name: Android APK Yasash (Fix White Screen)
 
 on:
   workflow_dispatch:
@@ -21,10 +21,9 @@ jobs:
       with:
         flutter-version: '3.19.0'
 
-    # 1. Pubspec faylni to'g'irlash
-    - name: Loyiha nomini to'g'irlash
-      run: |
-        sed -i 's/name: Hisobcheck/name: hisobcheck/g' pubspec.yaml
+    # 1. Pubspec nomini to'g'irlash
+    - name: Loyiha nomini kichik harf qilish
+      run: sed -i 's/name: Hisobcheck/name: hisobcheck/g' pubspec.yaml
 
     - name: Kutubxonalarni yuklash
       run: |
@@ -34,22 +33,50 @@ jobs:
         flutter pub add shared_preferences
 
     # 2. Android papkasini yangilash
-    - name: Android papkasini yangilash (Fix Gradle)
+    - name: Android papkasini yaratish
       run: |
         rm -rf android
         flutter create --project-name hisobcheck --platforms android .
 
-    # --- [ ENG MUHIM QISM: INTERNETNI YOQISH ] ---
-    - name: Internet ruxsatini qo'shish
+    # 3. [ENG MUHIM QISM] Manifestni majburlab yozish (Internet bilan)
+    - name: AndroidManifest.xml ni internet bilan yozish
       run: |
-        # AndroidManifest.xml ichiga ruxsat yozish
-        sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <application|g' android/app/src/main/AndroidManifest.xml
+        cat <<EOF > android/app/src/main/AndroidManifest.xml
+        <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+            <uses-permission android:name="android.permission.INTERNET"/>
+            <application
+                android:label="Hisobcheck"
+                android:name="\${applicationName}"
+                android:icon="@mipmap/ic_launcher">
+                <activity
+                    android:name=".MainActivity"
+                    android:exported="true"
+                    android:launchMode="singleTop"
+                    android:theme="@style/LaunchTheme"
+                    android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+                    android:hardwareAccelerated="true"
+                    android:windowSoftInputMode="adjustResize">
+                    <meta-data
+                      android:name="io.flutter.embedding.android.NormalTheme"
+                      android:resource="@style/NormalTheme"
+                      />
+                    <intent-filter>
+                        <action android:name="android.intent.action.MAIN"/>
+                        <category android:name="android.intent.category.LAUNCHER"/>
+                    </intent-filter>
+                </activity>
+                <meta-data
+                    android:name="flutterEmbedding"
+                    android:value="2" />
+            </application>
+        </manifest>
+        EOF
 
     - name: APK yasash
       run: flutter build apk --release
 
-    - name: APKni saqlash (Artifacts)
+    - name: APKni saqlash
       uses: actions/upload-artifact@v4
       with:
-        name: aristokrat-mebel-apk
+        name: aristokrat-mebel-fix-v2
         path: build/app/outputs/flutter-apk/app-release.apk
