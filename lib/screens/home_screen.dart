@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // Status bar rangi uchun kerak
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'login_screen.dart';
 import 'admin_approvals.dart';
 import 'add_withdrawal.dart';
-import 'manage_users_screen.dart'; // Xodimlar boshqaruvi
-import 'clients_screen.dart';      // Mijozlar ro'yxati
-import '../widgets/balance_card.dart'; // Import qilamiz
+import 'manage_users_screen.dart';
+import 'clients_screen.dart';
+import '../widgets/balance_card.dart'; // <--- MANA SHU IMPORT MUHIM!
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -66,21 +67,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       backgroundColor: Colors.grey.shade100,
-      
-      // --- [ YANGILANGAN HEADER BAR ] ---
       appBar: AppBar(
         backgroundColor: Colors.blue.shade900,
         elevation: 0,
-        toolbarHeight: 70, // Balandroq header
+        toolbarHeight: 70,
         systemOverlayStyle: const SystemUiOverlayStyle(
-          statusBarColor: Colors.transparent, // Orqa fon rangi bilan birxil bo'ladi
-          statusBarIconBrightness: Brightness.light, // Soat va zaryad oq rangda
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: Brightness.light,
         ),
-        
-        // CHAP TOMON: ISM VA ROL
         title: Row(
           children: [
-            // 1. Ikonka (Admin yoki Oddiy)
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
@@ -93,8 +89,6 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             const SizedBox(width: 12),
-            
-            // 2. Ism va Rol yozuvi
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -118,8 +112,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ],
         ),
-
-        // O'NG TOMON: TUGMALAR
         actions: [
           IconButton(
             onPressed: _loadAllData,
@@ -144,7 +136,6 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(width: 10),
         ],
       ),
-
       body: RefreshIndicator(
         onRefresh: _loadAllData,
         child: SingleChildScrollView(
@@ -152,22 +143,19 @@ class _HomeScreenState extends State<HomeScreen> {
           padding: const EdgeInsets.all(16),
           child: Column(
             children: [
-              BalanceCard(
-  earned: _totalEarned, 
-  withdrawn: _totalWithdrawn
-),
+              // --- YANGI ALOHIDA FAYLDAGI WIDGET ---
+              BalanceCard(earned: _totalEarned, withdrawn: _totalWithdrawn),
               
-              // ISH QO'SHISH TUGMASI
+              const SizedBox(height: 20),
+              
               _buildMenuBtn("Ish Qo'shish", Icons.add_circle, Colors.blue, _showWorkDialog),
               const SizedBox(height: 10),
               
-              // MIJOZLAR TUGMASI (Bek va Admin uchun)
               if (_userRole == 'admin' || _userRole == 'bek') 
                 _buildMenuBtn("Mijozlar & Zakazlar", Icons.people_alt, Colors.indigo, () {
                   Navigator.push(context, MaterialPageRoute(builder: (_) => const ClientsScreen()));
                 }),
 
-              // ADMIN PANEL
               if (_userRole == 'admin') ...[
                 const SizedBox(height: 30),
                 const Divider(),
@@ -196,22 +184,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildBalanceCard() {
-    return Container(
-      width: double.infinity, padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(colors: [Colors.blue.shade900, Colors.blue.shade600]),
-        borderRadius: BorderRadius.circular(15),
-        boxShadow: [BoxShadow(color: Colors.blue.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5))]
-      ),
-      child: Column(children: [
-        const Text("Sof Qoldiq", style: TextStyle(color: Colors.white70)),
-        Text("${(_totalEarned - _totalWithdrawn).toStringAsFixed(0)} so'm", style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold)),
-      ]),
-    );
-  }
-
-  // Katta tugma (Ish qo'shish, Xodimlar uchun)
+  // Katta tugma
   Widget _buildMenuBtn(String t, IconData i, Color c, VoidCallback onTap) {
     return SizedBox(
       width: double.infinity,
@@ -226,7 +199,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // Kichik tugma (Admin panel ichidagilar uchun)
+  // Kichik tugma
   Widget _buildMenuBtnSmall(String t, IconData i, Color c, VoidCallback onTap) {
     return ElevatedButton.icon(
       onPressed: onTap, icon: Icon(i, size: 18), label: Text(t, style: const TextStyle(fontSize: 13)), 
@@ -238,19 +211,13 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // --- ISH QO'SHISH MODAL ---
   void _showWorkDialog() async {
     final orders = await _supabase.from('orders').select();
     
-    // Rolga qarab ish turlarini filtrlash
+    // Task Types: Agar Admin bo'lsa hammasi, bo'lmasa faqat worker va o'z roli
     var taskQuery = _supabase.from('task_types').select();
-    if (_userRole != 'admin') {
-      // Bu yerda .or() sintaksisini to'g'ri ishlatish kerak, yoki oddiy filtr:
-      // Hozircha hammasini yuklaymiz, client-side filtrlaymiz (soddaroq)
-    }
     final allTasks = await taskQuery;
     
-    // Client-side filtr (Admin hammasini, Xodim faqat 'worker' va o'z rolini)
     final taskTypes = _userRole == 'admin' 
         ? allTasks 
         : allTasks.where((t) => t['target_role'] == 'worker' || t['target_role'] == _userRole).toList();
