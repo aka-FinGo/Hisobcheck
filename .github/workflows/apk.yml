@@ -21,6 +21,11 @@ jobs:
       with:
         flutter-version: '3.19.0'
 
+    # 1. Pubspec faylni to'g'irlash (Katta harfni kichik qilish)
+    - name: Loyiha nomini to'g'irlash
+      run: |
+        sed -i 's/name: Hisobcheck/name: hisobcheck/g' pubspec.yaml
+
     - name: Kutubxonalarni yuklash
       run: |
         flutter pub get
@@ -28,11 +33,11 @@ jobs:
         flutter pub add intl
         flutter pub add shared_preferences
 
-    # --- MUHIM TUZATISH QISMI ---
+    # 2. Android papkasini yangilash (Maxsus nom bilan)
     - name: Android papkasini yangilash (Fix Gradle)
       run: |
         rm -rf android
-        flutter create . --platforms android
+        flutter create --project-name hisobcheck --platforms android .
 
     - name: APK yasash
       run: flutter build apk --release
