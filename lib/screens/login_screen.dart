@@ -84,7 +84,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
   // --- DAVOMI PASTDA ---
-  @override
+    @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
@@ -95,13 +95,11 @@ class _LoginScreenState extends State<LoginScreen> {
             constraints: const BoxConstraints(maxWidth: 400),
             child: Column(
               children: [
-                // LOGOTIP O'RNIGA IKONKA
                 Icon(Icons.house_siding_rounded, size: 80, color: Colors.blue.shade900),
                 const SizedBox(height: 10),
                 const Text("ARISTOKRAT MEBEL", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
                 const SizedBox(height: 30),
 
-                // ISM KIRITISH (Faqat ro'yxatdan o'tishda chiqadi)
                 if (!_isLogin) ...[
                   TextField(
                     controller: _name,
@@ -110,14 +108,12 @@ class _LoginScreenState extends State<LoginScreen> {
                   const SizedBox(height: 15),
                 ],
 
-                // EMAIL INPUT
                 TextField(
                   controller: _email,
                   decoration: const InputDecoration(labelText: "Email", border: OutlineInputBorder(), prefixIcon: Icon(Icons.email_outlined)),
                 ),
                 const SizedBox(height: 15),
 
-                // PAROL INPUT (KO'ZCHA BILAN)
                 TextField(
                   controller: _pass,
                   obscureText: _obscurePassword,
@@ -132,7 +128,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
 
-                // REMEMBER ME VA LOGIN TOGGLE
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -162,14 +157,18 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 const Divider(height: 40),
                 
-                // TELEGRAM TUGMASI (Placeholder)
+                // TUZATILGAN JOY:
                 OutlinedButton.icon(
                   onPressed: () {
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Tez kunda Telegram orqali kirish ulanadi!")));
                   },
                   icon: const Icon(Icons.send_rounded, color: Colors.blue),
                   label: const Text("Telegram orqali kirish"),
-                  style: OutlinedButton.iconStyleFrom(minimumSize: const Size(double.infinity, 55)),
+                  // style: OutlinedButton.iconStyleFrom... EMAS, balki shunchaki:
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(double.infinity, 55),
+                    side: const BorderSide(color: Colors.blue),
+                  ),
                 ),
               ],
             ),
@@ -178,4 +177,3 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
     );
   }
-}
