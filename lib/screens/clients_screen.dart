@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'client_details_screen.dart'; // Agar tafsilotlar sahifasini qilsangiz kerak bo'ladi
 
 class ClientsScreen extends StatefulWidget {
   const ClientsScreen({super.key});
@@ -32,10 +33,11 @@ class _ClientsScreenState extends State<ClientsScreen> {
     }
   }
 
-  // --- MIJOZ QO'SHISH ---
+  // --- YANGI MIJOZ QO'SHISH ---
   void _addClientDialog() {
     final nameCtrl = TextEditingController();
     final phoneCtrl = TextEditingController();
+    final addressCtrl = TextEditingController();
 
     showDialog(
       context: context,
@@ -47,6 +49,8 @@ class _ClientsScreenState extends State<ClientsScreen> {
             TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: "Ismi (m: Anvar aka)", border: OutlineInputBorder())),
             const SizedBox(height: 10),
             TextField(controller: phoneCtrl, decoration: const InputDecoration(labelText: "Telefon", border: OutlineInputBorder()), keyboardType: TextInputType.phone),
+            const SizedBox(height: 10),
+            TextField(controller: addressCtrl, decoration: const InputDecoration(labelText: "Manzil", border: OutlineInputBorder())),
           ],
         ),
         actions: [
@@ -54,16 +58,13 @@ class _ClientsScreenState extends State<ClientsScreen> {
           ElevatedButton(
             onPressed: () async {
               if (nameCtrl.text.isEmpty) return;
-              try {
-                await _supabase.from('clients').insert({
-                  'full_name': nameCtrl.text,
-                  'phone': phoneCtrl.text,
-                });
-                Navigator.pop(context);
-                _loadClients();
-              } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e")));
-              }
+              await _supabase.from('clients').insert({
+                'full_name': nameCtrl.text,
+                'phone': phoneCtrl.text,
+                'address': addressCtrl.text,
+              });
+              Navigator.pop(context);
+              _loadClients();
             },
             child: const Text("SAQLASH"),
           ),
@@ -72,16 +73,16 @@ class _ClientsScreenState extends State<ClientsScreen> {
     );
   }
 
-  // --- ZAKAZ OCHISH (BEK UCHUN) ---
+  // --- MIJOZGA ZAKAZ OCHISH (BEK UCHUN) ---
   void _showAddOrderDialog(dynamic client) {
     final orderNumCtrl = TextEditingController();
-    final typeCtrl = TextEditingController(); // Oshxona...
-    final areaCtrl = TextEditingController(); // Kvadrat...
+    final typeCtrl = TextEditingController();
+    final areaCtrl = TextEditingController();
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text("${client['full_name']}ga zakaz"),
+        title: Text("${client['full_name']}ga zakaz ochish"),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -96,27 +97,20 @@ class _ClientsScreenState extends State<ClientsScreen> {
           TextButton(onPressed: () => Navigator.pop(context), child: const Text("Bekor")),
           ElevatedButton(
             onPressed: () async {
-              if (orderNumCtrl.text.isEmpty || areaCtrl.text.isEmpty) {
-                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Raqam va Kvadrat kiritilishi shart!")));
-                 return;
-              }
+              if (orderNumCtrl.text.isEmpty || areaCtrl.text.isEmpty) return;
               
-              try {
-                await _supabase.from('orders').insert({
-                  'order_number': orderNumCtrl.text,
-                  'client_id': client['id'],
-                  'project_type': typeCtrl.text,
-                  'total_area_m2': double.parse(areaCtrl.text),
-                  'status': 'new',
-                });
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Zakaz muvaffaqiyatli ochildi!")));
-              } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e")));
-              }
+              await _supabase.from('orders').insert({
+                'order_number': orderNumCtrl.text,
+                'client_id': client['id'],
+                'project_type': typeCtrl.text,
+                'total_area_m2': double.parse(areaCtrl.text),
+                'status': 'new',
+              });
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Zakaz ochildi!")));
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
-            child: const Text("ZAKAZNI OCHISH"),
+            child: const Text("ZAKAZ YARATISH"),
           ),
         ],
       ),
@@ -126,10 +120,11 @@ class _ClientsScreenState extends State<ClientsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Mijozlar & Zakazlar")),
+      appBar: AppBar(title: const Text("Mijozlar Bazasi")),
       floatingActionButton: FloatingActionButton(
         onPressed: _addClientDialog,
-        child: const Icon(Icons.person_add),
+        backgroundColor: Colors.blue.shade900,
+        child: const Icon(Icons.person_add, color: Colors.white),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -140,15 +135,19 @@ class _ClientsScreenState extends State<ClientsScreen> {
                 return Card(
                   margin: const EdgeInsets.all(8),
                   child: ListTile(
-                    leading: CircleAvatar(child: Text(client['full_name'][0])),
+                    leading: CircleAvatar(child: Text(client['full_name'][0].toUpperCase())),
                     title: Text(client['full_name'], style: const TextStyle(fontWeight: FontWeight.bold)),
                     subtitle: Text(client['phone'] ?? ''),
-                    trailing: ElevatedButton.icon(
+                    // O'ng tomonda zakaz ochish tugmasi
+                    trailing: IconButton(
+                      icon: const Icon(Icons.add_task, color: Colors.blue),
                       onPressed: () => _showAddOrderDialog(client),
-                      icon: const Icon(Icons.add_task, size: 16),
-                      label: const Text("Zakaz"),
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade50),
+                      tooltip: "Zakaz qo'shish",
                     ),
+                    // Bosilganda tafsilotlar (keyinchalik qo'shishingiz mumkin)
+                    onTap: () {
+                       // Navigator.push(context, MaterialPageRoute(builder: (_) => ClientDetailsScreen(client: client)));
+                    },
                   ),
                 );
               },
