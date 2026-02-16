@@ -11,94 +11,81 @@ class UserProfileScreen extends StatefulWidget {
 
 class _UserProfileScreenState extends State<UserProfileScreen> {
   final _supabase = Supabase.instance.client;
-  String _selectedRole = '';
-  List<Map<String, dynamic>> _taskTypes = [];
-  Map<String, TextEditingController> _rateControllers = {};
+  late TextEditingController _nameController;
+  late String _selectedRole;
+  bool _isSaving = false;
+
+  final List<String> _roles = ['worker', 'admin', 'bek', 'painter', 'assembler'];
 
   @override
   void initState() {
     super.initState();
+    _nameController = TextEditingController(text: widget.user['full_name']);
     _selectedRole = widget.user['role'] ?? 'worker';
-    _loadTaskTypes();
   }
 
-  Future<void> _loadTaskTypes() async {
-    final tasks = await _supabase.from('task_types').select();
-    setState(() {
-      _taskTypes = List<Map<String, dynamic>>.from(tasks);
-      for (var task in _taskTypes) {
-        _rateControllers[task['name']] = TextEditingController(
-          text: task['default_rate'].toString()
-        );
-      }
-    });
-  }
+  Future<void> _updateProfile() async {
+    if (_nameController.text.isEmpty) return;
 
-  Future<void> _saveChanges() async {
+    setState(() => _isSaving = true);
     try {
-      // 1. Rolni yangilash
-      await _supabase.from('profiles').update({'role': _selectedRole}).eq('id', widget.user['id']);
-      
-      // 2. Bu yerda xohlasangiz har bir ish turi uchun maxsus tariflarni saqlash mantiqini qo'shish mumkin
-      
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("O'zgarishlar saqlandi!")));
-      Navigator.pop(context);
+      await _supabase.from('profiles').update({
+        'full_name': _nameController.text,
+        'role': _selectedRole,
+      }).eq('id', widget.user['id']);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Ma'lumotlar saqlandi!"), backgroundColor: Colors.green),
+        );
+        Navigator.pop(context);
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e")));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xatolik: $e")));
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(widget.user['full_name'])),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+      appBar: AppBar(title: const Text("Xodim Profili")),
+      body: Padding(
+        padding: const EdgeInsets.all(20),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text("Xodim roli:", style: TextStyle(fontWeight: FontWeight.bold)),
-            DropdownButton<String>(
-              isExpanded: true,
-              value: _selectedRole,
-              items: const [
-                DropdownMenuItem(value: 'worker', child: Text("Ishchi (Usta)")),
-                DropdownMenuItem(value: 'admin', child: Text("Admin")),
-                DropdownMenuItem(value: 'owner', child: Text("Boshliq")),
-              ],
-              onChanged: (v) => setState(() => _selectedRole = v!),
-            ),
-            const SizedBox(height: 30),
-            const Text("Ish turlari bo'yicha tariflar:", style: TextStyle(fontWeight: FontWeight.bold)),
-            const Divider(),
-            ..._taskTypes.map((task) => ListTile(
-              title: Text(task['name']),
-              trailing: SizedBox(
-                width: 100,
-                child: TextField(
-                  controller: _rateControllers[task['name']],
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(suffixText: "so'm"),
-                ),
+            TextField(
+              controller: _nameController,
+              decoration: const InputDecoration(
+                labelText: "Ism Familiya",
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.person),
               ),
-            )),
+            ),
+            const SizedBox(height: 20),
+            DropdownButtonFormField<String>(
+              value: _roles.contains(_selectedRole) ? _selectedRole : 'worker',
+              decoration: const InputDecoration(
+                labelText: "Roli",
+                border: OutlineInputBorder(),
+              ),
+              items: _roles.map((r) => DropdownMenuItem(value: r, child: Text(r.toUpperCase()))).toList(),
+              onChanged: (val) => setState(() => _selectedRole = val!),
+            ),
             const SizedBox(height: 30),
             ElevatedButton(
-              onPressed: _saveChanges,
+              onPressed: _isSaving ? null : _updateProfile,
               style: ElevatedButton.styleFrom(
-                minimumSize: const Size(double.infinity, 50),
+                minimumSize: const Size(double.infinity, 55),
                 backgroundColor: Colors.blue.shade900,
-                foregroundColor: Colors.white
               ),
-              child: const Text("SAQLASH"),
+              child: _isSaving 
+                ? const CircularProgressIndicator(color: Colors.white)
+                : const Text("O'ZGARISHLARNI SAQLASH", style: TextStyle(color: Colors.white)),
             ),
-            const SizedBox(height: 15),
-            TextButton(
-              onPressed: () {
-                // Xodimni o'chirish mantiqi
-              },
-              child: const Text("Xodimni o'chirish", style: TextStyle(color: Colors.red)),
-            )
           ],
         ),
       ),
