@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'home_screen.dart';
-import 'stats_screen.dart';
-import 'user_profile_screen.dart';
-import 'manage_users_screen.dart';
+
+// --- DIQQAT: Importlar to'g'rilandi (screens papkasidan olinadi) ---
+import '../screens/home_screen.dart';
+import '../screens/stats_screen.dart';
+import '../screens/user_profile_screen.dart';
+import '../screens/manage_users_screen.dart';
 
 class MainWrapper extends StatefulWidget {
   const MainWrapper({super.key});
@@ -18,7 +20,7 @@ class _MainWrapperState extends State<MainWrapper> {
   String _userRole = 'worker';
   bool _isLoading = true;
 
-  // Sahifalar ro'yxati (Hozircha bo'sh, yuklangandan keyin to'ldiramiz)
+  // Sahifalar ro'yxati
   List<Widget> _pages = [];
 
   @override
@@ -40,7 +42,6 @@ class _MainWrapperState extends State<MainWrapper> {
         const HomeScreen(),          // 0: Uy
         const StatsScreen(),         // 1: Statistika (Faqat adminda)
         const ManageUsersScreen(),   // 2: Xodimlar (Faqat adminda)
-        // Profil uchun user ma'lumotini olish kerak, hozircha oddiy variant:
         _buildProfilePage(user!),    // 3: Profil
       ];
     } else {
@@ -51,14 +52,13 @@ class _MainWrapperState extends State<MainWrapper> {
       ];
     }
 
-    setState(() => _isLoading = false);
+    if (mounted) {
+      setState(() => _isLoading = false);
+    }
   }
 
   // Profil sahifasini qurish uchun yordamchi
   Widget _buildProfilePage(User user) {
-    // Profil sahifasi user ma'lumotini talab qiladi, shuning uchun uni fetch qilib beramiz
-    // Yoki UserProfileScreen ichida o'zi fetch qiladigan qilsa ham bo'ladi.
-    // Hozirgi UserProfileScreen strukturangizga moslash uchun:
     return FutureBuilder(
       future: _supabase.from('profiles').select().eq('id', user.id).single(),
       builder: (context, snapshot) {
@@ -73,13 +73,10 @@ class _MainWrapperState extends State<MainWrapper> {
     if (_isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
     return Scaffold(
-      // Sahifa almashishi shu yerda bo'ladi
       body: IndexedStack(
         index: _currentIndex,
         children: _pages,
       ),
-      
-      // PASTKI MENYU (WIDGET)
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           boxShadow: [
@@ -89,7 +86,7 @@ class _MainWrapperState extends State<MainWrapper> {
         child: BottomNavigationBar(
           currentIndex: _currentIndex,
           onTap: (index) => setState(() => _currentIndex = index),
-          type: BottomNavigationBarType.fixed, // Tugmalar ko'p bo'lsa siljimasligi uchun
+          type: BottomNavigationBarType.fixed,
           backgroundColor: Colors.white,
           selectedItemColor: Colors.blue.shade900,
           unselectedItemColor: Colors.grey,
