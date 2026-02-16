@@ -1,17 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'screens/login_screen.dart';
-import 'widgets/main_wrapper.dart'; // Navigatsiya hubi
+import 'widgets/main_wrapper.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // GitHub Actions'dan keladigan kalitlar
+  // GitHub Actions'dan --dart-define orqali keladigan kalitlarni qabul qilish
   const String supabaseUrl = String.fromEnvironment('SUPABASE_URL');
   const String supabaseKey = String.fromEnvironment('SUPABASE_KEY');
 
+  // Agar kalitlar kelsa, Supabase'ni ishga tushiramiz
   if (supabaseUrl.isNotEmpty && supabaseKey.isNotEmpty) {
-    await Supabase.initialize(url: supabaseUrl, anonKey: supabaseKey);
+    try {
+      await Supabase.initialize(
+        url: supabaseUrl,
+        anonKey: supabaseKey,
+      );
+    } catch (e) {
+      debugPrint("Supabase ulanish xatosi: $e");
+    }
   }
 
   runApp(const MyApp());
@@ -22,14 +30,23 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final session = Supabase.instance.client.auth.currentSession;
+    // Seansni xavfsiz tekshirish
+    bool isLoggedIn = false;
+    try {
+      final session = Supabase.instance.client.auth.currentSession;
+      isLoggedIn = session != null;
+    } catch (_) {
+      isLoggedIn = false;
+    }
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Aristokrat Mebel',
-      theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.blue.shade900),
-      // Seans bo'lsa MainWrapper'ga, bo'lmasa Login'ga
-      home: session != null ? const MainWrapper() : const LoginScreen(),
+      theme: ThemeData(
+        useMaterial3: true,
+        colorSchemeSeed: Colors.blue.shade900,
+      ),
+      home: isLoggedIn ? const MainWrapper() : const LoginScreen(),
     );
   }
 }
