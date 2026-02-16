@@ -1,16 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'screens/login_screen.dart';
-import 'widgets/main_wrapper.dart';
+import 'widget/main_wrapper.dart'; // <-- DIQQAT: To'g'ri yo'l (screens ichida)
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // GitHub Actions'dan --dart-define orqali keladigan kalitlarni qabul qilish
+  // Supabase kalitlari (GitHub Secrets dan yoki shu yerdan o'qiladi)
   const String supabaseUrl = String.fromEnvironment('SUPABASE_URL');
   const String supabaseKey = String.fromEnvironment('SUPABASE_KEY');
 
-  // Agar kalitlar kelsa, Supabase'ni ishga tushiramiz
+  // Supabase'ni ishga tushirish
   if (supabaseUrl.isNotEmpty && supabaseKey.isNotEmpty) {
     try {
       await Supabase.initialize(
@@ -30,7 +30,7 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Seansni xavfsiz tekshirish
+    // 1. Foydalanuvchi tizimga kirganligini aniqlash
     bool isLoggedIn = false;
     try {
       final session = Supabase.instance.client.auth.currentSession;
@@ -45,8 +45,10 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
         colorSchemeSeed: Colors.blue.shade900,
+        scaffoldBackgroundColor: Colors.grey.shade100,
       ),
-      home: session != null ? const MainWrapper() : const LoginScreen(),
+      // 2. Agar kirgan bo'lsa MainWrapper (Menyu), bo'lmasa LoginScreen
+      home: isLoggedIn ? const MainWrapper() : const LoginScreen(),
     );
   }
 }
