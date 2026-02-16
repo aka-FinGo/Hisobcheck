@@ -101,9 +101,12 @@ class _HomeScreenState extends State<HomeScreen> {
               role: _userRole,
               onStatsTap: () {
                 // Bu yerda umumiy sex statistikasi sahifasiga o'tamiz
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Umumiy statistika yaqinda qo'shiladi")));
-              },
-            ),
+               Navigator.push(
+					  context, 
+					  MaterialPageRoute(builder: (_) => const StatsScreen())
+				  );
+			  },
+		  ),
             const SizedBox(height: 20),
             _buildMenuBtn("Ish Qo'shish", Icons.add_circle, Colors.blue, _showWorkDialog),
             
