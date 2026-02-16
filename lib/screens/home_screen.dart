@@ -32,34 +32,41 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadAllData() async {
-    setState(() => _isLoading = true);
-    try {
-      final user = _supabase.auth.currentUser;
-      if (user == null) return;
-      _userId = user.id;
+  setState(() => _isLoading = true);
+  try {
+    final user = _supabase.auth.currentUser;
+    if (user == null) return;
+    _userId = user.id;
 
-      final profile = await _supabase.from('profiles').select().eq('id', _userId).single();
-      final workLogs = await _supabase.from('work_logs').select().eq('worker_id', _userId);
-      final withdrawals = await _supabase.from('withdrawals').select().eq('worker_id', _userId);
+    final profile = await _supabase.from('profiles').select().eq('id', _userId).single();
+    _userRole = profile['role'] ?? 'worker';
 
-      double earned = 0, withdrawn = 0;
-      for (var log in workLogs) {
-        if (log['is_approved'] == true) earned += (log['total_sum'] ?? 0).toDouble();
-      }
-      for (var w in withdrawals) withdrawn += (w['amount'] ?? 0).toDouble();
+    // 1. Shaxsiy ishlar: Faqat o'zimga tegishli ishlarni yuklaymiz
+    // Agar men Admin bo'lsam, o'zim kiritgan va o'zimga tegishli hamma narsa tasdiqlangan hisoblanadi
+    final workLogs = await _supabase.from('work_logs')
+        .select()
+        .eq('worker_id', _userId)
+        .eq('is_approved', true);
 
-      setState(() {
-        _userName = profile['full_name'] ?? 'Xodim';
-        _userRole = profile['role'] ?? 'worker';
-        _isSuperAdmin = profile['is_super_admin'] ?? false;
-        _totalEarned = earned;
-        _totalWithdrawn = withdrawn;
-        _isLoading = false;
-      });
-    } catch (e) {
-      setState(() => _isLoading = false);
-    }
+    // 2. Shaxsiy chiqimlar: Faqat o'zim olgan pullar
+    final withdrawals = await _supabase.from('withdrawals')
+        .select()
+        .eq('worker_id', _userId);
+
+    double earned = 0, withdrawn = 0;
+    for (var log in workLogs) earned += (log['total_sum'] ?? 0).toDouble();
+    for (var w in withdrawals) withdrawn += (w['amount'] ?? 0).toDouble();
+
+    setState(() {
+      _userName = profile['full_name'] ?? 'Xodim';
+      _totalEarned = earned;
+      _totalWithdrawn = withdrawn;
+      _isLoading = false;
+    });
+  } catch (e) {
+    setState(() => _isLoading = false);
   }
+}
 
   @override
   Widget build(BuildContext context) {
