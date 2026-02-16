@@ -1,274 +1,276 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'login_screen.dart';
+import 'admin_approvals.dart';
+import 'add_withdrawal.dart';
+import 'manage_users_screen.dart';
+import 'clients_screen.dart';
+import 'stats_screen.dart';
+import 'user_profile_screen.dart'; // Profilga o'tish uchun
+import '../widgets/balance_card.dart';
 
-class UserProfileScreen extends StatefulWidget {
-  final Map<String, dynamic> user;
-  const UserProfileScreen({super.key, required this.user});
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
 
   @override
-  State<UserProfileScreen> createState() => _UserProfileScreenState();
+  State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _UserProfileScreenState extends State<UserProfileScreen> {
+class _HomeScreenState extends State<HomeScreen> {
   final _supabase = Supabase.instance.client;
   bool _isLoading = true;
-  double _earned = 0;
-  double _withdrawn = 0;
+  String _userRole = 'worker';
+  String _userId = '';
+  double _totalEarned = 0;
+  double _totalWithdrawn = 0;
 
   @override
   void initState() {
     super.initState();
-    _loadUserStats();
+    _loadAllData();
   }
 
-  Future<void> _loadUserStats() async {
+  Future<void> _loadAllData() async {
+    if (!mounted) return;
+    setState(() => _isLoading = true);
     try {
-      final logs = await _supabase.from('work_logs').select('total_sum').eq('worker_id', widget.user['id']).eq('is_approved', true);
-      final draws = await _supabase.from('withdrawals').select('amount').eq('worker_id', widget.user['id']);
+      final user = _supabase.auth.currentUser;
+      if (user == null) return;
+      _userId = user.id;
 
-      double e = 0; double w = 0;
-      for (var l in logs) e += (l['total_sum'] ?? 0).toDouble();
-      for (var d in draws) w += (d['amount'] ?? 0).toDouble();
+      final profile = await _supabase.from('profiles').select().eq('id', _userId).single();
+      _userRole = profile['role'] ?? 'worker';
 
-      setState(() {
-        _earned = e; _withdrawn = w;
-        _isLoading = false;
-      });
+      final workLogs = await _supabase.from('work_logs')
+          .select('total_sum')
+          .eq('worker_id', _userId)
+          .eq('is_approved', true);
+
+      final withdrawals = await _supabase.from('withdrawals')
+          .select('amount')
+          .eq('worker_id', _userId);
+
+      double earned = 0, withdrawn = 0;
+      for (var log in workLogs) earned += (log['total_sum'] ?? 0).toDouble();
+      for (var w in withdrawals) withdrawn += (w['amount'] ?? 0).toDouble();
+
+      if (mounted) {
+        setState(() {
+          _totalEarned = earned;
+          _totalWithdrawn = withdrawn;
+          _isLoading = false;
+        });
+      }
     } catch (e) {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
+// Davomi pastda...
+// ...Yuqoridagi kodning davomi
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: _isLoading 
-        ? const Center(child: CircularProgressIndicator())
-        : Column(
-            children: [
-              _TopPortion(user: widget.user),
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    children: [
-                      Text(
-                        widget.user['full_name'] ?? "Noma'lum",
-                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 5),
-                      Text(
-                        (widget.user['role'] ?? "worker").toString().toUpperCase(),
-                        style: TextStyle(color: Colors.grey.shade600, letterSpacing: 1.5, fontSize: 12, fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 25),
-                      
-                      // Statistika qatori
-                      _ProfileInfoRow(earned: _earned, withdrawn: _withdrawn),
-                      
-                      const SizedBox(height: 30),
-                      
-                      // Menyu tugmalari
-                      _ProfileMenu(
-                        text: "Ma'lumotlarni tahrirlash",
-                        icon: Icons.edit_note_rounded,
-                        color: Colors.blue,
-                        press: () => _showEditDialog(),
-                      ),
-                      _ProfileMenu(
-                        text: "Shaxsiy tariflar",
-                        icon: Icons.payments_outlined,
-                        color: Colors.green,
-                        press: () {
-                          // Tariflar mantiqi shu yerga keladi
-                        },
-                      ),
-                      _ProfileMenu(
-                        text: "Xavfsizlik va Parol",
-                        icon: Icons.lock_reset_rounded,
-                        color: Colors.orange,
-                        press: () {},
-                      ),
-                      _ProfileMenu(
-                        text: "Xodimni o'chirish",
-                        icon: Icons.delete_forever_rounded,
-                        color: Colors.red,
-                        press: () {},
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-    );
-  }
+    if (_isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
-  // Tahrirlash dialogi
-  void _showEditDialog() {
-    final nameController = TextEditingController(text: widget.user['full_name']);
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
-      builder: (context) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom + 20, left: 20, right: 20, top: 20),
+    return Scaffold(
+      backgroundColor: Colors.grey.shade100,
+      appBar: AppBar(
+        backgroundColor: Colors.blue.shade900,
+        title: const Text("Aristokrat Mebel", style: TextStyle(color: Colors.white)),
+        actions: [
+          IconButton(onPressed: _loadAllData, icon: const Icon(Icons.refresh, color: Colors.white)),
+          IconButton(
+            onPressed: () async {
+              await _supabase.auth.signOut();
+              if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+            },
+            icon: const Icon(Icons.logout, color: Colors.white),
+          ),
+        ],
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
           children: [
-            const Text("Ma'lumotlarni o'zgartirish", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 20),
-            TextField(controller: nameController, decoration: const InputDecoration(labelText: "F.I.SH", border: OutlineInputBorder())),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () async {
-                await _supabase.from('profiles').update({'full_name': nameController.text}).eq('id', widget.user['id']);
-                Navigator.pop(context);
-                _loadUserStats();
+            BalanceCard(
+              earned: _totalEarned, 
+              withdrawn: _totalWithdrawn,
+              role: _userRole,
+              onStatsTap: () {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const StatsScreen()));
               },
-              style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50), backgroundColor: Colors.blue.shade900),
-              child: const Text("SAQLASH", style: TextStyle(color: Colors.white)),
-            )
+            ),
+            const SizedBox(height: 20),
+            _buildMenuBtn("Ish Qo'shish", Icons.add_circle, Colors.blue, _showWorkDialog),
+            
+            if (_userRole == 'admin' || _userRole == 'owner') ...[
+              const SizedBox(height: 10),
+              _buildMenuBtn("Mijozlar & Zakazlar", Icons.people_alt, Colors.indigo, () {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const ClientsScreen()));
+              }),
+              const SizedBox(height: 30),
+              const Divider(),
+              const Text("ADMIN PANEL", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
+              const SizedBox(height: 15),
+              Row(
+                children: [
+                  Expanded(child: _buildMenuBtnSmall("Tasdiqlash", Icons.fact_check, Colors.purple, () {
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminApprovalsScreen()));
+                  })),
+                  const SizedBox(width: 10),
+                  Expanded(child: _buildMenuBtnSmall("Pul Berish", Icons.payments, Colors.green, () {
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => const AddWithdrawalScreen()));
+                  })),
+                ],
+              ),
+              const SizedBox(height: 10),
+              _buildMenuBtn("Xodimlar & Rollar", Icons.manage_accounts, Colors.orange, () {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const ManageUsersScreen()));
+              }),
+            ],
           ],
         ),
       ),
     );
   }
-}
 
-class _TopPortion extends StatelessWidget {
-  final Map<String, dynamic> user;
-  const _TopPortion({required this.user});
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        Container(
-          height: 200, // Stack fit expand bo'lgani uchun balandlikni cheklaymiz
-        ),
-        Align(
-          alignment: Alignment.topCenter,
-          child: Container(
-            height: 150,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Colors.blue.shade900, Colors.blue.shade700],
-              ),
-              borderRadius: const BorderRadius.only(
-                bottomLeft: Radius.circular(50),
-                bottomRight: Radius.circular(50),
-              ),
-            ),
-          ),
-        ),
-        Positioned(
-          top: 80,
-          left: 0,
-          right: 0,
-          child: Center(
-            child: Container(
-              width: 130,
-              height: 130,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.white, width: 5),
-                color: Colors.grey.shade200,
-              ),
-              child: Center(
-                child: Text(
-                  (user['full_name'] ?? "?")[0].toUpperCase(),
-                  style: TextStyle(fontSize: 50, fontWeight: FontWeight.bold, color: Colors.blue.shade900),
-                ),
-              ),
-            ),
-          ),
-        ),
-        Positioned(
-          top: 40,
-          left: 10,
-          child: IconButton(
-            icon: const Icon(Icons.arrow_back, color: Colors.white),
-            onPressed: () => Navigator.pop(context),
-          ),
+  Widget _buildMenuBtn(String t, IconData i, Color c, VoidCallback onTap) {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: onTap, icon: Icon(i), label: Text(t), 
+        style: ElevatedButton.styleFrom(
+          backgroundColor: c, foregroundColor: Colors.white, 
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
         )
-      ],
-    );
-  }
-}
-
-class _ProfileInfoRow extends StatelessWidget {
-  final double earned;
-  final double withdrawn;
-  const _ProfileInfoRow({required this.earned, required this.withdrawn});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade50,
-        borderRadius: BorderRadius.circular(15),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          _buildInfoItem("Ishladi", earned, Colors.green),
-          _buildVerticalDivider(),
-          _buildInfoItem("Oldi", withdrawn, Colors.orange),
-          _buildVerticalDivider(),
-          _buildInfoItem("Qoldi", earned - withdrawn, Colors.blue.shade900),
-        ],
       ),
     );
   }
 
-  Widget _buildVerticalDivider() => Container(height: 30, width: 1, color: Colors.grey.shade300);
-
-  Widget _buildInfoItem(String title, double value, Color color) {
-    return Column(
-      children: [
-        Text(value.toInt().toString(), style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
-        const SizedBox(height: 4),
-        Text(title, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-      ],
+  Widget _buildMenuBtnSmall(String t, IconData i, Color c, VoidCallback onTap) {
+    return ElevatedButton.icon(
+      onPressed: onTap, icon: Icon(i, size: 18), label: Text(t, style: const TextStyle(fontSize: 13)), 
+      style: ElevatedButton.styleFrom(
+        backgroundColor: c, foregroundColor: Colors.white, 
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
+      )
     );
   }
-}
+// Davomi pastda...
+// ...Yuqoridagi kodning davomi
 
-class _ProfileMenu extends StatelessWidget {
-  final String text;
-  final IconData icon;
-  final Color color;
-  final VoidCallback press;
+  void _showWorkDialog() async {
+    final ordersResp = await _supabase.from('orders').select().order('created_at');
+    final taskTypesResp = await _supabase.from('task_types').select();
 
-  const _ProfileMenu({required this.text, required this.icon, required this.color, required this.press});
+    if (!mounted) return;
 
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: InkWell(
-        onTap: press,
-        borderRadius: BorderRadius.circular(15),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
-          decoration: BoxDecoration(
-            color: Colors.grey.shade50,
-            borderRadius: BorderRadius.circular(15),
-            border: Border.all(color: Colors.grey.shade100),
+    final orders = List<Map<String, dynamic>>.from(ordersResp);
+    final taskTypes = List<Map<String, dynamic>>.from(taskTypesResp);
+
+    String? selectedOrderId;
+    Map<String, dynamic>? selectedTask;
+    final areaController = TextEditingController();
+    final descController = TextEditingController();
+    bool isSubmitting = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) => Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+            left: 20, right: 20, top: 20
           ),
-          child: Row(
-            children: [
-              Icon(icon, color: color, size: 24),
-              const SizedBox(width: 20),
-              Expanded(child: Text(text, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15))),
-              const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
-            ],
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(child: Container(width: 50, height: 5, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(10)))),
+                const SizedBox(height: 20),
+                const Text("Ish topshirish", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 20),
+
+                DropdownButtonFormField<String>(
+                  decoration: const InputDecoration(labelText: "Qaysi zakaz?", border: OutlineInputBorder()),
+                  items: orders.map((o) {
+                    String label = "${o['order_number']}";
+                    if (o['client_name'] != null && o['client_name'].toString().isNotEmpty) {
+                      label += " - ${o['client_name']}";
+                    }
+                    return DropdownMenuItem(value: o['id'].toString(), child: Text(label));
+                  }).toList(),
+                  onChanged: (v) => setModalState(() => selectedOrderId = v),
+                ),
+                const SizedBox(height: 15),
+
+                DropdownButtonFormField<Map<String, dynamic>>(
+                  decoration: const InputDecoration(labelText: "Nima ish qildingiz?", border: OutlineInputBorder()),
+                  items: taskTypes.map((t) => DropdownMenuItem(value: t, child: Text("${t['name']}"))).toList(),
+                  onChanged: (v) => setModalState(() => selectedTask = v),
+                ),
+                const SizedBox(height: 15),
+
+                TextField(
+                  controller: areaController,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: "Hajmi (m2 yoki dona)", border: OutlineInputBorder()),
+                ),
+                const SizedBox(height: 15),
+                
+                TextField(
+                  controller: descController,
+                  decoration: const InputDecoration(labelText: "Izoh (ixtiyoriy)", border: OutlineInputBorder(), hintText: "Masalan: Oshxona"),
+                ),
+                const SizedBox(height: 25),
+
+                SizedBox(
+                  width: double.infinity,
+                  height: 55,
+                  child: ElevatedButton(
+                    onPressed: isSubmitting ? null : () async {
+                      if (selectedOrderId == null || selectedTask == null || areaController.text.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("To'ldirish shart!")));
+                        return;
+                      }
+                      setModalState(() => isSubmitting = true);
+                      try {
+                        double area = double.tryParse(areaController.text.replaceAll(',', '.')) ?? 0;
+                        double rate = (selectedTask!['default_rate'] ?? 0).toDouble();
+
+                        await _supabase.from('work_logs').insert({
+                          'worker_id': _userId,
+                          'order_id': int.parse(selectedOrderId!),
+                          'task_type': selectedTask!['name'],
+                          'area_m2': area,
+                          'rate': rate,
+                          'total_sum': area * rate,
+                          'description': descController.text,
+                          'is_approved': (_userRole == 'admin' || _userRole == 'owner'),
+                          'approved_by': (_userRole == 'admin' || _userRole == 'owner') ? _userId : null,
+                        });
+
+                        if (mounted) {
+                          Navigator.pop(context);
+                          _loadAllData();
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(backgroundColor: Colors.green, content: Text("Saqlandi!")));
+                        }
+                      } catch (e) {
+                        setModalState(() => isSubmitting = false);
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(backgroundColor: Colors.red, content: Text("Xato: $e")));
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade900, foregroundColor: Colors.white),
+                    child: isSubmitting ? const CircularProgressIndicator(color: Colors.white) : const Text("TOPSHIRISH"),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
