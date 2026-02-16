@@ -166,70 +166,138 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _showWorkDialog() async {
-    final orders = await _supabase.from('orders').select();
-    final taskTypes = await _supabase.from('task_types').select();
-    
-    if (!mounted) return;
+void _showWorkDialog() async {
+  // Bazadan ma'lumotlarni olish
+  final orders = await _supabase.from('orders').select();
+  final taskTypes = await _supabase.from('task_types').select();
 
-    String? selectedOrderId;
-    Map<String, dynamic>? selectedTask;
-    final areaController = TextEditingController();
+  if (!mounted) return;
 
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) => Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom + 25, left: 25, right: 25, top: 25),
+  String? selectedOrderId;
+  Map<String, dynamic>? selectedTask;
+  final areaController = TextEditingController();
+  final descController = TextEditingController();
+  double currentTotal = 0;
+
+  showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
+    builder: (context) => StatefulBuilder(
+      builder: (context, setModalState) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+          left: 20, right: 20, top: 20
+        ),
+        child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text("Ishni Kiritish", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 25),
+              const Center(
+                child: Container(width: 50, height: 5, decoration: BoxDecoration(color: Colors.grey, borderRadius: BorderRadius.circular(10))),
+              ),
+              const SizedBox(height: 20),
+              const Text("Yangi ish topshirish", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 20),
+
+              // 1. Zakazni tanlash
               DropdownButtonFormField<String>(
-                decoration: const InputDecoration(labelText: "Zakazni tanlang", border: OutlineInputBorder()),
-                items: orders.map((o) => DropdownMenuItem(value: o['id'].toString(), child: Text("${o['order_number']}"))).toList(),
+                decoration: const InputDecoration(labelText: "Qaysi zakaz?", border: OutlineInputBorder()),
+                items: orders.map((o) => DropdownMenuItem(value: o['id'].toString(), child: Text("${o['order_number']} - ${o['client_name']}"))).toList(),
+                onChanged: (v) => setModalState(() => selectedOrderId = v),
+              ),
+              const SizedBox(height: 15),
+
+              // 2. Ish turini tanlash
+              DropdownButtonFormField<Map<String, dynamic>>(
+                decoration: const InputDecoration(labelText: "Nima ish qildingiz?", border: OutlineInputBorder()),
+                items: taskTypes.map((t) => DropdownMenuItem(value: t, child: Text("${t['name']}"))).toList(),
                 onChanged: (v) {
-                  selectedOrderId = v;
-                  final selectedOrder = orders.firstWhere((o) => o['id'].toString() == v);
-                  setModalState(() => areaController.text = selectedOrder['total_area_m2']?.toString() ?? "0");
+                  setModalState(() {
+                    selectedTask = v;
+                    double area = double.tryParse(areaController.text) ?? 0;
+                    currentTotal = area * (v?['default_rate'] ?? 0);
+                  });
                 },
               ),
               const SizedBox(height: 15),
-              DropdownButtonFormField<Map<String, dynamic>>(
-                decoration: const InputDecoration(labelText: "Ish turi", border: OutlineInputBorder()),
-                items: taskTypes.map((t) => DropdownMenuItem(value: t, child: Text("${t['name']}"))).toList(),
-                onChanged: (v) => setModalState(() => selectedTask = v),
+
+              // 3. Hajmi (m2 yoki dona)
+              TextField(
+                controller: areaController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: "Hajmi (m2 / dona)", border: OutlineInputBorder(), hintText: "Masalan: 5.5"),
+                onChanged: (v) {
+                  setModalState(() {
+                    double area = double.tryParse(v) ?? 0;
+                    currentTotal = area * (selectedTask?['default_rate'] ?? 0);
+                  });
+                },
               ),
+              const SizedBox(height: 15),
+
+              // 4. Izoh (Qaysi detal yoki xona)
+              TextField(
+                controller: descController,
+                decoration: const InputDecoration(labelText: "Qo'shimcha izoh", border: OutlineInputBorder(), hintText: "Masalan: Oshxona tepa shkaflari"),
+              ),
+              
+              const SizedBox(height: 20),
+
+              // Hisoblangan summani ko'rsatish
+              if (currentTotal > 0)
+                Container(
+                  padding: const EdgeInsets.all(15),
+                  decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(10)),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text("Taxminiy haqingiz:", style: TextStyle(fontWeight: FontWeight.bold)),
+                      Text("${currentTotal.toStringAsFixed(0)} so'm", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 18)),
+                    ],
+                  ),
+                ),
+
               const SizedBox(height: 25),
+
+              // SAQLASH TUGMASI
               ElevatedButton(
                 onPressed: () async {
-                  if (selectedOrderId == null || selectedTask == null) return;
-                  
-                  double area = double.tryParse(areaController.text) ?? 0;
-                  double rate = (selectedTask!['default_rate'] ?? 0).toDouble();
-                  
+                  if (selectedOrderId == null || selectedTask == null || areaController.text.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Hamma joyni to'ldiring!")));
+                    return;
+                  }
+
                   await _supabase.from('work_logs').insert({
                     'worker_id': _userId,
                     'order_id': int.parse(selectedOrderId!),
                     'task_type': selectedTask!['name'],
-                    'area_m2': area,
-                    'rate': rate,
-                    'total_sum': area * rate,
-                    // Admin yoki Owner o'z ishini o'zi tasdiqlaydi
+                    'area_m2': double.parse(areaController.text),
+                    'rate': selectedTask!['default_rate'],
+                    'total_sum': currentTotal,
+                    'description': descController.text,
                     'is_approved': (_userRole == 'admin' || _userRole == 'owner'),
                     'approved_by': (_userRole == 'admin' || _userRole == 'owner') ? _userId : null,
                   });
-                  if (mounted) { Navigator.pop(context); _loadAllData(); }
+
+                  if (mounted) {
+                    Navigator.pop(context);
+                    _loadAllData();
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(backgroundColor: Colors.green, content: Text("Ish muvaffaqiyatli saqlandi!")));
+                  }
                 },
-                style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 55), backgroundColor: Colors.blue.shade900, foregroundColor: Colors.white),
-                child: const Text("SAQLASH"),
+                style: ElevatedButton.styleFrom(
+                  minimumSize: const Size(double.infinity, 55),
+                  backgroundColor: Colors.blue.shade900,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))
+                ),
+                child: const Text("TOPSHIRISH", style: TextStyle(color: Colors.white, fontSize: 16)),
               ),
             ],
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
 }
