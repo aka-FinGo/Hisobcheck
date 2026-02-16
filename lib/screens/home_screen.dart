@@ -8,7 +8,7 @@ import 'add_withdrawal.dart';
 import 'manage_users_screen.dart';
 import 'clients_screen.dart';
 import '../widgets/balance_card.dart';
-
+import 'stats_screen.dart'; // StatsScreen sahifasini HomeScreen'ga tanitish
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
