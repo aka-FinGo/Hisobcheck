@@ -4,14 +4,14 @@ class BalanceCard extends StatelessWidget {
   final double earned;
   final double withdrawn;
   final String role;
-  final VoidCallback? onStatsTap;
+  final VoidCallback onStatsTap;
 
   const BalanceCard({
     super.key,
     required this.earned,
     required this.withdrawn,
     required this.role,
-    this.onStatsTap,
+    required this.onStatsTap,
   });
 
   @override
@@ -28,15 +28,11 @@ class BalanceCard extends StatelessWidget {
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(color: Colors.blue.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5))
-        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text("Mening shaxsiy balansim", style: TextStyle(color: Colors.white70, fontSize: 13)),
-          const SizedBox(height: 5),
           Text(
             "${balance.toStringAsFixed(0)} so'm",
             style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold),
@@ -49,25 +45,19 @@ class BalanceCard extends StatelessWidget {
               _miniStat("Oldim", withdrawn, Icons.trending_down, Colors.orangeAccent),
             ],
           ),
-          
-          // Agar Admin yoki Boshliq bo'lsa, umumiy statistikaga o'tish tugmasi
+          // Admin yoki Owner uchun maxsus tugma
           if (role == 'admin' || role == 'owner') ...[
-            const SizedBox(height: 15),
-            const Divider(color: Colors.white24),
+            const Divider(color: Colors.white24, height: 25),
             InkWell(
               onTap: onStatsTap,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8.0),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: const [
-                    Icon(Icons.analytics, color: Colors.amber, size: 20),
-                    SizedBox(width: 8),
-                    Text("Sex umumiy statistikasi", 
-                      style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold)),
-                    Icon(Icons.chevron_right, color: Colors.amber),
-                  ],
-                ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: const [
+                  Icon(Icons.analytics, color: Colors.amber, size: 18),
+                  SizedBox(width: 8),
+                  Text("Sex umumiy statistikasi", style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold)),
+                  Icon(Icons.chevron_right, color: Colors.amber),
+                ],
               ),
             ),
           ],
