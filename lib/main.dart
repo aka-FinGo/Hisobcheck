@@ -46,7 +46,7 @@ class MyApp extends StatelessWidget {
         useMaterial3: true,
         colorSchemeSeed: Colors.blue.shade900,
       ),
-      home: isLoggedIn ? const MainWrapper() : const LoginScreen(),
+      home: session != null ? const MainWrapper() : const LoginScreen(),
     );
   }
 }
