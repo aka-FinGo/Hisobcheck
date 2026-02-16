@@ -75,19 +75,20 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       backgroundColor: Colors.grey.shade100,
       appBar: AppBar(
-        backgroundColor: Colors.blue.shade900,
-        title: const Text("Aristokrat Mebel", style: TextStyle(color: Colors.white)),
-        actions: [
-          IconButton(onPressed: _loadAllData, icon: const Icon(Icons.refresh, color: Colors.white)),
-          IconButton(
-            onPressed: () async {
-              await _supabase.auth.signOut();
-              if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
-            },
-            icon: const Icon(Icons.logout, color: Colors.white),
-          ),
-        ],
-      ),
+  title: const Text("Aristokrat Mebel"),
+  actions: [
+    // --- YANGI TUGMA (INCLUDE QILINGAN) ---
+    ReloadButton(
+      onRefresh: _loadAllData, // Bu yerda qaysi funksiya ishlashini aytasiz
+    ),
+    // --------------------------------------
+
+    IconButton(
+      onPressed: () { ... }, 
+      icon: const Icon(Icons.logout)
+    ),
+  ],
+),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
