@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'screens/login_screen.dart';
-import 'widget/main_wrapper.dart'; // <-- DIQQAT: To'g'ri yo'l (screens ichida)
+import 'widgets/main_wrapper.dart'; // <-- DIQQAT: To'g'ri yo'l (screens ichida)
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
