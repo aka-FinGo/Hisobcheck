@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-
+import '../widgets/reload_button.dart'; // Yo'lni to'g'ri ko'rsating
 class UserProfileScreen extends StatefulWidget {
   final Map<String, dynamic> user;
   const UserProfileScreen({super.key, required this.user});
