@@ -1,44 +1,52 @@
-name: Android Build
+import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'screens/login_screen.dart';
+import 'widgets/main_wrapper.dart';
 
-on:
-  workflow_dispatch:
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+  // GitHub Actions'dan --dart-define orqali keladigan kalitlarni qabul qilish
+  const String supabaseUrl = String.fromEnvironment('SUPABASE_URL');
+  const String supabaseKey = String.fromEnvironment('SUPABASE_KEY');
 
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'zulu'
-          java-version: '17'
+  // Agar kalitlar kelsa, Supabase'ni ishga tushiramiz
+  if (supabaseUrl.isNotEmpty && supabaseKey.isNotEmpty) {
+    try {
+      await Supabase.initialize(
+        url: supabaseUrl,
+        anonKey: supabaseKey,
+      );
+    } catch (e) {
+      debugPrint("Supabase ulanish xatosi: $e");
+    }
+  }
 
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.19.0'
+  runApp(const MyApp());
+}
 
-      - name: Install Dependencies
-        run: |
-          sed -i 's/name: Hisobcheck/name: hisobcheck/g' pubspec.yaml
-          flutter pub get
-          flutter pub add supabase_flutter intl shared_preferences
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
 
-      - name: Build APK
-        run: |
-          rm -rf android
-          flutter create --project-name hisobcheck --platforms android .
-          # Internet permission
-          sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <application|g' android/app/src/main/AndroidManifest.xml
-          # Build with secrets
-          flutter build apk --release \
-            --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
-            --dart-define=SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}
+  @override
+  Widget build(BuildContext context) {
+    // Seansni xavfsiz tekshirish
+    bool isLoggedIn = false;
+    try {
+      final session = Supabase.instance.client.auth.currentSession;
+      isLoggedIn = session != null;
+    } catch (_) {
+      isLoggedIn = false;
+    }
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'Aristokrat Mebel',
+      theme: ThemeData(
+        useMaterial3: true,
+        colorSchemeSeed: Colors.blue.shade900,
+      ),
+      home: isLoggedIn ? const MainWrapper() : const LoginScreen(),
+    );
+  }
+}
