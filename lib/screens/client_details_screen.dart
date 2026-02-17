@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'order_details_screen.dart'; // <--- MANA SHU IMPORT YETISHMAYOTGAN EDI
 
 class ClientDetailsScreen extends StatefulWidget {
   final Map<String, dynamic> client;
@@ -14,7 +15,7 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> {
   final _supabase = Supabase.instance.client;
   bool _isLoading = true;
   List<Map<String, dynamic>> _clientOrders = [];
-  Map<String, dynamic> _clientData = {}; // Tahrirlanganda yangilanib turishi uchun
+  Map<String, dynamic> _clientData = {}; 
 
   @override
   void initState() {
@@ -28,7 +29,7 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> {
     try {
       final response = await _supabase
           .from('orders')
-          .select('*, work_logs(total_sum)') // Work logs orqali xarajatlarni ham ko'rish mumkin
+          .select('*, work_logs(total_sum)') 
           .eq('client_id', _clientData['id'])
           .order('created_at', ascending: false);
 
@@ -75,11 +76,10 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> {
                   'address': addressController.text,
                 };
                 
-                // Bazada yangilash
                 final res = await _supabase.from('clients').update(updates).eq('id', _clientData['id']).select().single();
                 
                 setState(() {
-                  _clientData = res; // Ekranni yangilash
+                  _clientData = res;
                 });
                 
                 if (mounted) Navigator.pop(ctx);
@@ -112,7 +112,7 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> {
     if (confirm == true) {
       await _supabase.from('clients').delete().eq('id', _clientData['id']);
       if (mounted) {
-        Navigator.pop(context, true); // Orqaga "yangilanish kerak" degan signal bilan qaytish
+        Navigator.pop(context, true); 
       }
     }
   }
@@ -172,14 +172,13 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> {
                           isThreeLine: true,
                           trailing: Icon(Icons.circle, color: _getStatusColor(order['status'])),
                           onTap: () async {
-  // YANGI OYNAGA O'TISH
-  await Navigator.push(
-    context,
-    MaterialPageRoute(builder: (_) => OrderDetailsScreen(orderId: order['id'])),
-  );
-  // Qaytib kelganda ma'lumotni yangilash
-  _loadClientOrders();
-                            // Kelajakda: Zakaz ichiga kirib uni tahrirlash sahifasiga o'tish
+                            // --- ZAKAZ TAFSILOTLARIGA O'TISH ---
+                            await Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => OrderDetailsScreen(orderId: order['id'])),
+                            );
+                            // Qaytib kelganda yangilash
+                            _loadClientOrders();
                           },
                         ),
                       );
@@ -196,6 +195,7 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> {
       case 'pending': return Colors.orange;
       case 'completed': return Colors.green;
       case 'in_progress': return Colors.blue;
+      case 'canceled': return Colors.red;
       default: return Colors.grey;
     }
   }
