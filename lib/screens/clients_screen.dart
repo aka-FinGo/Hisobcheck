@@ -25,8 +25,9 @@ class _ClientsScreenState extends State<ClientsScreen> {
     setState(() => _isLoading = true);
     try {
       final results = await Future.wait([
-        _supabase.from('clients').select().order('name'),
-        _supabase.from('orders').select('*, clients(name), work_logs(total_sum, is_approved)').order('created_at', ascending: false)
+        // Diqqat: 'full_name' ni chaqiryapmiz
+        _supabase.from('clients').select().order('created_at'),
+        _supabase.from('orders').select('*, clients(full_name), work_logs(total_sum, is_approved)').order('created_at', ascending: false)
       ]);
 
       if (mounted) {
@@ -48,6 +49,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
   void _showAddClientDialog() {
     final nameController = TextEditingController();
     final phoneController = TextEditingController();
+    final addressController = TextEditingController(); // Address ham bor ekan
 
     showDialog(
       context: context,
@@ -56,9 +58,11 @@ class _ClientsScreenState extends State<ClientsScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(controller: nameController, decoration: const InputDecoration(labelText: "F.I.SH", border: OutlineInputBorder())),
+            TextField(controller: nameController, decoration: const InputDecoration(labelText: "F.I.SH (To'liq ism)", border: OutlineInputBorder())),
             const SizedBox(height: 10),
             TextField(controller: phoneController, decoration: const InputDecoration(labelText: "Telefon", border: OutlineInputBorder())),
+            const SizedBox(height: 10),
+            TextField(controller: addressController, decoration: const InputDecoration(labelText: "Manzil", border: OutlineInputBorder())),
           ],
         ),
         actions: [
@@ -67,16 +71,23 @@ class _ClientsScreenState extends State<ClientsScreen> {
             onPressed: () async {
               if (nameController.text.trim().isEmpty) return;
               try {
+                // SIZNING BAZANGIZGA MOSLANISH:
+                // 'full_name' ga yozamiz (chunki u NOT NULL)
                 await _supabase.from('clients').insert({
-                  'name': nameController.text.trim(), 
-                  'phone': phoneController.text.trim()
+                  'full_name': nameController.text.trim(), 
+                  'name': nameController.text.trim(), // Ikkalasiga ham yozib qo'yamiz ehtiyot shart
+                  'phone': phoneController.text.trim(),
+                  'address': addressController.text.trim(),
                 });
+                
                 if (mounted) {
                   Navigator.pop(ctx);
                   _loadInitialData();
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Mijoz qo'shildi!"), backgroundColor: Colors.green));
                 }
               } catch (e) {
                 debugPrint("Mijoz saqlashda xato: $e");
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e"), backgroundColor: Colors.red));
               }
             },
             child: const Text("SAQLASH"),
@@ -88,7 +99,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
 
   // --- ZAKAZ (LOYIHA) QO'SHISH ---
   void _showAddOrderDialog() {
-    String? selectedClientId;
+    Object? selectedClientId; // BigInt bo'lgani uchun Object qilib turamiz
     final projectController = TextEditingController();
     final areaController = TextEditingController();
     final priceController = TextEditingController();
@@ -106,9 +117,12 @@ class _ClientsScreenState extends State<ClientsScreen> {
               const Text("Yangi Loyiha (Zakaz)", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 20),
               
-              DropdownButtonFormField<String>(
+              DropdownButtonFormField<Object>(
                 decoration: const InputDecoration(labelText: "Mijozni tanlang", border: OutlineInputBorder()),
-                items: _clients.map((c) => DropdownMenuItem(value: c['id'].toString(), child: Text(c['name']))).toList(),
+                items: _clients.map((c) => DropdownMenuItem(
+                  value: c['id'], // Bu yerda ID raqam (BigInt) ketadi
+                  child: Text(c['full_name'] ?? c['name'] ?? "Noma'lum")
+                )).toList(),
                 onChanged: (v) => setModalState(() => selectedClientId = v),
               ),
               const SizedBox(height: 12),
@@ -117,7 +131,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
               TextField(
                 controller: areaController, 
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(labelText: "O'lchangan kvadrat (m2)", border: OutlineInputBorder(), suffixText: "m2"),
+                decoration: const InputDecoration(labelText: "Umumiy kvadrat (m2)", border: OutlineInputBorder(), suffixText: "m2"),
               ),
               const SizedBox(height: 12),
               TextField(
@@ -130,29 +144,37 @@ class _ClientsScreenState extends State<ClientsScreen> {
                 onPressed: () async {
                   if (selectedClientId == null || projectController.text.isEmpty) return;
                   
-                  final client = _clients.firstWhere((c) => c['id'].toString() == selectedClientId);
-                  String clientSafeName = client['name'].toString().replaceAll(' ', '-');
+                  final client = _clients.firstWhere((c) => c['id'] == selectedClientId);
+                  String clientSafeName = (client['full_name'] ?? client['name']).toString().replaceAll(' ', '-');
                   
                   // Format: 100_01_Ism_Loyiha
                   String prefix = "100";
                   String seq = (_orders.length + 1).toString().padLeft(2, '0');
                   String generatedName = "${prefix}_${seq}_${clientSafeName}_${projectController.text.replaceAll(' ', '-')}";
+                  
+                  // Kvadratni raqamga o'girish
+                  double area = double.tryParse(areaController.text.replaceAll(',', '.')) ?? 0;
 
                   try {
+                    // SIZNING BAZANGIZGA MOSLANISH:
                     await _supabase.from('orders').insert({
-                      'client_id': selectedClientId,
+                      'client_id': selectedClientId, // Raqam (BigInt)
                       'project_name': generatedName,
-                      'measured_area': double.tryParse(areaController.text.replaceAll(',', '.')) ?? 0,
-                      'total_price': double.tryParse(priceController.text) ?? 0,
                       'order_number': generatedName,
-                      'status': 'pending',
+                      'total_area_m2': area, // BU MAJBURIY (NOT NULL)
+                      'measured_area': area,
+                      'total_price': double.tryParse(priceController.text) ?? 0,
+                      'status': 'pending', // 'new' emas, 'pending' yozamiz constraint uchun
                     });
+
                     if (mounted) {
                       Navigator.pop(ctx);
                       _loadInitialData();
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Zakaz ochildi!"), backgroundColor: Colors.green));
                     }
                   } catch (e) {
                     debugPrint("Order saqlashda xato: $e");
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e"), backgroundColor: Colors.red));
                   }
                 },
                 style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 55), backgroundColor: Colors.blue.shade900),
@@ -182,7 +204,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
                 child: ListTile(
                   title: Text("${order['project_name']}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                  subtitle: Text("Hajm: ${order['measured_area']} m² | Status: ${order['status']}"),
+                  subtitle: Text("Hajm: ${order['total_area_m2']} m² | Status: ${order['status']}"),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () {
                     // Detallar sahifasiga o'tish mantiqi
