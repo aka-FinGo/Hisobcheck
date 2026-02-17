@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'order_details_screen.dart'; // <--- MANA SHU IMPORT YETISHMAYOTGAN EDI
+import 'order_details_screen.dart'; // <--- MUAMMO SHU YERDA EDI (Endi ulandi)
 
 class ClientDetailsScreen extends StatefulWidget {
   final Map<String, dynamic> client;
@@ -173,11 +173,12 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> {
                           trailing: Icon(Icons.circle, color: _getStatusColor(order['status'])),
                           onTap: () async {
                             // --- ZAKAZ TAFSILOTLARIGA O'TISH ---
+                            // Bu yerda o'sha sizda bor bo'lgan OrderDetailsScreen faylini chaqiramiz
                             await Navigator.push(
                               context,
                               MaterialPageRoute(builder: (_) => OrderDetailsScreen(orderId: order['id'])),
                             );
-                            // Qaytib kelganda yangilash
+                            // Qaytib kelganda ma'lumotni yangilash
                             _loadClientOrders();
                           },
                         ),
