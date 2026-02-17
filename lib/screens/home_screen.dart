@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'manage_users_screen.dart';   
-import 'clients_screen.dart';        
-import 'admin_finance_screen.dart';  
+import 'manage_users_screen.dart';
+import 'clients_screen.dart';
+import 'admin_finance_screen.dart';
+import 'user_profile_screen.dart';
+import '../widgets/balance_card.dart'; // Sizning animatsiyali kartangiz
+import '../widgets/reload_button.dart'; // Sizning yangilash tugmangiz
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -14,17 +17,14 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final _supabase = Supabase.instance.client;
   bool _isLoading = true;
-  
-  // User Info
   String _userRole = 'worker';
   String _userName = '';
   
-  // Worker Stats
-  double _myBalance = 0;
-  double _earnedTotal = 0;
-  double _paidTotal = 0;
+  // Moliya ma'lumotlari
+  double _totalEarned = 0;
+  double _totalWithdrawn = 0;
   
-  // Admin Stats
+  // Admin stats
   int _totalOrders = 0;
   int _activeOrders = 0;
   double _companyBalance = 0;
@@ -32,109 +32,88 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _loadData();
+    _loadAllData();
   }
 
-  Future<void> _loadData() async {
+  Future<void> _loadAllData() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
     try {
       final user = _supabase.auth.currentUser;
       if (user == null) return;
 
-      // 1. Profil va Rolni olish
+      // 1. Profilni yuklash
       final profile = await _supabase.from('profiles').select().eq('id', user.id).single();
       _userRole = profile['role'] ?? 'worker';
       _userName = profile['full_name'] ?? 'Foydalanuvchi';
 
+      // 2. Moliya ma'lumotlarini yuklash (Admin va Ishchi uchun umumiy hisob-kitoblar)
+      final works = await _supabase.from('work_logs').select('total_sum').eq('worker_id', user.id);
+      final withdraws = await _supabase.from('withdrawals').select('amount').eq('user_id', user.id).eq('status', 'approved');
+
+      double earned = 0;
+      for (var w in works) earned += (w['total_sum'] ?? 0).toDouble();
+      
+      double withdrawn = 0;
+      for (var w in withdraws) withdrawn += (w['amount'] ?? 0).toDouble();
+
       if (_userRole == 'admin') {
-        // --- ADMIN STATISTIKASI ---
-        final orders = await _supabase.from('orders').select('total_price, status');
-        final withdrawals = await _supabase.from('withdrawals').select('amount').eq('status', 'approved');
-
+        final ordersRes = await _supabase.from('orders').select('total_price, status');
+        final allApprovedWithdraws = await _supabase.from('withdrawals').select('amount').eq('status', 'approved');
+        
         double totalIncome = 0;
-        double totalPaid = 0;
+        double totalOut = 0;
+        for (var o in ordersRes) totalIncome += (o['total_price'] ?? 0).toDouble();
+        for (var w in allApprovedWithdraws) totalOut += (w['amount'] ?? 0).toDouble();
 
-        for (var o in orders) totalIncome += (o['total_price'] ?? 0).toDouble();
-        for (var w in withdrawals) totalPaid += (w['amount'] ?? 0).toDouble();
-
-        _totalOrders = orders.length;
-        _activeOrders = orders.where((o) => o['status'] != 'completed').length;
-        _companyBalance = totalIncome - totalPaid; 
-      } else {
-        // --- ISHCHI BALANSI ---
-        final works = await _supabase.from('work_logs').select('total_sum').eq('worker_id', user.id);
-        double earned = 0;
-        for (var w in works) earned += (w['total_sum'] ?? 0).toDouble();
-
-        final withdraws = await _supabase.from('withdrawals').select('amount').eq('user_id', user.id).eq('status', 'approved');
-        double paid = 0;
-        for (var w in withdraws) paid += (w['amount'] ?? 0).toDouble();
-
-        _earnedTotal = earned;
-        _paidTotal = paid;
-        _myBalance = earned - paid;
+        _totalOrders = ordersRes.length;
+        _activeOrders = ordersRes.where((o) => o['status'] != 'completed' && o['status'] != 'canceled').length;
+        _companyBalance = totalIncome - totalOut;
       }
 
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() {
+          _totalEarned = earned;
+          _totalWithdrawn = withdrawn;
+          _isLoading = false;
+        });
+      }
     } catch (e) {
       debugPrint("Xato: $e");
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  // --- PUL SO'RASH DIALOGI ---
-  void _showWithdrawDialog() {
+  // --- PUL SO'RASH ---
+  void _showWithdrawRequest() {
     final amountController = TextEditingController();
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text("Pul so'rash"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text("Mavjud balans: ${_myBalance.toStringAsFixed(0)} so'm", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
-            const SizedBox(height: 10),
-            TextField(
-              controller: amountController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: "Summa", border: OutlineInputBorder(), suffixText: "so'm"),
-            ),
-          ],
+        title: const Text("Pul so'rash (Avans)"),
+        content: TextField(
+          controller: amountController,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(labelText: "Summa", suffixText: "so'm"),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("BEKOR")),
           ElevatedButton(
             onPressed: () async {
-              double amount = double.tryParse(amountController.text) ?? 0;
-              if (amount <= 0) return;
-              if (amount > _myBalance) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Balans yetarli emas!"), backgroundColor: Colors.red));
-                return;
-              }
-
-              try {
-                await _supabase.from('withdrawals').insert({
-                  'user_id': _supabase.auth.currentUser!.id,
-                  'amount': amount,
-                  'status': 'pending'
-                });
-                
-                if (mounted) {
-                  Navigator.pop(ctx);
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("So'rov adminga yuborildi!"), backgroundColor: Colors.blue));
-                }
-              } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e")));
-              }
+              double val = double.tryParse(amountController.text) ?? 0;
+              if (val <= 0 || val > (_totalEarned - _totalWithdrawn)) return;
+              await _supabase.from('withdrawals').insert({'user_id': _supabase.auth.currentUser!.id, 'amount': val, 'status': 'pending'});
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("So'rov yuborildi")));
             },
-            child: const Text("SO'RASH"),
+            child: const Text("YUBORISH"),
           )
         ],
       ),
     );
   }
 
-  // --- ISH TOPSHIRISH DIALOGI ---
+  // --- ISH TOPSHIRISH (AVTO STATUS BILAN) ---
   void _showWorkDialog() async {
     final ordersResp = await _supabase.from('orders').select('*, clients(full_name)').neq('status', 'completed').order('created_at', ascending: false);
     final taskTypesResp = await _supabase.from('task_types').select();
@@ -146,12 +125,11 @@ class _HomeScreenState extends State<HomeScreen> {
     dynamic selectedOrder;
     Map<String, dynamic>? selectedTask;
     final areaController = TextEditingController(); 
-    final notesController = TextEditingController(); 
-    double currentTotal = 0;
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
       builder: (context) => StatefulBuilder(
         builder: (context, setModalState) => Padding(
           padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom + 20, left: 20, right: 20, top: 20),
@@ -160,11 +138,9 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               const Text("Ish Topshirish", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
               const SizedBox(height: 20),
-              
               DropdownButtonFormField<dynamic>(
                 decoration: const InputDecoration(labelText: "Zakaz", border: OutlineInputBorder()),
-                isExpanded: true,
-                items: orders.map((o) => DropdownMenuItem(value: o['id'], child: Text("${o['project_name']}"))).toList(),
+                items: orders.map((o) => DropdownMenuItem(value: o['id'], child: Text(o['project_name']))).toList(),
                 onChanged: (v) {
                   setModalState(() {
                     selectedOrder = v;
@@ -173,72 +149,34 @@ class _HomeScreenState extends State<HomeScreen> {
                   });
                 },
               ),
-              const SizedBox(height: 10),
-
+              const SizedBox(height: 15),
               DropdownButtonFormField<Map<String, dynamic>>(
                 decoration: const InputDecoration(labelText: "Ish turi", border: OutlineInputBorder()),
                 items: taskTypes.map((t) => DropdownMenuItem(value: t, child: Text(t['name']))).toList(),
-                onChanged: (v) {
-                  setModalState(() {
-                    selectedTask = v;
-                    double area = double.tryParse(areaController.text) ?? 0;
-                    currentTotal = area * (v?['default_rate'] ?? 0);
-                  });
-                },
+                onChanged: (v) => setModalState(() => selectedTask = v),
               ),
-              const SizedBox(height: 10),
-
-              TextField(
-                controller: areaController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: "Hajm (m²)", border: OutlineInputBorder()),
-                onChanged: (v) {
-                   setModalState(() {
-                    double area = double.tryParse(v) ?? 0;
-                    currentTotal = area * (selectedTask?['default_rate'] ?? 0);
-                  });
-                }
-              ),
-              const SizedBox(height: 10),
-              
-              if (currentTotal > 0)
-                 Text("Tahminiy summa: ${currentTotal.toStringAsFixed(0)} so'm", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
-                 
+              const SizedBox(height: 15),
+              TextField(controller: areaController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Hajm (m²)", border: OutlineInputBorder())),
               const SizedBox(height: 20),
-
               SizedBox(width: double.infinity, height: 50, child: ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade900, foregroundColor: Colors.white),
                 onPressed: () async {
                   if (selectedOrder == null || selectedTask == null) return;
-                  try {
-                    await _supabase.from('work_logs').insert({
-                      'worker_id': _supabase.auth.currentUser!.id,
-                      'order_id': selectedOrder,
-                      'task_type': selectedTask!['name'],
-                      'area_m2': double.tryParse(areaController.text) ?? 0,
-                      'rate': selectedTask!['default_rate'],
-                      'description': notesController.text,
-                    });
-
-                    if (selectedTask!['target_status'] != null && selectedTask!['target_status'].toString().isNotEmpty) {
-                      await _supabase.from('orders').update({
-                        'status': selectedTask!['target_status']
-                      }).eq('id', selectedOrder);
-                    } else if (_userRole == 'installer') {
-                         await _supabase.from('orders').update({'status': 'completed'}).eq('id', selectedOrder);
-                    }
-
-                    if (mounted) {
-                      Navigator.pop(context);
-                      _loadData();
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ish topshirildi!"), backgroundColor: Colors.green));
-                    }
-                  } catch (e) {
-                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e")));
+                  await _supabase.from('work_logs').insert({
+                    'worker_id': _supabase.auth.currentUser!.id,
+                    'order_id': selectedOrder,
+                    'task_type': selectedTask!['name'],
+                    'area_m2': double.tryParse(areaController.text) ?? 0,
+                    'rate': selectedTask!['default_rate'],
+                  });
+                  if (selectedTask!['target_status'] != null) {
+                    await _supabase.from('orders').update({'status': selectedTask!['target_status']}).eq('id', selectedOrder);
                   }
+                  Navigator.pop(context);
+                  _loadAllData();
                 },
                 child: const Text("TOPSHIRISH"),
-              ))
+              )),
             ],
           ),
         ),
@@ -249,132 +187,87 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.blue.shade900,
+      backgroundColor: const Color(0xFFF4F6F8),
+      appBar: AppBar(
+        title: Text(_userRole == 'admin' ? "Admin Panel" : "Ishchi Paneli"),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        actions: [
+          ReloadButton(onPressed: _loadAllData), // Sizning yangilash tugmangiz
+          IconButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UserProfileScreen())), icon: const Icon(Icons.person_outline)),
+        ],
+      ),
       body: _isLoading 
-        ? const Center(child: CircularProgressIndicator(color: Colors.white))
-        : Column(
-            children: [
-              Container(
-                padding: const EdgeInsets.only(top: 60, left: 20, right: 20, bottom: 30),
-                child: Column(
+        ? const Center(child: CircularProgressIndicator())
+        : SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              children: [
+                // ADMIN UCHUN KASSA STATISTIKASI
+                if (_userRole == 'admin') _buildAdminHeader(),
+                
+                const SizedBox(height: 10),
+
+                // ISHCHI UCHUN ANIMATSIYALI BALANS KARTASI
+                BalanceCard(
+                  earned: _totalEarned,
+                  withdrawn: _totalWithdrawn,
+                  role: _userRole,
+                  onStatsTap: () {}, // Kerakli sahifaga ulanadi
+                ),
+
+                const SizedBox(height: 20),
+
+                // ASOSIY MENYU GRID
+                GridView.count(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  crossAxisCount: 2,
+                  crossAxisSpacing: 15,
+                  mainAxisSpacing: 15,
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text("Xush kelibsiz, $_userName", style: const TextStyle(color: Colors.white70)),
-                            Text(_userRole == 'admin' ? "BOSHQARUV PANELI" : "ISHCHI KABINETI", style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
-                          ],
-                        ),
-                        CircleAvatar(child: Text(_userName.isNotEmpty ? _userName[0].toUpperCase() : "U")),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    if (_userRole == 'admin') 
-                      _buildAdminStatsCard()
-                    else 
-                      _buildWorkerBalanceCard(),
+                    _menuItem(Icons.people, "Mijozlar", Colors.orange, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ClientsScreen()))),
+                    
+                    if (_userRole != 'admin')
+                      _menuItem(Icons.add_task, "Ish Topshirish", Colors.blue, _showWorkDialog),
+                    
+                    if (_userRole != 'admin')
+                      _menuItem(Icons.account_balance_wallet, "Pul so'rash", Colors.green, _showWithdrawRequest),
+
+                    if (_userRole == 'admin') ...[
+                      _menuItem(Icons.manage_accounts, "Xodimlar", Colors.purple, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ManageUsersScreen()))),
+                      _menuItem(Icons.payments, "Moliya", Colors.teal, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminFinanceScreen()))),
+                    ]
                   ],
                 ),
-              ),
-
-              Expanded(
-                child: Container(
-                  decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(30))),
-                  padding: const EdgeInsets.all(20),
-                  child: GridView.count(
-                    crossAxisCount: 2,
-                    crossAxisSpacing: 15,
-                    mainAxisSpacing: 15,
-                    children: [
-                      _menuItem(Icons.people, "Mijozlar", Colors.orange, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ClientsScreen()))),
-                      
-                      if (_userRole != 'admin')
-                        _menuItem(Icons.add_task, "Ish Topshirish", Colors.blue, _showWorkDialog),
-
-                      if (_userRole == 'admin') ...[
-                        _menuItem(Icons.manage_accounts, "Xodimlar", Colors.purple, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ManageUsersScreen()))),
-                        _menuItem(Icons.account_balance_wallet, "Moliya", Colors.green, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminFinanceScreen()))),
-                        _menuItem(Icons.settings, "Sozlamalar", Colors.grey, () {}),
-                      ]
-                    ],
-                  ),
-                ),
-              )
-            ],
+              ],
+            ),
           ),
     );
   }
 
-  Widget _buildWorkerBalanceCard() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: Colors.blue.shade800, borderRadius: BorderRadius.circular(20)),
-      child: Column(
-        children: [
-          const Text("Mening Balansim", style: TextStyle(color: Colors.white70)),
-          const SizedBox(height: 10),
-          Text("${_myBalance.toStringAsFixed(0)} so'm", style: const TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 15),
-          ElevatedButton.icon(
-            onPressed: _showWithdrawDialog,
-            icon: const Icon(Icons.download, size: 18),
-            label: const Text("PUL SO'RASH"),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.blue.shade900),
-          )
-        ],
-      ),
+  Widget _buildAdminHeader() {
+    return Row(
+      children: [
+        _miniCard("Jami Zakaz", "$_totalOrders", Colors.blue),
+        const SizedBox(width: 10),
+        _miniCard("Jarayonda", "$_activeOrders", Colors.orange),
+      ],
     );
   }
 
-  Widget _buildAdminStatsCard() {
-    return Column(
-      children: [
-        Container(
-           width: double.infinity,
-           padding: const EdgeInsets.all(15),
-           margin: const EdgeInsets.only(bottom: 10),
-           decoration: BoxDecoration(color: Colors.green.shade800, borderRadius: BorderRadius.circular(15)),
-           child: Column(
-             children: [
-               const Text("Taxminiy Kassa", style: TextStyle(color: Colors.white70)),
-               Text("${_companyBalance.toStringAsFixed(0)} so'm", style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
-             ],
-           ),
-        ),
-        Row(
+  Widget _miniCard(String title, String val, Color color) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(15),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(15), border: Border.all(color: color.withOpacity(0.3))),
+        child: Column(
           children: [
-            Expanded(
-              child: Container(
-                padding: const EdgeInsets.all(15),
-                decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), borderRadius: BorderRadius.circular(15)),
-                child: Column(
-                  children: [
-                    const Text("Jami Zakaz", style: TextStyle(color: Colors.white70)),
-                    Text("$_totalOrders", style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Container(
-                padding: const EdgeInsets.all(15),
-                decoration: BoxDecoration(color: Colors.orange.withOpacity(0.4), borderRadius: BorderRadius.circular(15)),
-                child: Column(
-                  children: [
-                    const Text("Jarayonda", style: TextStyle(color: Colors.white70)),
-                    Text("$_activeOrders", style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
-                  ],
-                ),
-              ),
-            ),
+            Text(title, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+            Text(val, style: TextStyle(color: color, fontSize: 20, fontWeight: FontWeight.bold)),
           ],
         ),
-      ],
+      ),
     );
   }
 
@@ -382,13 +275,12 @@ class _HomeScreenState extends State<HomeScreen> {
     return InkWell(
       onTap: onTap,
       child: Container(
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(15), boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.1), blurRadius: 5)]),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.1), blurRadius: 10)]),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             CircleAvatar(radius: 25, backgroundColor: color.withOpacity(0.1), child: Icon(icon, color: color, size: 30)),
             const SizedBox(height: 10),
-            // --- TUZATILGAN JOY ---
             Text(title, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold)),
           ],
         ),
