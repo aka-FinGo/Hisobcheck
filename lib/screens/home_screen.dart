@@ -1,14 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'login_screen.dart';
-import 'admin_approvals.dart';
-import 'add_withdrawal.dart';
-import 'manage_users_screen.dart';
-import 'clients_screen.dart';
-import 'stats_screen.dart';
-import 'user_profile_screen.dart';
-import '../widgets/balance_card.dart';
-import '../widgets/reload_button.dart'; // ReloadButton import qilindi
+import '../widgets/main_wrapper.dart'; // Admin yoki User ekanini aniqlash uchun kerak bo'lishi mumkin
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -20,155 +12,63 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final _supabase = Supabase.instance.client;
   bool _isLoading = true;
-  String _userRole = 'worker';
-  String _userId = '';
-  double _totalEarned = 0;
-  double _totalWithdrawn = 0;
+  
+  // Statistika
+  double _myBalance = 0;
+  double _earnedTotal = 0;
+  double _paidTotal = 0;
+  String _userName = "Foydalanuvchi";
 
   @override
   void initState() {
     super.initState();
-    _loadAllData();
+    _loadUserData();
   }
 
-  Future<void> _loadAllData() async {
-    if (!mounted) return;
+  Future<void> _loadUserData() async {
     setState(() => _isLoading = true);
     try {
       final user = _supabase.auth.currentUser;
       if (user == null) return;
-      _userId = user.id;
 
-      final profile = await _supabase.from('profiles').select().eq('id', _userId).single();
-      _userRole = profile['role'] ?? 'worker';
-
-      final workLogs = await _supabase.from('work_logs')
+      // 1. Profil ma'lumotlari
+      final profile = await _supabase.from('profiles').select().eq('id', user.id).single();
+      
+      // 2. Balans hisob-kitobi
+      // Ishlagan pullari (work_logs)
+      final worksRes = await _supabase
+          .from('work_logs')
           .select('total_sum')
-          .eq('worker_id', _userId)
-          .eq('is_approved', true);
+          .eq('worker_id', user.id);
+      
+      double earned = 0;
+      for (var w in worksRes) {
+        earned += (w['total_sum'] ?? 0).toDouble();
+      }
 
-      final withdrawals = await _supabase.from('withdrawals')
-          .select('amount')
-          .eq('worker_id', _userId);
-
-      double earned = 0, withdrawn = 0;
-      for (var log in workLogs) earned += (log['total_sum'] ?? 0).toDouble();
-      for (var w in withdrawals) withdrawn += (w['amount'] ?? 0).toDouble();
-
+      // Olgan pullari (transactions/withdrawals) - Agar sizda shunday jadval bo'lsa
+      // Hozircha 0 deb turamiz yoki 'withdrawals' jadvalingiz bo'lsa o'shandan olamiz
+      double paid = 0; 
+      // Misol: final paidRes = await _supabase.from('withdrawals').select('amount').eq('user_id', user.id);
+      
       if (mounted) {
         setState(() {
-          _totalEarned = earned;
-          _totalWithdrawn = withdrawn;
+          _userName = profile['full_name'] ?? "Noma'lum";
+          _earnedTotal = earned;
+          _paidTotal = paid;
+          _myBalance = earned - paid; // Balans formulasi
           _isLoading = false;
         });
       }
     } catch (e) {
+      debugPrint("Xato: $e");
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    if (_isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
-
-    return Scaffold(
-      backgroundColor: Colors.grey.shade100,
-      appBar: AppBar(
-        backgroundColor: Colors.blue.shade900,
-        title: const Text("Aristokrat Mebel", style: TextStyle(color: Colors.white)),
-        actions: [
-          // 1. Yangilash tugmasi (ReloadButton)
-          ReloadButton(
-            onRefresh: _loadAllData,
-            color: Colors.white,
-          ),
-          
-          // 2. Chiqish tugmasi (Logout)
-          IconButton(
-            onPressed: () async {
-              await _supabase.auth.signOut();
-              if (mounted) {
-                Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
-              }
-            },
-            icon: const Icon(Icons.logout, color: Colors.white),
-          ),
-        ],
-      ),
-      body: SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            BalanceCard(
-              earned: _totalEarned, 
-              withdrawn: _totalWithdrawn,
-              role: _userRole,
-              onStatsTap: () {
-                Navigator.push(context, MaterialPageRoute(builder: (_) => const StatsScreen()));
-              },
-            ),
-            const SizedBox(height: 20),
-            _buildMenuBtn("Ish Qo'shish", Icons.add_circle, Colors.blue, _showWorkDialog),
-            
-            if (_userRole == 'admin' || _userRole == 'owner') ...[
-              const SizedBox(height: 10),
-              _buildMenuBtn("Mijozlar & Zakazlar", Icons.people_alt, Colors.indigo, () {
-                Navigator.push(context, MaterialPageRoute(builder: (_) => const ClientsScreen()));
-              }),
-              const SizedBox(height: 30),
-              const Divider(),
-              const Text("ADMIN PANEL", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
-              const SizedBox(height: 15),
-              Row(
-                children: [
-                  Expanded(child: _buildMenuBtnSmall("Tasdiqlash", Icons.fact_check, Colors.purple, () {
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminApprovalsScreen()));
-                  })),
-                  const SizedBox(width: 10),
-                  Expanded(child: _buildMenuBtnSmall("Pul Berish", Icons.payments, Colors.green, () {
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => const AddWithdrawalScreen()));
-                  })),
-                ],
-              ),
-              const SizedBox(height: 10),
-              _buildMenuBtn("Xodimlar & Rollar", Icons.manage_accounts, Colors.orange, () {
-                Navigator.push(context, MaterialPageRoute(builder: (_) => const ManageUsersScreen()));
-              }),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMenuBtn(String t, IconData i, Color c, VoidCallback onTap) {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton.icon(
-        onPressed: onTap, icon: Icon(i), label: Text(t), 
-        style: ElevatedButton.styleFrom(
-          backgroundColor: c, foregroundColor: Colors.white, 
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
-        )
-      ),
-    );
-  }
-
-  Widget _buildMenuBtnSmall(String t, IconData i, Color c, VoidCallback onTap) {
-    return ElevatedButton.icon(
-      onPressed: onTap, icon: Icon(i, size: 18), label: Text(t, style: const TextStyle(fontSize: 13)), 
-      style: ElevatedButton.styleFrom(
-        backgroundColor: c, foregroundColor: Colors.white, 
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
-      )
-    );
-  }
-
+  // --- ISH TOPSHIRISH DIALOGI (TUZATILGAN) ---
   void _showWorkDialog() async {
-    // Faqat 'pending' yoki 'in_progress' zakazlarni olamiz (yopilgan zakazga ish qo'shib bo'lmaydi)
+    // 1. Ma'lumotlarni yuklash
     final ordersResp = await _supabase
         .from('orders')
         .select('*, clients(full_name)')
@@ -185,13 +85,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
     dynamic selectedOrder;
     Map<String, dynamic>? selectedTask;
-    final areaController = TextEditingController(); // Kvadrat avtomatik yoziladi
-    final notesController = TextEditingController(); // Ishchi o'zidan izoh qo'shishi mumkin
+    final areaController = TextEditingController(); 
+    final notesController = TextEditingController(); 
     double currentTotal = 0;
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
       builder: (context) => StatefulBuilder(
         builder: (context, setModalState) => Padding(
           padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom + 20, left: 20, right: 20, top: 20),
@@ -202,7 +103,7 @@ class _HomeScreenState extends State<HomeScreen> {
               const Text("Ish Topshirish", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
               const SizedBox(height: 20),
 
-              // 1. ZAKAZNI TANLASH (Eng muhim joyi)
+              // 1. ZAKAZNI TANLASH
               DropdownButtonFormField<dynamic>(
                 decoration: const InputDecoration(
                   labelText: "Qaysi zakazda ishladingiz?", 
@@ -211,18 +112,17 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 isExpanded: true,
                 items: orders.map((o) => DropdownMenuItem<dynamic>(
-                  value: o, 
-                  // Ekranda: "100_01_Ali... (15.5 m2)" deb chiqadi
+                  value: o['id'], // ID ni saqlaymiz
                   child: Text("${o['project_name']} (${o['total_area_m2']} m²)", overflow: TextOverflow.ellipsis)
                 )).toList(),
                 onChanged: (v) {
                   setModalState(() {
-                    selectedOrder = v;
-                    // AVTOMATIK TO'LDIRISH:
-                    // Loyihachi yozgan kvadratni olib kelib qo'yamiz
-                    areaController.text = (v['total_area_m2'] ?? 0).toString();
+                    selectedOrder = v; // ID saqlandi
+                    // Kvadratni topamiz
+                    final fullOrder = orders.firstWhere((o) => o['id'] == v);
+                    areaController.text = (fullOrder['total_area_m2'] ?? 0).toString();
                     
-                    // Agar ish turi tanlangan bo'lsa, narxni qayta hisoblaymiz
+                    // Narxni yangilash
                     if (selectedTask != null) {
                        double area = double.tryParse(areaController.text) ?? 0;
                        currentTotal = area * (selectedTask!['default_rate'] ?? 0);
@@ -246,15 +146,11 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 15),
 
-              // 3. KVADRAT (Avtomatik to'ladi, lekin o'zgartirsa ham bo'ladi)
+              // 3. HAJM VA NARX
               TextField(
                 controller: areaController,
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: "Hajm (m²)", 
-                  border: OutlineInputBorder(),
-                  helperText: "Zakazdan avtomatik olindi (o'zgartirish mumkin)"
-                ),
+                decoration: const InputDecoration(labelText: "Hajm (m²)", border: OutlineInputBorder()),
                 onChanged: (v) {
                   setModalState(() {
                     double area = double.tryParse(v) ?? 0;
@@ -289,21 +185,26 @@ class _HomeScreenState extends State<HomeScreen> {
                       return;
                     }
                     
-                    await _supabase.from('work_logs').insert({
-                      'worker_id': _supabase.auth.currentUser!.id,
-                      'order_id': selectedOrder['id'],
-                      'task_type': selectedTask!['name'],
-                      'area_m2': double.tryParse(areaController.text) ?? 0,
-                      'rate': selectedTask!['default_rate'],
-                      'total_sum': currentTotal,
-                      'description': notesController.text, // Agar izoh yozgan bo'lsa
-                      'is_approved': false, // Admin tasdiqlashi kerak
-                    });
-                    
-                    if (mounted) {
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ish topshirildi! Admin tasdiqlashini kuting."), backgroundColor: Colors.green));
-                      // Bu yerda _loadAllData() chaqirilishi kerak (agar parentda bo'lsa)
+                    try {
+                      await _supabase.from('work_logs').insert({
+                        'worker_id': _supabase.auth.currentUser!.id,
+                        'order_id': selectedOrder, // ID
+                        'task_type': selectedTask!['name'],
+                        'area_m2': double.tryParse(areaController.text) ?? 0,
+                        'rate': selectedTask!['default_rate'],
+                        'total_sum': currentTotal,
+                        'description': notesController.text,
+                        'is_approved': false, 
+                      });
+                      
+                      if (mounted) {
+                        Navigator.pop(context);
+                        _loadUserData(); // Balansni yangilash
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ish topshirildi!"), backgroundColor: Colors.green));
+                      }
+                    } catch (e) {
+                      Navigator.pop(context); // Dialogni yopamiz xatoni ko'rish uchun
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xatolik: $e"), backgroundColor: Colors.red));
                     }
                   },
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade900, foregroundColor: Colors.white),
@@ -314,6 +215,124 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.blue.shade900,
+      body: _isLoading 
+        ? const Center(child: CircularProgressIndicator(color: Colors.white))
+        : Column(
+          children: [
+            // Tepa qism (Balans)
+            Container(
+              padding: const EdgeInsets.only(top: 60, left: 20, right: 20, bottom: 30),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text("Salom, $_userName", style: const TextStyle(color: Colors.white70, fontSize: 16)),
+                          const Text("Aristokrat Mebel", style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                      CircleAvatar(
+                        backgroundColor: Colors.white24,
+                        child: Text(_userName.isNotEmpty ? _userName[0] : "A", style: const TextStyle(color: Colors.white)),
+                      )
+                    ],
+                  ),
+                  const SizedBox(height: 30),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0D47A1), // To'q ko'k
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 10, offset: const Offset(0, 5))]
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text("Mening shaxsiy balansim", style: TextStyle(color: Colors.white60)),
+                        const SizedBox(height: 10),
+                        Text("${_myBalance.toStringAsFixed(0)} so'm", style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 20),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text("↗ Ishladim", style: TextStyle(color: Colors.greenAccent, fontSize: 12)),
+                                  Text("${_earnedTotal.toStringAsFixed(0)} so'm", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                ],
+                              ),
+                            ),
+                            Container(width: 1, height: 30, color: Colors.white24),
+                            Expanded(
+                              child: Padding(
+                                padding: const EdgeInsets.only(left: 15),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text("↘ Oldim", style: TextStyle(color: Colors.orangeAccent, fontSize: 12)),
+                                    Text("${_paidTotal.toStringAsFixed(0)} so'm", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        )
+                      ],
+                    ),
+                  )
+                ],
+              ),
+            ),
+            
+            // Pastki qism (Oq fon)
+            Expanded(
+              child: Container(
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+                ),
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  children: [
+                    // ISH TOPSHIRISH TUGMASI (KATTA)
+                    SizedBox(
+                      width: double.infinity,
+                      height: 60,
+                      child: ElevatedButton.icon(
+                        onPressed: _showWorkDialog,
+                        icon: const Icon(Icons.add_circle_outline),
+                        label: const Text("ISH TOPSHIRISH", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue.shade900,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                          elevation: 5,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    const Align(alignment: Alignment.centerLeft, child: Text("So'nggi harakatlar", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
+                    // Bu yerga tarix qo'shish mumkin
+                    const Expanded(child: Center(child: Text("Hozircha bo'sh", style: TextStyle(color: Colors.grey)))),
+                  ],
+                ),
+              ),
+            )
+          ],
+        ),
     );
   }
 }
