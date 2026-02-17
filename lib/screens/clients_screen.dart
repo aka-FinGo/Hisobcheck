@@ -158,8 +158,16 @@ class _ClientsScreenState extends State<ClientsScreen> {
   }
 
   // --- ZAKAZ (LOYIHA) QO'SHISH DIALOGI ---
-  void _showAddOrderDialog() {
-    dynamic selectedClientId; 
+  void _showAddOrderDialog() async {
+    // 1. Dialog ochilishidan oldin keyingi raqamni hisoblaymiz (Loading ko'rsatib turish mumkin)
+    // Lekin tezroq bo'lishi uchun hozircha kutib turamiz:
+    String suggestedId = await _calculateNextOrderNumber();
+
+    if (!mounted) return;
+
+    dynamic selectedClientId;
+    // Controllerlarga boshlang'ich qiymat beramiz
+    final idController = TextEditingController(text: suggestedId); // <--- AVTO TAKLIF (101_02)
     final projectController = TextEditingController();
     final areaController = TextEditingController();
     final priceController = TextEditingController();
@@ -178,8 +186,21 @@ class _ClientsScreenState extends State<ClientsScreen> {
             children: [
               const Center(child: Text("Yangi Loyiha Ochish", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold))),
               const SizedBox(height: 20),
+
+              // 1. ZAKAZ RAQAMI (ID) - TIZIM TAKLIF QILADI
+              TextField(
+                controller: idController,
+                decoration: const InputDecoration(
+                  labelText: "Zakaz ID (Tartib_Oy)",
+                  hintText: "Masalan: 101_02",
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.confirmation_number),
+                  helperText: "Tizim avtomatik hisobladi, o'zgartirishingiz mumkin",
+                ),
+              ),
+              const SizedBox(height: 12),
               
-              // 1. MIJOZNI TANLASH
+              // 2. MIJOZNI TANLASH
               DropdownButtonFormField<dynamic>(
                 decoration: const InputDecoration(
                   labelText: "Mijozni tanlang", 
@@ -194,14 +215,19 @@ class _ClientsScreenState extends State<ClientsScreen> {
               ),
               const SizedBox(height: 12),
 
-              // 2. LOYIHA NOMI
+              // 3. LOYIHA NOMI
               TextField(
                 controller: projectController, 
-                decoration: const InputDecoration(labelText: "Loyiha nomi (Msl: Oshxona)", border: OutlineInputBorder(), prefixIcon: Icon(Icons.kitchen))
+                decoration: const InputDecoration(
+                  labelText: "Loyiha nomi", 
+                  hintText: "Msl: Oshxona", 
+                  border: OutlineInputBorder(), 
+                  prefixIcon: Icon(Icons.kitchen)
+                )
               ),
               const SizedBox(height: 12),
 
-              // 3. KVADRAT VA NARX
+              // 4. KVADRAT VA NARX
               Row(
                 children: [
                   Expanded(
@@ -223,7 +249,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
               ),
               const SizedBox(height: 12),
 
-              // 4. IZOH
+              // 5. IZOH
               TextField(
                 controller: notesController,
                 maxLines: 2,
@@ -236,32 +262,32 @@ class _ClientsScreenState extends State<ClientsScreen> {
               ),
               const SizedBox(height: 20),
 
-              // 5. SAQLASH TUGMASI
+              // 6. SAQLASH TUGMASI
               SizedBox(
                 width: double.infinity,
                 height: 50,
                 child: ElevatedButton(
                   onPressed: () async {
-                    if (selectedClientId == null || projectController.text.isEmpty) {
-                       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Mijoz va Loyiha nomi majburiy!")));
+                    if (selectedClientId == null || projectController.text.isEmpty || idController.text.isEmpty) {
+                       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Mijoz, Zakaz ID va Loyiha nomi majburiy!")));
                        return;
                     }
 
                     final client = _allClients.firstWhere((c) => c['id'] == selectedClientId);
                     String clientSafeName = (client['full_name'] ?? client['name']).toString().replaceAll(' ', '-');
 
-                    // Avtomatik ID: 100_01_Mijoz_Loyiha
-                    String prefix = "100";
-                    String seq = (_allOrders.length + 1).toString().padLeft(2, '0');
-                    String generatedName = "${prefix}_${seq}_${clientSafeName}_${projectController.text.replaceAll(' ', '-')}";
+                    // Endi nomni generatsiya qilayotganda, inputdagi ID dan foydalanamiz
+                    // Format: 101_02_Ali_Oshxona
+                    String finalOrderNumber = idController.text.trim(); // 101_02
+                    String fullProjectName = "${finalOrderNumber}_${clientSafeName}_${projectController.text.replaceAll(' ', '-')}";
 
                     double area = double.tryParse(areaController.text.replaceAll(',', '.')) ?? 0;
 
                     try {
                       await _supabase.from('orders').insert({
                         'client_id': selectedClientId, 
-                        'project_name': generatedName,
-                        'order_number': generatedName,
+                        'project_name': fullProjectName,   // To'liq nom (Qidiruv uchun qulay)
+                        'order_number': finalOrderNumber,  // Faqat ID (Keyingi safar hisoblash uchun kerak)
                         'total_area_m2': area,       
                         'measured_area': area,      
                         'total_price': double.tryParse(priceController.text) ?? 0,
