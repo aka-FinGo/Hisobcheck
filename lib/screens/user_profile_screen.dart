@@ -339,7 +339,18 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                       ],
 
                       const SizedBox(height: 40),
-
+if (_amIAdmin && _isMe) ...[
+  const SizedBox(height: 20),
+  const Align(alignment: Alignment.centerLeft, child: Text(" TIZIM BOSHQARUVI", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo, fontSize: 12))),
+  const SizedBox(height: 10),
+  
+  _ProfileMenu(
+    text: "ADMIN PANEL",
+    icon: Icons.settings_suggest,
+    color: Colors.indigo,
+    press: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminPanelScreen())),
+  ),
+],
                       // --- CHIQISH TUGMASI (ENG PASTDA) ---
                       if (_isMe) 
                         SizedBox(
