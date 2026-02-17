@@ -42,37 +42,62 @@ class _ClientsScreenState extends State<ClientsScreen> {
   }
 
   // --- MIJOZ QO'SHISH ---
-  void _showAddClientDialog() {
-    final nameController = TextEditingController();
-    final phoneController = TextEditingController();
+  // ClientsScreen ichidagi mijoz qo'shish funksiyasi
+void _showAddClientDialog() {
+  final nameController = TextEditingController();
+  final phoneController = TextEditingController();
 
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("Yangi Mijoz"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(controller: nameController, decoration: const InputDecoration(labelText: "F.I.SH", border: OutlineInputBorder())),
-            const SizedBox(height: 10),
-            TextField(controller: phoneController, decoration: const InputDecoration(labelText: "Telefon", border: OutlineInputBorder())),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("BEKOR")),
-          ElevatedButton(
-            onPressed: () async {
-              if (nameController.text.isEmpty) return;
-              await _supabase.from('clients').insert({'name': nameController.text, 'phone': phoneController.text});
-              Navigator.pop(ctx);
-              _loadInitialData();
-            },
-            child: const Text("SAQLASH"),
-          )
+  showDialog(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text("Yangi Mijoz"),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: nameController, 
+            decoration: const InputDecoration(labelText: "Mijoz Ismi (F.I.SH)", border: OutlineInputBorder())
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: phoneController, 
+            keyboardType: TextInputType.phone,
+            decoration: const InputDecoration(labelText: "Telefon raqami", border: OutlineInputBorder())
+          ),
         ],
       ),
-    );
-  }
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("BEKOR")),
+        ElevatedButton(
+          onPressed: () async {
+            if (nameController.text.trim().isEmpty) return;
+            try {
+              // Bazaga yozish
+              await _supabase.from('clients').insert({
+                'name': nameController.text.trim(),
+                'phone': phoneController.text.trim(),
+              });
+              
+              if (mounted) {
+                Navigator.pop(ctx);
+                // Ma'lumotlarni qayta yuklash
+                _loadInitialData(); 
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("Mijoz saqlandi"), backgroundColor: Colors.green)
+                );
+              }
+            } catch (e) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text("Xatolik: $e"), backgroundColor: Colors.red)
+              );
+            }
+          },
+          child: const Text("SAQLASH"),
+        )
+      ],
+    ),
+  );
+}
 
   // --- ZAKAZ (LOYIHA) QO'SHISH ---
   void _showAddOrderDialog() {
