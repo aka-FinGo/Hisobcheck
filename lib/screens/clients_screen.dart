@@ -69,31 +69,35 @@ void _showAddClientDialog() {
       actions: [
         TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("BEKOR")),
         ElevatedButton(
-          onPressed: () async {
-            if (nameController.text.trim().isEmpty) return;
-            try {
-              // Bazaga yozish
-              await _supabase.from('clients').insert({
-                'name': nameController.text.trim(),
-                'phone': phoneController.text.trim(),
-              });
-              
-              if (mounted) {
-                Navigator.pop(ctx);
-                // Ma'lumotlarni qayta yuklash
-                _loadInitialData(); 
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Mijoz saqlandi"), backgroundColor: Colors.green)
-                );
-              }
-            } catch (e) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text("Xatolik: $e"), backgroundColor: Colors.red)
-              );
-            }
-          },
-          child: const Text("SAQLASH"),
-        )
+          // ClientsScreen.dart ichidagi saqlash tugmasi
+onPressed: () async {
+  if (nameController.text.trim().isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Ismni kiriting!"))
+    );
+    return;
+  }
+
+  try {
+    await _supabase.from('clients').insert({
+      'name': nameController.text.trim(), // Bazadagi ustun nomi bilan bir xil bo'lishi shart!
+      'phone': phoneController.text.trim(),
+    });
+
+    if (mounted) {
+      Navigator.pop(ctx);
+      _loadInitialData();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Mijoz qo'shildi"), backgroundColor: Colors.green)
+      );
+    }
+  } catch (e) {
+    print("Xato: $e");
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Saqlashda xato: $e"), backgroundColor: Colors.red)
+    );
+  }
+},
       ],
     ),
   );
