@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:intl/intl.dart'; // Sana formati uchun (pubspec.yaml ga intl qo'shish kerak bo'lishi mumkin)
 
 class OrderDetailsScreen extends StatefulWidget {
-  final int orderId; // Bizga faqat ID kerak, qolganini yangilab olamiz
+  final int orderId; // ID turi int bo'lishi kerak (BigInt bo'lsa ham int ga o'girib uzatish kerak)
 
   const OrderDetailsScreen({super.key, required this.orderId});
 
@@ -14,11 +13,11 @@ class OrderDetailsScreen extends StatefulWidget {
 class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   final _supabase = Supabase.instance.client;
   bool _isLoading = true;
+  String? _errorMessage; // Xatolikni saqlash uchun
   
   Map<String, dynamic> _order = {};
   List<Map<String, dynamic>> _workLogs = [];
   
-  // Moliyaviy hisoblar
   double _totalExpenses = 0;
   double _profit = 0;
 
@@ -29,23 +28,28 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   }
 
   Future<void> _loadOrderData() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
     try {
-      // 1. Zakaz ma'lumotlari + Mijoz ismi
+      // 1. ZAKAZNI OLISH (Clients ulangan holda)
+      // DIQQAT: Agar 'clients' qizil yonayotgan bo'lsa, bazada Foreign Key noto'g'ri bo'lishi mumkin
       final orderRes = await _supabase
           .from('orders')
           .select('*, clients(full_name, phone)')
           .eq('id', widget.orderId)
-          .single();
+          .single(); // Bitta dona zakazni olamiz
 
-      // 2. Shu zakaz bo'yicha qilingan ishlar (Jarayon tarixi)
+      // 2. ISHLAR TARIXINI OLISH
       final logsRes = await _supabase
           .from('work_logs')
-          .select('*, profiles(full_name)') // Ishchi ismini olish uchun
+          .select('*, profiles(full_name)')
           .eq('order_id', widget.orderId)
           .order('created_at', ascending: false);
 
-      // 3. Xarajatlarni hisoblash
+      // 3. HISOB-KITOB
       double expenses = 0;
       final logs = List<Map<String, dynamic>>.from(logsRes);
       for (var log in logs) {
@@ -57,23 +61,26 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
           _order = orderRes;
           _workLogs = logs;
           _totalExpenses = expenses;
-          _profit = (_order['total_price'] ?? 0) - expenses;
+          _profit = ((_order['total_price'] ?? 0) - expenses).toDouble();
           _isLoading = false;
         });
       }
     } catch (e) {
+      debugPrint("XATO: $e"); // Konsolga yozamiz
       if (mounted) {
-        setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e")));
+        setState(() {
+          _isLoading = false;
+          _errorMessage = "Ma'lumot yuklashda xato:\n$e"; // Ekranga chiqaramiz
+        });
       }
     }
   }
 
-  // --- 1. ZAKAZNI TAHRIRLASH ---
+  // --- ZAKAZNI TAHRIRLASH ---
   void _editOrderDialog() {
     final projectController = TextEditingController(text: _order['project_name']);
-    final priceController = TextEditingController(text: _order['total_price'].toString());
-    final areaController = TextEditingController(text: _order['total_area_m2'].toString());
+    final priceController = TextEditingController(text: (_order['total_price'] ?? 0).toString());
+    final areaController = TextEditingController(text: (_order['total_area_m2'] ?? 0).toString());
     final notesController = TextEditingController(text: _order['notes'] ?? "");
 
     showDialog(
@@ -107,7 +114,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                 }).eq('id', widget.orderId);
                 
                 Navigator.pop(ctx);
-                _loadOrderData(); // Yangilash
+                _loadOrderData();
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Zakaz yangilandi!"), backgroundColor: Colors.green));
               } catch (e) {
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e")));
@@ -120,7 +127,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     );
   }
 
-  // --- 2. STATUSNI O'ZGARTIRISH ---
   void _changeStatus() {
     showModalBottomSheet(
       context: context,
@@ -129,10 +135,10 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
         children: [
           const Padding(padding: EdgeInsets.all(15), child: Text("Jarayonni tanlang", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
           _statusTile('pending', 'Kutilmoqda', Colors.orange),
-          _statusTile('material', 'Material/Kesish', Colors.purple),
-          _statusTile('assembly', 'Yig\'ish/Sex', Colors.blue),
-          _statusTile('delivery', 'O\'rnatish/Yetkazish', Colors.teal),
-          _statusTile('completed', 'Yakunlandi (Yopish)', Colors.green),
+          _statusTile('material', 'Kesish/Material', Colors.purple),
+          _statusTile('assembly', 'Yig\'ish', Colors.blue),
+          _statusTile('delivery', 'O\'rnatish', Colors.teal),
+          _statusTile('completed', 'Yakunlandi', Colors.green),
           _statusTile('canceled', 'Bekor qilindi', Colors.red),
           const SizedBox(height: 20),
         ],
@@ -153,13 +159,12 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     );
   }
 
-  // --- 3. ZAKAZNI O'CHIRISH ---
   void _deleteOrder() async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text("Zakazni o'chirish"),
-        content: const Text("Rostdan ham bu zakazni va uning barcha tarixini o'chirmoqchimisiz?"),
+        content: const Text("Rostdan ham bu zakazni o'chirmoqchimisiz?"),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("YO'Q")),
           TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("HA, O'CHIRILSIN", style: TextStyle(color: Colors.red))),
@@ -169,18 +174,50 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
 
     if (confirm == true) {
       await _supabase.from('orders').delete().eq('id', widget.orderId);
-      if (mounted) Navigator.pop(context); // Orqaga qaytish
+      if (mounted) Navigator.pop(context);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // 1. Loading holati
     if (_isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+
+    // 2. Xatolik bo'lsa EKRANGA CHIQARAMIZ (muammoni ko'rish uchun)
+    if (_errorMessage != null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text("Xatolik")),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.error_outline, color: Colors.red, size: 50),
+                const SizedBox(height: 10),
+                Text(_errorMessage!, textAlign: TextAlign.center, style: const TextStyle(color: Colors.red)),
+                const SizedBox(height: 20),
+                ElevatedButton(onPressed: _loadOrderData, child: const Text("Qayta urinish"))
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    // 3. Ma'lumot to'g'ri kelsa
+    final clientName = _order['clients']?['full_name'] ?? "Noma'lum";
+    final clientPhone = _order['clients']?['phone'] ?? "-";
+    final area = _order['total_area_m2'] ?? 0;
+    final price = _order['total_price'] ?? 0;
+    final notes = _order['notes'] ?? "";
+    final status = _order['status'] ?? "pending";
+    final orderNumber = _order['order_number'] ?? "Zakaz";
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6F8),
       appBar: AppBar(
-        title: Text(_order['order_number'] ?? "Zakaz"),
+        title: Text(orderNumber.toString()),
         actions: [
           IconButton(onPressed: _editOrderDialog, icon: const Icon(Icons.edit, color: Colors.blue)),
           IconButton(onPressed: _deleteOrder, icon: const Icon(Icons.delete, color: Colors.red)),
@@ -191,7 +228,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 1. STATUS VA ASOSIY INFO
+            // STATUS KARTASI
             Card(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
               child: Padding(
@@ -201,19 +238,19 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Expanded(child: Text(_order['project_name'], style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold))),
+                        Expanded(child: Text(_order['project_name'] ?? "Nomsiz", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold))),
                         InkWell(
                           onTap: _changeStatus,
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                             decoration: BoxDecoration(
-                              color: _getStatusColor(_order['status']).withOpacity(0.1),
+                              color: _getStatusColor(status).withOpacity(0.1),
                               borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: _getStatusColor(_order['status']))
+                              border: Border.all(color: _getStatusColor(status))
                             ),
                             child: Row(
                               children: [
-                                Text(_getStatusText(_order['status']), style: TextStyle(color: _getStatusColor(_order['status']), fontWeight: FontWeight.bold)),
+                                Text(_getStatusText(status), style: TextStyle(color: _getStatusColor(status), fontWeight: FontWeight.bold)),
                                 const Icon(Icons.arrow_drop_down, size: 18)
                               ],
                             ),
@@ -222,11 +259,10 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                       ],
                     ),
                     const Divider(height: 20),
-                    _infoRow(Icons.person, "Mijoz", _order['clients']?['full_name'] ?? "Noma'lum"),
-                    _infoRow(Icons.phone, "Telefon", _order['clients']?['phone'] ?? "-"),
-                    _infoRow(Icons.square_foot, "Hajm", "${_order['total_area_m2']} m²"),
-                    if (_order['notes'] != null && _order['notes'].toString().isNotEmpty)
-                      _infoRow(Icons.note, "Izoh", _order['notes']),
+                    _infoRow(Icons.person, "Mijoz", clientName),
+                    _infoRow(Icons.phone, "Telefon", clientPhone),
+                    _infoRow(Icons.square_foot, "Hajm", "$area m²"),
+                    if (notes.toString().isNotEmpty) _infoRow(Icons.note, "Izoh", notes),
                   ],
                 ),
               ),
@@ -234,12 +270,12 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
             
             const SizedBox(height: 15),
 
-            // 2. MOLIYAVIY HISOBOT
+            // MOLIYA
             Row(
               children: [
-                Expanded(child: _financeCard("Shartnoma", _order['total_price'], Colors.blue)),
+                Expanded(child: _financeCard("Shartnoma", price, Colors.blue)),
                 const SizedBox(width: 10),
-                Expanded(child: _financeCard("Xarajat (Ish haqi)", _totalExpenses, Colors.red)),
+                Expanded(child: _financeCard("Xarajat", _totalExpenses, Colors.red)),
               ],
             ),
             const SizedBox(height: 10),
@@ -258,7 +294,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
             const Text("Jarayon Tarixi (Ishlar)", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 10),
 
-            // 3. ISHLAR RO'YXATI (WORK LOGS)
             _workLogs.isEmpty
                 ? const Center(child: Padding(padding: EdgeInsets.all(20), child: Text("Hozircha ishlar bajarilmagan")))
                 : ListView.builder(
@@ -274,16 +309,8 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                             child: Text((log['profiles']?['full_name'] ?? "?").toString()[0]),
                           ),
                           title: Text(log['profiles']?['full_name'] ?? "Ishchi"),
-                          subtitle: Text("${log['task_type']} - ${log['area_m2']} m²\n${log['description'] ?? ''}"),
-                          isThreeLine: true,
-                          trailing: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text("${log['total_sum']} so'm", style: const TextStyle(fontWeight: FontWeight.bold)),
-                              Text(log['created_at'].toString().split('T')[0], style: const TextStyle(fontSize: 10, color: Colors.grey)),
-                            ],
-                          ),
+                          subtitle: Text("${log['task_type']} - ${log['area_m2']} m²"),
+                          trailing: Text("${log['total_sum']} so'm", style: const TextStyle(fontWeight: FontWeight.bold)),
                         ),
                       );
                     },
