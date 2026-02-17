@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'manage_users_screen.dart';   // Xodimlar boshqaruvi
-import 'clients_screen.dart';        // Mijozlar
-import 'admin_finance_screen.dart';  // <--- YANGI MOLIYA SAHIFASI ULANDI
+import 'manage_users_screen.dart';   
+import 'clients_screen.dart';        
+import 'admin_finance_screen.dart';  
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -27,7 +27,7 @@ class _HomeScreenState extends State<HomeScreen> {
   // Admin Stats
   int _totalOrders = 0;
   int _activeOrders = 0;
-  double _companyBalance = 0; // Taxminiy kassa
+  double _companyBalance = 0;
 
   @override
   void initState() {
@@ -59,15 +59,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
         _totalOrders = orders.length;
         _activeOrders = orders.where((o) => o['status'] != 'completed').length;
-        _companyBalance = totalIncome - totalPaid; // Oddiy kassa hisobi
+        _companyBalance = totalIncome - totalPaid; 
       } else {
         // --- ISHCHI BALANSI ---
-        // 1. Ishlagan pullari
         final works = await _supabase.from('work_logs').select('total_sum').eq('worker_id', user.id);
         double earned = 0;
         for (var w in works) earned += (w['total_sum'] ?? 0).toDouble();
 
-        // 2. Olgan pullari (Tasdiqlanganlari)
         final withdraws = await _supabase.from('withdrawals').select('amount').eq('user_id', user.id).eq('status', 'approved');
         double paid = 0;
         for (var w in withdraws) paid += (w['amount'] ?? 0).toDouble();
@@ -84,7 +82,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // --- ISHCHI UCHUN: PUL SO'RASH DIALOGI ---
+  // --- PUL SO'RASH DIALOGI ---
   void _showWithdrawDialog() {
     final amountController = TextEditingController();
     showDialog(
@@ -136,7 +134,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // --- ISH TOPSHIRISH DIALOGI (AVTO STATUS BILAN) ---
+  // --- ISH TOPSHIRISH DIALOGI ---
   void _showWorkDialog() async {
     final ordersResp = await _supabase.from('orders').select('*, clients(full_name)').neq('status', 'completed').order('created_at', ascending: false);
     final taskTypesResp = await _supabase.from('task_types').select();
@@ -163,7 +161,6 @@ class _HomeScreenState extends State<HomeScreen> {
               const Text("Ish Topshirish", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
               const SizedBox(height: 20),
               
-              // ZAKAZ TANLASH
               DropdownButtonFormField<dynamic>(
                 decoration: const InputDecoration(labelText: "Zakaz", border: OutlineInputBorder()),
                 isExpanded: true,
@@ -178,7 +175,6 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 10),
 
-              // ISH TURI
               DropdownButtonFormField<Map<String, dynamic>>(
                 decoration: const InputDecoration(labelText: "Ish turi", border: OutlineInputBorder()),
                 items: taskTypes.map((t) => DropdownMenuItem(value: t, child: Text(t['name']))).toList(),
@@ -215,7 +211,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 onPressed: () async {
                   if (selectedOrder == null || selectedTask == null) return;
                   try {
-                    // 1. Ishni yozish (TOTAL_SUM YO'Q - Baza hisoblaydi)
                     await _supabase.from('work_logs').insert({
                       'worker_id': _supabase.auth.currentUser!.id,
                       'order_id': selectedOrder,
@@ -225,7 +220,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       'description': notesController.text,
                     });
 
-                    // 2. AVTOMATIK STATUS O'ZGARTIRISH
                     if (selectedTask!['target_status'] != null && selectedTask!['target_status'].toString().isNotEmpty) {
                       await _supabase.from('orders').update({
                         'status': selectedTask!['target_status']
@@ -260,7 +254,6 @@ class _HomeScreenState extends State<HomeScreen> {
         ? const Center(child: CircularProgressIndicator(color: Colors.white))
         : Column(
             children: [
-              // --- HEADER QISMI ---
               Container(
                 padding: const EdgeInsets.only(top: 60, left: 20, right: 20, bottom: 30),
                 child: Column(
@@ -279,8 +272,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       ],
                     ),
                     const SizedBox(height: 20),
-                    
-                    // ADMIN VA ISHCHI UCHUN FARQLI KARTA
                     if (_userRole == 'admin') 
                       _buildAdminStatsCard()
                     else 
@@ -289,7 +280,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
 
-              // --- PASTKI MENYU (GRID) ---
               Expanded(
                 child: Container(
                   decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(30))),
@@ -299,14 +289,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     crossAxisSpacing: 15,
                     mainAxisSpacing: 15,
                     children: [
-                      // HAMMA UCHUN
                       _menuItem(Icons.people, "Mijozlar", Colors.orange, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ClientsScreen()))),
                       
-                      // FAQAT ISHCHILAR UCHUN
                       if (_userRole != 'admin')
                         _menuItem(Icons.add_task, "Ish Topshirish", Colors.blue, _showWorkDialog),
 
-                      // FAQAT ADMIN UCHUN TUGMALAR
                       if (_userRole == 'admin') ...[
                         _menuItem(Icons.manage_accounts, "Xodimlar", Colors.purple, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ManageUsersScreen()))),
                         _menuItem(Icons.account_balance_wallet, "Moliya", Colors.green, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminFinanceScreen()))),
@@ -321,7 +308,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ISHCHI BALANS KARTASI (Pul so'rash tugmasi bilan)
   Widget _buildWorkerBalanceCard() {
     return Container(
       width: double.infinity,
@@ -344,11 +330,9 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ADMIN STATISTIKA KARTASI
   Widget _buildAdminStatsCard() {
     return Column(
       children: [
-        // 1. KASSA
         Container(
            width: double.infinity,
            padding: const EdgeInsets.all(15),
@@ -361,7 +345,6 @@ class _HomeScreenState extends State<HomeScreen> {
              ],
            ),
         ),
-        // 2. ZAKAZLAR
         Row(
           children: [
             Expanded(
@@ -405,7 +388,8 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             CircleAvatar(radius: 25, backgroundColor: color.withOpacity(0.1), child: Icon(icon, color: color, size: 30)),
             const SizedBox(height: 10),
-            Text(title, style: const TextStyle(fontWeight: FontWeight.bold, textAlign: TextAlign.center)),
+            // --- TUZATILGAN JOY ---
+            Text(title, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold)),
           ],
         ),
       ),
