@@ -171,7 +171,14 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> {
                           subtitle: Text("Summa: ${order['total_price']} so'm\nStatus: ${order['status']}"),
                           isThreeLine: true,
                           trailing: Icon(Icons.circle, color: _getStatusColor(order['status'])),
-                          onTap: () {
+                          onTap: () async {
+  // YANGI OYNAGA O'TISH
+  await Navigator.push(
+    context,
+    MaterialPageRoute(builder: (_) => OrderDetailsScreen(orderId: order['id'])),
+  );
+  // Qaytib kelganda ma'lumotni yangilash
+  _loadClientOrders();
                             // Kelajakda: Zakaz ichiga kirib uni tahrirlash sahifasiga o'tish
                           },
                         ),
