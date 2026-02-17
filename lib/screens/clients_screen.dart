@@ -20,14 +20,20 @@ class _ClientsScreenState extends State<ClientsScreen> {
     _loadInitialData();
   }
 
+  // 1. Ma'lumot yuklash funksiyasi
   Future<void> _loadInitialData() async {
     if (!mounted) return;
     setState(() => _isLoading = true);
     try {
       final results = await Future.wait([
-        // Diqqat: 'full_name' ni chaqiryapmiz
-        _supabase.from('clients').select().order('created_at'),
-        _supabase.from('orders').select('*, clients(full_name), work_logs(total_sum, is_approved)').order('created_at', ascending: false)
+        // 1-So'rov: Mijozlar (full_name kerak)
+        _supabase.from('clients').select().order('created_at', ascending: false),
+        
+        // 2-So'rov: Zakazlar (bog'langan jadvallar bilan)
+        _supabase
+            .from('orders')
+            .select('*, clients(full_name, phone), work_logs(total_sum, is_approved)')
+            .order('created_at', ascending: false)
       ]);
 
       if (mounted) {
@@ -49,7 +55,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
   void _showAddClientDialog() {
     final nameController = TextEditingController();
     final phoneController = TextEditingController();
-    final addressController = TextEditingController(); // Address ham bor ekan
+    final addressController = TextEditingController();
 
     showDialog(
       context: context,
@@ -58,11 +64,21 @@ class _ClientsScreenState extends State<ClientsScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(controller: nameController, decoration: const InputDecoration(labelText: "F.I.SH (To'liq ism)", border: OutlineInputBorder())),
+            TextField(
+              controller: nameController,
+              decoration: const InputDecoration(labelText: "F.I.SH (Majburiy)", border: OutlineInputBorder()),
+            ),
             const SizedBox(height: 10),
-            TextField(controller: phoneController, decoration: const InputDecoration(labelText: "Telefon", border: OutlineInputBorder())),
+            TextField(
+              controller: phoneController,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(labelText: "Telefon", border: OutlineInputBorder()),
+            ),
             const SizedBox(height: 10),
-            TextField(controller: addressController, decoration: const InputDecoration(labelText: "Manzil", border: OutlineInputBorder())),
+            TextField(
+              controller: addressController,
+              decoration: const InputDecoration(labelText: "Manzil", border: OutlineInputBorder()),
+            ),
           ],
         ),
         actions: [
@@ -71,18 +87,18 @@ class _ClientsScreenState extends State<ClientsScreen> {
             onPressed: () async {
               if (nameController.text.trim().isEmpty) return;
               try {
-                // SIZNING BAZANGIZGA MOSLANISH:
-                // 'full_name' ga yozamiz (chunki u NOT NULL)
+                // SIZNING SQL SXEMANGIZGA MOSLANISH:
+                // clients jadvalida 'full_name' NOT NULL, shuning uchun unga yozish shart.
                 await _supabase.from('clients').insert({
                   'full_name': nameController.text.trim(), 
-                  'name': nameController.text.trim(), // Ikkalasiga ham yozib qo'yamiz ehtiyot shart
+                  'name': nameController.text.trim(), // Ehtiyot shart bunga ham yozamiz
                   'phone': phoneController.text.trim(),
                   'address': addressController.text.trim(),
                 });
-                
+
                 if (mounted) {
                   Navigator.pop(ctx);
-                  _loadInitialData();
+                  _loadInitialData(); // Ro'yxatni yangilash
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Mijoz qo'shildi!"), backgroundColor: Colors.green));
                 }
               } catch (e) {
@@ -99,7 +115,8 @@ class _ClientsScreenState extends State<ClientsScreen> {
 
   // --- ZAKAZ (LOYIHA) QO'SHISH ---
   void _showAddOrderDialog() {
-    Object? selectedClientId; // BigInt bo'lgani uchun Object qilib turamiz
+    // ID BigInt bo'lgani uchun int? ishlatsak bo'ladi (Dartda BigInt JSONda int keladi)
+    int? selectedClientId; 
     final projectController = TextEditingController();
     final areaController = TextEditingController();
     final priceController = TextEditingController();
@@ -117,54 +134,58 @@ class _ClientsScreenState extends State<ClientsScreen> {
               const Text("Yangi Loyiha (Zakaz)", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 20),
               
-              DropdownButtonFormField<Object>(
+              DropdownButtonFormField<int>(
                 decoration: const InputDecoration(labelText: "Mijozni tanlang", border: OutlineInputBorder()),
-                items: _clients.map((c) => DropdownMenuItem(
-                  value: c['id'], // Bu yerda ID raqam (BigInt) ketadi
+                items: _clients.map((c) => DropdownMenuItem<int>(
+                  value: c['id'] as int, // ID ni int sifatida olamiz
                   child: Text(c['full_name'] ?? c['name'] ?? "Noma'lum")
                 )).toList(),
                 onChanged: (v) => setModalState(() => selectedClientId = v),
               ),
               const SizedBox(height: 12),
-              TextField(controller: projectController, decoration: const InputDecoration(labelText: "Loyiha nomi (Masalan: Oshxona)", border: OutlineInputBorder())),
+              TextField(
+                controller: projectController, 
+                decoration: const InputDecoration(labelText: "Loyiha nomi (Masalan: Oshxona)", border: OutlineInputBorder())
+              ),
               const SizedBox(height: 12),
               TextField(
-                controller: areaController, 
+                controller: areaController,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 decoration: const InputDecoration(labelText: "Umumiy kvadrat (m2)", border: OutlineInputBorder(), suffixText: "m2"),
               ),
               const SizedBox(height: 12),
               TextField(
-                controller: priceController, 
-                keyboardType: TextInputType.number, 
+                controller: priceController,
+                keyboardType: TextInputType.number,
                 decoration: const InputDecoration(labelText: "Shartnoma summasi", border: OutlineInputBorder(), suffixText: "so'm"),
               ),
               const SizedBox(height: 20),
               ElevatedButton(
                 onPressed: () async {
                   if (selectedClientId == null || projectController.text.isEmpty) return;
-                  
+
                   final client = _clients.firstWhere((c) => c['id'] == selectedClientId);
                   String clientSafeName = (client['full_name'] ?? client['name']).toString().replaceAll(' ', '-');
-                  
+
                   // Format: 100_01_Ism_Loyiha
                   String prefix = "100";
                   String seq = (_orders.length + 1).toString().padLeft(2, '0');
                   String generatedName = "${prefix}_${seq}_${clientSafeName}_${projectController.text.replaceAll(' ', '-')}";
-                  
+
                   // Kvadratni raqamga o'girish
                   double area = double.tryParse(areaController.text.replaceAll(',', '.')) ?? 0;
 
                   try {
-                    // SIZNING BAZANGIZGA MOSLANISH:
+                    // SIZNING SQL SXEMANGIZGA MOSLANISH:
+                    // orders jadvalida 'total_area_m2' NOT NULL.
                     await _supabase.from('orders').insert({
-                      'client_id': selectedClientId, // Raqam (BigInt)
+                      'client_id': selectedClientId, 
                       'project_name': generatedName,
                       'order_number': generatedName,
-                      'total_area_m2': area, // BU MAJBURIY (NOT NULL)
+                      'total_area_m2': area, // MAJBURIY
                       'measured_area': area,
                       'total_price': double.tryParse(priceController.text) ?? 0,
-                      'status': 'pending', // 'new' emas, 'pending' yozamiz constraint uchun
+                      'status': 'pending', 
                     });
 
                     if (mounted) {
@@ -190,49 +211,73 @@ class _ClientsScreenState extends State<ClientsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.grey.shade50,
       appBar: AppBar(title: const Text("Mijozlar va Loyihalar")),
-      body: _isLoading 
-        ? const Center(child: CircularProgressIndicator())
-        : ListView.builder(
-            padding: const EdgeInsets.all(12),
-            itemCount: _orders.length,
-            itemBuilder: (context, index) {
-              final order = _orders[index];
-              return Card(
-                elevation: 2,
-                margin: const EdgeInsets.only(bottom: 10),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                child: ListTile(
-                  title: Text("${order['project_name']}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                  subtitle: Text("Hajm: ${order['total_area_m2']} m² | Status: ${order['status']}"),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () {
-                    // Detallar sahifasiga o'tish mantiqi
-                  },
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              children: [
+                // 1. MIJOZLAR RO'YXATI (TEPADA KO'RINISHI UCHUN)
+                ExpansionTile(
+                  title: Text("Mijozlar Ro'yxati (${_clients.length})", style: const TextStyle(fontWeight: FontWeight.bold)),
+                  leading: const Icon(Icons.people, color: Colors.orange),
+                  children: [
+                    SizedBox(
+                      height: 200,
+                      child: _clients.isEmpty 
+                        ? const Center(child: Text("Mijozlar yo'q"))
+                        : ListView.builder(
+                          itemCount: _clients.length,
+                          itemBuilder: (ctx, i) {
+                            final c = _clients[i];
+                            return ListTile(
+                              leading: const CircleAvatar(child: Icon(Icons.person, size: 20)),
+                              title: Text(c['full_name'] ?? "Noma'lum"),
+                              subtitle: Text(c['phone'] ?? "Tel yo'q"),
+                              dense: true,
+                            );
+                          },
+                        ),
+                    )
+                  ],
                 ),
-              );
-            },
-          ),
+                
+                const Divider(thickness: 2),
+                
+                // 2. ZAKAZLAR RO'YXATI
+                Expanded(
+                  child: _orders.isEmpty
+                      ? const Center(child: Text("Zakazlar mavjud emas"))
+                      : ListView.builder(
+                          padding: const EdgeInsets.all(12),
+                          itemCount: _orders.length,
+                          itemBuilder: (context, index) {
+                            final order = _orders[index];
+                            final clientName = order['clients']?['full_name'] ?? "Noma'lum mijoz";
+                            
+                            return Card(
+                              elevation: 2,
+                              margin: const EdgeInsets.only(bottom: 10),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                              child: ListTile(
+                                leading: Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(8)),
+                                  child: const Icon(Icons.folder, color: Colors.blue),
+                                ),
+                                title: Text("${order['project_name']}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                                subtitle: Text("Mijoz: $clientName\nHajm: ${order['total_area_m2']} m² | Status: ${order['status']}"),
+                                isThreeLine: true,
+                                trailing: const Icon(Icons.chevron_right),
+                                onTap: () {
+                                  // Detallar sahifasiga o'tish mantiqi
+                                },
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
       floatingActionButton: Column(
         mainAxisSize: MainAxisSize.min,
-        children: [
-          FloatingActionButton.small(
-            heroTag: "add_client",
-            onPressed: _showAddClientDialog,
-            backgroundColor: Colors.orange,
-            child: const Icon(Icons.person_add, color: Colors.white),
-          ),
-          const SizedBox(height: 10),
-          FloatingActionButton.extended(
-            heroTag: "add_order",
-            onPressed: _showAddOrderDialog,
-            icon: const Icon(Icons.create_new_folder),
-            label: const Text("Yangi Loyiha"),
-            backgroundColor: Colors.blue.shade900,
-            foregroundColor: Colors.white,
-          ),
-        ],
-      ),
-    );
-  }
-}
