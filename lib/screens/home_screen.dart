@@ -168,106 +168,152 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _showWorkDialog() async {
-  final ordersResp = await _supabase.from('orders').select('*, clients(name)').order('created_at');
-  final taskTypesResp = await _supabase.from('task_types').select();
+    // Faqat 'pending' yoki 'in_progress' zakazlarni olamiz (yopilgan zakazga ish qo'shib bo'lmaydi)
+    final ordersResp = await _supabase
+        .from('orders')
+        .select('*, clients(full_name)')
+        .neq('status', 'completed') 
+        .neq('status', 'canceled')
+        .order('created_at', ascending: false);
+        
+    final taskTypesResp = await _supabase.from('task_types').select();
 
-  if (!mounted) return;
+    if (!mounted) return;
 
-  final orders = List<Map<String, dynamic>>.from(ordersResp);
-  final taskTypes = List<Map<String, dynamic>>.from(taskTypesResp);
+    final orders = List<Map<String, dynamic>>.from(ordersResp);
+    final taskTypes = List<Map<String, dynamic>>.from(taskTypesResp);
 
-  Map<String, dynamic>? selectedOrder;
-  Map<String, dynamic>? selectedTask;
-  final areaController = TextEditingController();
-  double currentTotal = 0;
+    dynamic selectedOrder;
+    Map<String, dynamic>? selectedTask;
+    final areaController = TextEditingController(); // Kvadrat avtomatik yoziladi
+    final notesController = TextEditingController(); // Ishchi o'zidan izoh qo'shishi mumkin
+    double currentTotal = 0;
 
-  showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
-    builder: (context) => StatefulBuilder(
-      builder: (context, setModalState) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom + 20, left: 20, right: 20, top: 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text("Ish Topshirish", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 20),
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) => Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom + 20, left: 20, right: 20, top: 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text("Ish Topshirish", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 20),
 
-            // 1. ZAKAZNI TANLASH (Siz aytgan formatda ko'rinadi)
-            DropdownButtonFormField<Map<String, dynamic>>(
-              decoration: const InputDecoration(labelText: "Loyihani tanlang", border: OutlineInputBorder()),
-              items: orders.map((o) => DropdownMenuItem(
-                value: o, 
-                child: Text("${o['project_name']}", overflow: TextOverflow.ellipsis)
-              )).toList(),
-              onChanged: (v) {
-                setModalState(() {
-                  selectedOrder = v;
-                  // AVTOMATIK: Loyihachi kiritgan kvadratni yozamiz
-                  areaController.text = v?['measured_area']?.toString() ?? "";
-                  
-                  if (selectedTask != null) {
-                    currentTotal = (v?['measured_area'] ?? 0) * (selectedTask!['default_rate'] ?? 0);
-                  }
-                });
-              },
-            ),
-            const SizedBox(height: 15),
+              // 1. ZAKAZNI TANLASH (Eng muhim joyi)
+              DropdownButtonFormField<dynamic>(
+                decoration: const InputDecoration(
+                  labelText: "Qaysi zakazda ishladingiz?", 
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.folder_shared)
+                ),
+                isExpanded: true,
+                items: orders.map((o) => DropdownMenuItem<dynamic>(
+                  value: o, 
+                  // Ekranda: "100_01_Ali... (15.5 m2)" deb chiqadi
+                  child: Text("${o['project_name']} (${o['total_area_m2']} m²)", overflow: TextOverflow.ellipsis)
+                )).toList(),
+                onChanged: (v) {
+                  setModalState(() {
+                    selectedOrder = v;
+                    // AVTOMATIK TO'LDIRISH:
+                    // Loyihachi yozgan kvadratni olib kelib qo'yamiz
+                    areaController.text = (v['total_area_m2'] ?? 0).toString();
+                    
+                    // Agar ish turi tanlangan bo'lsa, narxni qayta hisoblaymiz
+                    if (selectedTask != null) {
+                       double area = double.tryParse(areaController.text) ?? 0;
+                       currentTotal = area * (selectedTask!['default_rate'] ?? 0);
+                    }
+                  });
+                },
+              ),
+              const SizedBox(height: 15),
 
-            // 2. ISH TURINI TANLASH
-            DropdownButtonFormField<Map<String, dynamic>>(
-              decoration: const InputDecoration(labelText: "Nima ish qilindi?", border: OutlineInputBorder()),
-              items: taskTypes.map((t) => DropdownMenuItem(value: t, child: Text("${t['name']}"))).toList(),
-              onChanged: (v) {
-                setModalState(() {
-                  selectedTask = v;
-                  double area = double.tryParse(areaController.text) ?? 0;
-                  currentTotal = area * (v?['default_rate'] ?? 0);
-                });
-              },
-            ),
-            const SizedBox(height: 15),
+              // 2. ISH TURINI TANLASH
+              DropdownButtonFormField<Map<String, dynamic>>(
+                decoration: const InputDecoration(labelText: "Nima ish qilindi?", border: OutlineInputBorder(), prefixIcon: Icon(Icons.handyman)),
+                items: taskTypes.map((t) => DropdownMenuItem(value: t, child: Text("${t['name']}"))).toList(),
+                onChanged: (v) {
+                  setModalState(() {
+                    selectedTask = v;
+                    double area = double.tryParse(areaController.text) ?? 0;
+                    currentTotal = area * (v?['default_rate'] ?? 0);
+                  });
+                },
+              ),
+              const SizedBox(height: 15),
 
-            // 3. HAJM (m2) - Avtomatik to'ladi, lekin tahrirlash mumkin
-            TextField(
-              controller: areaController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: "Hajm (m2)", border: OutlineInputBorder()),
-              onChanged: (v) {
-                setModalState(() {
-                  double area = double.tryParse(v) ?? 0;
-                  currentTotal = area * (selectedTask?['default_rate'] ?? 0);
-                });
-              },
-            ),
-            
-            const SizedBox(height: 20),
-            if (currentTotal > 0)
-               Text("Hisoblangan haq: ${currentTotal.toInt()} so'm", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.green)),
+              // 3. KVADRAT (Avtomatik to'ladi, lekin o'zgartirsa ham bo'ladi)
+              TextField(
+                controller: areaController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: "Hajm (m²)", 
+                  border: OutlineInputBorder(),
+                  helperText: "Zakazdan avtomatik olindi (o'zgartirish mumkin)"
+                ),
+                onChanged: (v) {
+                  setModalState(() {
+                    double area = double.tryParse(v) ?? 0;
+                    currentTotal = area * (selectedTask?['default_rate'] ?? 0);
+                  });
+                },
+              ),
+              const SizedBox(height: 10),
+              
+              if (currentTotal > 0)
+                 Container(
+                   padding: const EdgeInsets.all(10),
+                   decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(8)),
+                   child: Row(
+                     children: [
+                       const Icon(Icons.monetization_on, color: Colors.green),
+                       const SizedBox(width: 10),
+                       Text("Tahminiy ish haqi: ${currentTotal.toInt()} so'm", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+                     ],
+                   ),
+                 ),
 
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () async {
-                if (selectedOrder == null || selectedTask == null) return;
-                
-                await _supabase.from('work_logs').insert({
-                  'worker_id': _userId,
-                  'order_id': selectedOrder!['id'],
-                  'task_type': selectedTask!['name'],
-                  'area_m2': double.tryParse(areaController.text) ?? 0,
-                  'rate': selectedTask!['default_rate'],
-                  'is_approved': (_userRole == 'admin' || _userRole == 'owner'),
-                });
-                Navigator.pop(context);
-                _loadAllData();
-              },
-              style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50), backgroundColor: Colors.blue.shade900),
-              child: const Text("TOPSHIRISH", style: TextStyle(color: Colors.white)),
-            ),
-          ],
+              const SizedBox(height: 20),
+              
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  onPressed: () async {
+                    if (selectedOrder == null || selectedTask == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Zakaz va Ish turini tanlang!")));
+                      return;
+                    }
+                    
+                    await _supabase.from('work_logs').insert({
+                      'worker_id': _supabase.auth.currentUser!.id,
+                      'order_id': selectedOrder['id'],
+                      'task_type': selectedTask!['name'],
+                      'area_m2': double.tryParse(areaController.text) ?? 0,
+                      'rate': selectedTask!['default_rate'],
+                      'total_sum': currentTotal,
+                      'description': notesController.text, // Agar izoh yozgan bo'lsa
+                      'is_approved': false, // Admin tasdiqlashi kerak
+                    });
+                    
+                    if (mounted) {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ish topshirildi! Admin tasdiqlashini kuting."), backgroundColor: Colors.green));
+                      // Bu yerda _loadAllData() chaqirilishi kerak (agar parentda bo'lsa)
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade900, foregroundColor: Colors.white),
+                  child: const Text("ISHNI TOPSHIRISH"),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
-    ),
-  );
-}
+    );
+  }
 }
