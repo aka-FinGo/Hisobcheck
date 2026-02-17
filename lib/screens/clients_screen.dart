@@ -13,7 +13,41 @@ class ClientsScreen extends StatefulWidget {
 class _ClientsScreenState extends State<ClientsScreen> {
   final _supabase = Supabase.instance.client;
   bool _isLoading = true;
-  
+  // --- KEYINGI ZAKAZ RAQAMINI HISOBLASH ---
+  Future<String> _calculateNextOrderNumber() async {
+    try {
+      // 1. Bazadan eng oxirgi yaratilgan zakazni olamiz
+      final response = await _supabase
+          .from('orders')
+          .select('order_number')
+          .order('created_at', ascending: false) // Eng yangisi birinchi
+          .limit(1)
+          .maybeSingle();
+
+      String currentMonth = DateTime.now().month.toString().padLeft(2, '0'); // Masalan: "02"
+      int nextSeq = 100; // Agar baza bo'm-bo'sh bo'lsa, 100 dan boshlaymiz
+
+      if (response != null && response['order_number'] != null) {
+        String lastOrderStr = response['order_number'].toString();
+        // Formatimiz: "100_02_Ali_Oshxona" yoki "100_02"
+        // Biz "_" belgisiga qarab bo'laklaymiz
+        List<String> parts = lastOrderStr.split('_');
+
+        if (parts.isNotEmpty) {
+          // Birinchi bo'lakni (masalan "100") son qilib olamiz
+          int? lastSeq = int.tryParse(parts[0]);
+          if (lastSeq != null) {
+            nextSeq = lastSeq + 1; // 1 qo'shamiz -> 101
+          }
+        }
+      }
+
+      return "${nextSeq}_$currentMonth"; // Natija: "101_02"
+    } catch (e) {
+      debugPrint("Raqam hisoblashda xato: $e");
+      return "100_${DateTime.now().month.toString().padLeft(2, '0')}";
+    }
+  }
   // Ma'lumotlar
   List<Map<String, dynamic>> _allClients = [];
   List<Map<String, dynamic>> _displayClients = []; // Ekranda ko'rinadigan
