@@ -116,18 +116,30 @@ class _ClientsScreenState extends State<ClientsScreen> {
               const SizedBox(height: 20),
               ElevatedButton(
                 onPressed: () async {
-                  if (selectedClientId == null || projectController.text.isEmpty) return;
-                  await _supabase.from('orders').insert({
-                    'client_id': selectedClientId,
-                    'project_name': projectController.text,
-                    'measured_area': double.tryParse(areaController.text) ?? 0,
-                    'total_price': double.tryParse(priceController.text) ?? 0,
-                    'order_number': "Z-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}",
-                    'status': 'pending',
-                  });
-                  Navigator.pop(ctx);
-                  _loadInitialData();
-                },
+  if (selectedClientId == null || projectController.text.isEmpty) return;
+  
+  // Mijoz ismini ro'yxatdan topib olamiz
+  final client = _clients.firstWhere((c) => c['id'].toString() == selectedClientId);
+  String clientName = client['name'].toString().replaceAll(' ', '-'); // Bo'shliqlarni chiziqqa almashtirish
+  
+  // Format: 100 (Zakaz ID qismi) _ 02 (Tartib) _ Ism-Loyiha
+  // Hozircha oddiyroq vaqtga bog'langan ID ishlatamiz:
+  String orderID = "100"; // Buni keyinchalik dinamik qilish mumkin
+  String seq = DateTime.now().second.toString().padLeft(2, '0'); // Masalan 02
+  String generatedProjectName = "${orderID}_${seq}_${clientName}_${projectController.text.replaceAll(' ', '-')}";
+
+  await _supabase.from('orders').insert({
+    'client_id': selectedClientId,
+    'project_name': generatedProjectName, // Mana shu formatda saqlanadi
+    'measured_area': double.tryParse(areaController.text) ?? 0,
+    'total_price': double.tryParse(priceController.text) ?? 0,
+    'order_number': generatedProjectName, // Qidiruv oson bo'lishi uchun
+    'status': 'pending',
+  });
+  
+  Navigator.pop(ctx);
+  _loadInitialData();
+},
                 style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 55), backgroundColor: Colors.blue.shade900),
                 child: const Text("LOYIHANI OCHISH", style: TextStyle(color: Colors.white)),
               )
