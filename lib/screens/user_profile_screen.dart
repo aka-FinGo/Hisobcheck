@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../main.dart'; // LoginScreen ga qaytish uchun kerak bo'lishi mumkin
+import 'login_screen.dart'; // <--- MANA SHU IMPORT YETISHMAYOTGAN EDI
 
 class UserProfileScreen extends StatefulWidget {
   final Map<String, dynamic>? user;
@@ -124,9 +124,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   void _logout() async {
     await _supabase.auth.signOut();
     if (mounted) {
-      // Login ekraniga qaytarish (main.dart dagi routelarga qarab)
+      // Login ekraniga to'g'ri qaytarish
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const LoginScreen()), // LoginScreen import qilingan bo'lishi kerak
+        MaterialPageRoute(builder: (_) => const LoginScreen()), 
         (route) => false
       );
     }
@@ -141,7 +141,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     final String phone = _profileData['phone'] ?? "+998 -- --- -- --";
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F6F8), // Rasm foni
+      backgroundColor: const Color(0xFFF4F6F8),
       appBar: AppBar(
         title: const Text("Profil", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
         backgroundColor: Colors.white,
@@ -155,7 +155,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // --- HEADER KARTA (Rasm, Ism, Tahrirlash) ---
+                  // --- HEADER KARTA ---
                   Container(
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
@@ -265,7 +265,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     );
   }
 
-  // Menyu elementi (Arrow icon bilan)
   Widget _buildMenuTile(IconData icon, String title, VoidCallback onTap) {
     return ListTile(
       leading: Icon(icon, color: Colors.blue.shade700),
@@ -275,7 +274,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     );
   }
 
-  // Info elementi (Pastki qismdagi)
   Widget _buildInfoTile(IconData icon, String label, String value) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
