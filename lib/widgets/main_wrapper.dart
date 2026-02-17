@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-// Sahifalarni import qilamiz
-import 'home_screen.dart';
-import 'stats_screen.dart';
-import 'user_profile_screen.dart';
-import 'manage_users_screen.dart';
+// --- MUHIM: Sahifalar "screens" papkasida bo'lgani uchun yo'lni to'g'irladik ---
+import '../screens/home_screen.dart';
+import '../screens/stats_screen.dart';
+import '../screens/user_profile_screen.dart';
+import '../screens/manage_users_screen.dart';
 
 class MainWrapper extends StatefulWidget {
   const MainWrapper({super.key});
@@ -42,6 +42,7 @@ class _MainWrapperState extends State<MainWrapper> {
         const HomeScreen(),          // 0: Uy
         const StatsScreen(),         // 1: Statistika
         const ManageUsersScreen(),   // 2: Xodimlar
+        // Profil uchun ma'lumotni fetch qilamiz
         UserProfileScreen(user: await _fetchFullProfile(user!.id)), // 3: Profil
       ];
     } else {
@@ -65,7 +66,6 @@ class _MainWrapperState extends State<MainWrapper> {
 
     return Scaffold(
       // IndexedStack ishlatamiz - bu sahifalar holatini saqlab qoladi
-      // (Boshqa sahifaga o'tib qaytganda yozgan narsalaringiz o'chib ketmaydi)
       body: IndexedStack(
         index: _currentIndex,
         children: _pages,
@@ -86,7 +86,7 @@ class _MainWrapperState extends State<MainWrapper> {
           selectedItemColor: Colors.blue.shade900,
           unselectedItemColor: Colors.grey,
           showUnselectedLabels: true,
-          elevation: 0, // Soyani Containerga berdik, shuning uchun bu yerda 0
+          elevation: 0,
           items: _buildNavItems(),
         ),
       ),
