@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../widgets/reload_button.dart';
 import 'login_screen.dart'; // Chiqish uchun kerak
+import 'admin_panel_screen.dart';
 
 class UserProfileScreen extends StatefulWidget {
   final Map<String, dynamic> user; // Kimning profili ko'rilyapti?
