@@ -35,6 +35,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadAllData();
   }
 
+  // --- MA'LUMOTLARNI YUKLASH FUNKSIYASI ---
   Future<void> _loadAllData() async {
     if (!mounted) return;
     setState(() => _isLoading = true);
@@ -42,21 +43,24 @@ class _HomeScreenState extends State<HomeScreen> {
       final user = _supabase.auth.currentUser;
       if (user == null) return;
 
-      // 1. Profilni yuklash
+      // 1. Profilni yuklash (Admin yoki Ishchi ekanini bilish uchun)
       final profile = await _supabase.from('profiles').select().eq('id', user.id).single();
       _userRole = profile['role'] ?? 'worker';
       _userName = profile['full_name'] ?? 'Foydalanuvchi';
 
-      // 2. Moliya ma'lumotlarini yuklash (Admin va Ishchi uchun umumiy hisob-kitoblar)
-      final works = await _supabase.from('work_logs').select('total_sum').eq('worker_id', user.id);
-      final withdraws = await _supabase.from('withdrawals').select('amount').eq('user_id', user.id).eq('status', 'approved');
+      // 2. Ishchi statistikasi (Ishlagan pullari va olgan pullari)
+      final results = await Future.wait([
+        _supabase.from('work_logs').select('total_sum').eq('worker_id', user.id),
+        _supabase.from('withdrawals').select('amount').eq('user_id', user.id).eq('status', 'approved'),
+      ]);
 
       double earned = 0;
-      for (var w in works) earned += (w['total_sum'] ?? 0).toDouble();
+      for (var w in results[0]) earned += (w['total_sum'] ?? 0).toDouble();
       
       double withdrawn = 0;
-      for (var w in withdraws) withdrawn += (w['amount'] ?? 0).toDouble();
+      for (var w in results[1]) withdrawn += (w['amount'] ?? 0).toDouble();
 
+      // 3. Admin statistikasi (Agar u Admin bo'lsa)
       if (_userRole == 'admin') {
         final ordersRes = await _supabase.from('orders').select('total_price, status');
         final allApprovedWithdraws = await _supabase.from('withdrawals').select('amount').eq('status', 'approved');
@@ -79,41 +83,12 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       }
     } catch (e) {
-      debugPrint("Xato: $e");
+      debugPrint("Ma'lumot yuklashda xato: $e");
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  // --- PUL SO'RASH ---
-  void _showWithdrawRequest() {
-    final amountController = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("Pul so'rash (Avans)"),
-        content: TextField(
-          controller: amountController,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(labelText: "Summa", suffixText: "so'm"),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("BEKOR")),
-          ElevatedButton(
-            onPressed: () async {
-              double val = double.tryParse(amountController.text) ?? 0;
-              if (val <= 0 || val > (_totalEarned - _totalWithdrawn)) return;
-              await _supabase.from('withdrawals').insert({'user_id': _supabase.auth.currentUser!.id, 'amount': val, 'status': 'pending'});
-              Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("So'rov yuborildi")));
-            },
-            child: const Text("YUBORISH"),
-          )
-        ],
-      ),
-    );
-  }
-
-  // --- ISH TOPSHIRISH (AVTO STATUS BILAN) ---
+  // --- ISH TOPSHIRISH (Yozilgandan keyin yangilash bilan) ---
   void _showWorkDialog() async {
     final ordersResp = await _supabase.from('orders').select('*, clients(full_name)').neq('status', 'completed').order('created_at', ascending: false);
     final taskTypesResp = await _supabase.from('task_types').select();
@@ -162,6 +137,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade900, foregroundColor: Colors.white),
                 onPressed: () async {
                   if (selectedOrder == null || selectedTask == null) return;
+                  
+                  // Bazaga yozish
                   await _supabase.from('work_logs').insert({
                     'worker_id': _supabase.auth.currentUser!.id,
                     'order_id': selectedOrder,
@@ -169,17 +146,58 @@ class _HomeScreenState extends State<HomeScreen> {
                     'area_m2': double.tryParse(areaController.text) ?? 0,
                     'rate': selectedTask!['default_rate'],
                   });
+
+                  // Avto status o'zgarishi
                   if (selectedTask!['target_status'] != null) {
                     await _supabase.from('orders').update({'status': selectedTask!['target_status']}).eq('id', selectedOrder);
                   }
-                  Navigator.pop(context);
-                  _loadAllData();
+
+                  if (mounted) {
+                    Navigator.pop(context);
+                    _loadAllData(); // <--- MUHIM: MA'LUMOTNI YANGILAYDI
+                  }
                 },
                 child: const Text("TOPSHIRISH"),
               )),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  // --- PUL SO'RASH DIALOGI ---
+  void _showWithdrawRequest() {
+    final amountController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Pul so'rash (Avans)"),
+        content: TextField(
+          controller: amountController,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(labelText: "Summa", suffixText: "so'm"),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("BEKOR")),
+          ElevatedButton(
+            onPressed: () async {
+              double val = double.tryParse(amountController.text) ?? 0;
+              if (val <= 0 || val > (_totalEarned - _totalWithdrawn)) return;
+              await _supabase.from('withdrawals').insert({
+                'user_id': _supabase.auth.currentUser!.id, 
+                'amount': val, 
+                'status': 'pending'
+              });
+              if (mounted) {
+                Navigator.pop(ctx);
+                _loadAllData(); // Yangilash
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("So'rov yuborildi")));
+              }
+            },
+            child: const Text("YUBORISH"),
+          )
+        ],
       ),
     );
   }
@@ -193,54 +211,56 @@ class _HomeScreenState extends State<HomeScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         actions: [
-          ReloadButton(onPressed: _loadAllData), // Sizning yangilash tugmangiz
+          // Sizning ReloadButton widgetingiz
+          ReloadButton(onPressed: _loadAllData), 
           IconButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UserProfileScreen())), icon: const Icon(Icons.person_outline)),
         ],
       ),
       body: _isLoading 
         ? const Center(child: CircularProgressIndicator())
-        : SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              children: [
-                // ADMIN UCHUN KASSA STATISTIKASI
-                if (_userRole == 'admin') _buildAdminHeader(),
-                
-                const SizedBox(height: 10),
+        : RefreshIndicator( // Tepadan pastga tortsa yangilash
+            onRefresh: _loadAllData,
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                children: [
+                  if (_userRole == 'admin') _buildAdminHeader(),
+                  const SizedBox(height: 10),
 
-                // ISHCHI UCHUN ANIMATSIYALI BALANS KARTASI
-                BalanceCard(
-                  earned: _totalEarned,
-                  withdrawn: _totalWithdrawn,
-                  role: _userRole,
-                  onStatsTap: () {}, // Kerakli sahifaga ulanadi
-                ),
+                  // Sizning animatsiyali BalanceCard widgetingiz
+                  BalanceCard(
+                    earned: _totalEarned,
+                    withdrawn: _totalWithdrawn,
+                    role: _userRole,
+                    onStatsTap: () {},
+                  ),
 
-                const SizedBox(height: 20),
+                  const SizedBox(height: 20),
 
-                // ASOSIY MENYU GRID
-                GridView.count(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  crossAxisCount: 2,
-                  crossAxisSpacing: 15,
-                  mainAxisSpacing: 15,
-                  children: [
-                    _menuItem(Icons.people, "Mijozlar", Colors.orange, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ClientsScreen()))),
-                    
-                    if (_userRole != 'admin')
-                      _menuItem(Icons.add_task, "Ish Topshirish", Colors.blue, _showWorkDialog),
-                    
-                    if (_userRole != 'admin')
-                      _menuItem(Icons.account_balance_wallet, "Pul so'rash", Colors.green, _showWithdrawRequest),
+                  GridView.count(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 15,
+                    mainAxisSpacing: 15,
+                    children: [
+                      _menuItem(Icons.people, "Mijozlar", Colors.orange, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ClientsScreen()))),
+                      
+                      if (_userRole != 'admin')
+                        _menuItem(Icons.add_task, "Ish Topshirish", Colors.blue, _showWorkDialog),
+                      
+                      if (_userRole != 'admin')
+                        _menuItem(Icons.account_balance_wallet, "Pul so'rash", Colors.green, _showWithdrawRequest),
 
-                    if (_userRole == 'admin') ...[
-                      _menuItem(Icons.manage_accounts, "Xodimlar", Colors.purple, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ManageUsersScreen()))),
-                      _menuItem(Icons.payments, "Moliya", Colors.teal, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminFinanceScreen()))),
-                    ]
-                  ],
-                ),
-              ],
+                      if (_userRole == 'admin') ...[
+                        _menuItem(Icons.manage_accounts, "Xodimlar", Colors.purple, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ManageUsersScreen()))),
+                        _menuItem(Icons.payments, "Moliya", Colors.teal, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminFinanceScreen()))),
+                      ]
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
     );
