@@ -22,18 +22,41 @@ class _ClientsScreenState extends State<ClientsScreen> {
   Future<void> _loadOrders() async {
     setState(() => _isLoading = true);
     try {
-      final data = await _supabase.from('orders').select().order('created_at', ascending: false);
-      setState(() {
-        _orders = List<Map<String, dynamic>>.from(data);
-        _isLoading = false;
-      });
+      // Zakazlarni va ularga tegishli barcha ish haqlarini (work_logs) bittada olamiz
+      final response = await _supabase
+          .from('orders')
+          .select('*, work_logs(total_sum, is_approved)')
+          .order('created_at', ascending: false);
+
+      if (mounted) {
+        setState(() {
+          _orders = List<Map<String, dynamic>>.from(response);
+          _isLoading = false;
+        });
+      }
     } catch (e) {
-      setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e")));
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e")));
+      }
     }
   }
 
-  // Status rangini aniqlash
+  // Moliyaviy hisob-kitob funksiyasi
+  Map<String, double> _calculateFinances(List workLogs, double totalPrice) {
+    double totalExpenses = 0;
+    for (var log in workLogs) {
+      // Faqat tasdiqlangan ish haqlarini xarajatga qo'shamiz
+      if (log['is_approved'] == true) {
+        totalExpenses += (log['total_sum'] ?? 0).toDouble();
+      }
+    }
+    return {
+      'expenses': totalExpenses,
+      'profit': totalPrice - totalExpenses,
+    };
+  }
+
   Color _getStatusColor(String status) {
     switch (status) {
       case 'pending': return Colors.orange;
@@ -45,7 +68,6 @@ class _ClientsScreenState extends State<ClientsScreen> {
     }
   }
 
-  // Status nomini o'zbekcha qilish
   String _getStatusText(String status) {
     switch (status) {
       case 'pending': return "Kutilmoqda";
@@ -60,6 +82,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.grey.shade50,
       appBar: AppBar(
         title: const Text("Mijozlar va Zakazlar"),
         actions: [
@@ -68,102 +91,125 @@ class _ClientsScreenState extends State<ClientsScreen> {
       ),
       body: _isLoading 
         ? const Center(child: CircularProgressIndicator())
-        : ListView.builder(
-            padding: const EdgeInsets.all(12),
-            itemCount: _orders.length,
-            itemBuilder: (context, index) {
-              final order = _orders[index];
-              return Card(
-                elevation: 3,
-                margin: const EdgeInsets.only(bottom: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                child: ExpansionTile(
-                  leading: CircleAvatar(
-                    backgroundColor: _getStatusColor(order['status']).withOpacity(0.1),
-                    child: Icon(Icons.assignment, color: _getStatusColor(order['status'])),
-                  ),
-                  title: Text(
-                    "№${order['order_number']} - ${order['client_name'] ?? 'Noma\'lum'}",
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  subtitle: Text("Muddat: ${order['deadline'] ?? 'Belgilanmagan'}"),
-                  trailing: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: _getStatusColor(order['status']),
-                      borderRadius: BorderRadius.circular(10),
+        : _orders.isEmpty 
+          ? const Center(child: Text("Zakazlar mavjud emas"))
+          : ListView.builder(
+              padding: const EdgeInsets.all(12),
+              itemCount: _orders.length,
+              itemBuilder: (context, index) {
+                final order = _orders[index];
+                final finances = _calculateFinances(
+                  order['work_logs'] ?? [], 
+                  (order['total_price'] ?? 0).toDouble()
+                );
+
+                return Card(
+                  elevation: 2,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                  child: ExpansionTile(
+                    leading: CircleAvatar(
+                      backgroundColor: _getStatusColor(order['status']).withOpacity(0.1),
+                      child: Icon(Icons.kitchen, color: _getStatusColor(order['status'])),
                     ),
-                    child: Text(
-                      _getStatusText(order['status']),
-                      style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                    title: Text(
+                      "№${order['order_number']} - ${order['client_name'] ?? 'Mijoz'}",
+                      style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
+                    subtitle: Text("Muddat: ${order['deadline'] ?? 'Aytilmagan'}"),
+                    trailing: _statusBadge(order['status']),
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          children: [
+                            _financeRow("Mijoz to'lovi (Narx):", order['total_price'], Colors.black),
+                            _financeRow("Ishchilar haqi (Xarajat):", finances['expenses'], Colors.red),
+                            const Divider(),
+                            _financeRow("Sof Foyda:", finances['profit'], Colors.green, isBold: true),
+                            const SizedBox(height: 15),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: () => _changeStatusDialog(order),
+                                    icon: const Icon(Icons.edit_note),
+                                    label: const Text("Statusni o'zgartirish"),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                IconButton.filledTonal(
+                                  onPressed: () => _deleteOrder(order['id']),
+                                  icon: const Icon(Icons.delete_outline, color: Colors.red),
+                                ),
+                              ],
+                            )
+                          ],
+                        ),
+                      )
+                    ],
                   ),
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        children: [
-                          _buildOrderInfoRow("Umumiy summa:", "${order['total_price']} so'm"),
-                          _buildOrderInfoRow("Telefon:", order['client_phone'] ?? "Yo'q"),
-                          const Divider(),
-                          const SizedBox(height: 10),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceAround,
-                            children: [
-                              ElevatedButton.icon(
-                                onPressed: () => _changeStatusDialog(order),
-                                icon: const Icon(Icons.edit_notifications),
-                                label: const Text("Status"),
-                              ),
-                              ElevatedButton.icon(
-                                onPressed: () {
-                                  // Bu yerda zakazga tegishli ishlar tarixini ko'rsatish mumkin
-                                },
-                                icon: const Icon(Icons.history),
-                                label: const Text("Ishlar"),
-                              ),
-                            ],
-                          )
-                        ],
-                      ),
-                    )
-                  ],
-                ),
-              );
-            },
-          ),
+                );
+              },
+            ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _showAddOrderDialog,
+        icon: const Icon(Icons.add_business),
         label: const Text("Yangi Zakaz"),
-        icon: const Icon(Icons.add),
         backgroundColor: Colors.blue.shade900,
+        foregroundColor: Colors.white,
       ),
     );
   }
 
-  Widget _buildOrderInfoRow(String label, String value) {
+  Widget _statusBadge(String status) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: _getStatusColor(status),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        _getStatusText(status),
+        style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+      ),
+    );
+  }
+
+  Widget _financeRow(String label, dynamic val, Color color, {bool isBold = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(color: Colors.grey)),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.bold)),
+          Text(label, style: TextStyle(color: Colors.grey.shade700)),
+          Text(
+            "${val.toInt().toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]} ')} so'm",
+            style: TextStyle(
+              fontWeight: isBold ? FontWeight.bold : FontWeight.w600,
+              color: color,
+              fontSize: isBold ? 16 : 14
+            ),
+          ),
         ],
       ),
     );
   }
 
-  // Statusni o'zgartirish dialogi
   void _changeStatusDialog(Map<String, dynamic> order) {
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("Statusni yangilash"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: ['pending', 'in_progress', 'ready', 'completed', 'canceled'].map((s) {
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
+      builder: (ctx) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Padding(
+            padding: EdgeInsets.all(20),
+            child: Text("Zakaz holatini tanlang", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          ),
+          ...['pending', 'in_progress', 'ready', 'completed', 'canceled'].map((s) {
             return ListTile(
+              leading: Icon(Icons.circle, color: _getStatusColor(s)),
               title: Text(_getStatusText(s)),
               onTap: () async {
                 await _supabase.from('orders').update({'status': s}).eq('id', order['id']);
@@ -172,17 +218,18 @@ class _ClientsScreenState extends State<ClientsScreen> {
               },
             );
           }).toList(),
-        ),
+          const SizedBox(height: 20),
+        ],
       ),
     );
   }
 
-  // Yangi zakaz qo'shish dialogi
   void _showAddOrderDialog() {
     final numController = TextEditingController();
     final nameController = TextEditingController();
     final priceController = TextEditingController();
-    
+    final dateController = TextEditingController();
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -192,31 +239,60 @@ class _ClientsScreenState extends State<ClientsScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text("Yangi Zakaz Qo'shish", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const Text("Yangi Zakaz", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 20),
-            TextField(controller: numController, decoration: const InputDecoration(labelText: "Zakaz №", border: OutlineInputBorder())),
-            const SizedBox(height: 10),
-            TextField(controller: nameController, decoration: const InputDecoration(labelText: "Mijoz ismi", border: OutlineInputBorder())),
-            const SizedBox(height: 10),
-            TextField(controller: priceController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Umumiy Summa", border: OutlineInputBorder())),
+            TextField(controller: numController, decoration: const InputDecoration(labelText: "Zakaz Raqami (№)", border: OutlineInputBorder())),
+            const SizedBox(height: 12),
+            TextField(controller: nameController, decoration: const InputDecoration(labelText: "Mijoz Ismi", border: OutlineInputBorder())),
+            const SizedBox(height: 12),
+            TextField(controller: priceController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Umumiy Kelishilgan Narx", border: OutlineInputBorder(), suffixText: "so'm")),
+            const SizedBox(height: 12),
+            TextField(
+              controller: dateController, 
+              decoration: const InputDecoration(labelText: "Muddat (YYYY-MM-DD)", border: OutlineInputBorder(), prefixIcon: Icon(Icons.calendar_today)),
+              onTap: () async {
+                DateTime? pickedDate = await showDatePicker(context: context, initialDate: DateTime.now(), firstDate: DateTime.now(), lastDate: DateTime(2100));
+                if (pickedDate != null) dateController.text = pickedDate.toString().split(' ')[0];
+              },
+            ),
             const SizedBox(height: 20),
             ElevatedButton(
               onPressed: () async {
+                if (numController.text.isEmpty) return;
                 await _supabase.from('orders').insert({
                   'order_number': numController.text,
                   'client_name': nameController.text,
                   'total_price': double.tryParse(priceController.text) ?? 0,
+                  'deadline': dateController.text.isEmpty ? null : dateController.text,
                   'status': 'pending',
                 });
                 Navigator.pop(ctx);
                 _loadOrders();
               },
-              style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50), backgroundColor: Colors.blue.shade900),
-              child: const Text("SAQLASH", style: TextStyle(color: Colors.white)),
+              style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 55), backgroundColor: Colors.blue.shade900),
+              child: const Text("ZAKAZNI SAQLASH", style: TextStyle(color: Colors.white)),
             )
           ],
         ),
       ),
     );
+  }
+
+  void _deleteOrder(int id) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("O'chirish"),
+        content: const Text("Ushbu zakazni o'chirmoqchimisiz?"),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("YO'Q")),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("HA", style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    );
+    if (confirm == true) {
+      await _supabase.from('orders').delete().eq('id', id);
+      _loadOrders();
+    }
   }
 }
