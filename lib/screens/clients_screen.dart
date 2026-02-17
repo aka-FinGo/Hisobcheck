@@ -11,47 +11,82 @@ class ClientsScreen extends StatefulWidget {
 class _ClientsScreenState extends State<ClientsScreen> {
   final _supabase = Supabase.instance.client;
   bool _isLoading = true;
-  List<Map<String, dynamic>> _orders = [];
-  List<Map<String, dynamic>> _clients = [];
+  
+  // Ma'lumotlar
+  List<Map<String, dynamic>> _allClients = []; // Hamma mijozlar (original)
+  List<Map<String, dynamic>> _filteredClients = []; // Qidiruv bo'yicha saralangan
+  
+  // Statistika
+  int _totalClients = 0;
+  int _newClients = 0; // Bu oy qo'shilganlar
+
+  final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _loadInitialData();
+    _loadData();
+    _searchController.addListener(_onSearchChanged);
   }
 
-  // 1. Ma'lumot yuklash funksiyasi
-  Future<void> _loadInitialData() async {
-    if (!mounted) return;
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  // Qidiruv funksiyasi
+  void _onSearchChanged() {
+    final query = _searchController.text.toLowerCase();
+    setState(() {
+      _filteredClients = _allClients.where((client) {
+        final name = (client['full_name'] ?? client['name'] ?? "").toString().toLowerCase();
+        final phone = (client['phone'] ?? "").toString().toLowerCase();
+        return name.contains(query) || phone.contains(query);
+      }).toList();
+    });
+  }
+
+  Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
-      final results = await Future.wait([
-        // 1-So'rov: Mijozlar
-        _supabase.from('clients').select().order('created_at', ascending: false),
-        
-        // 2-So'rov: Zakazlar
-        _supabase
-            .from('orders')
-            .select('*, clients(full_name, phone), work_logs(total_sum, is_approved)')
-            .order('created_at', ascending: false)
-      ]);
+      // 1. Mijozlarni olish
+      final response = await _supabase
+          .from('clients')
+          .select()
+          .order('created_at', ascending: false);
+
+      final List<Map<String, dynamic>> data = List<Map<String, dynamic>>.from(response);
+
+      // 2. Statistikani hisoblash
+      final now = DateTime.now();
+      int newCount = 0;
+      for (var c in data) {
+        if (c['created_at'] != null) {
+          final created = DateTime.parse(c['created_at']);
+          // Agar shu oy qo'shilgan bo'lsa "Yangi" deymiz
+          if (created.month == now.month && created.year == now.year) {
+            newCount++;
+          }
+        }
+      }
 
       if (mounted) {
         setState(() {
-          _clients = List<Map<String, dynamic>>.from(results[0]);
-          _orders = List<Map<String, dynamic>>.from(results[1]);
+          _allClients = data;
+          _filteredClients = data;
+          _totalClients = data.length;
+          _newClients = newCount;
           _isLoading = false;
         });
       }
     } catch (e) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-        debugPrint("Yuklashda xato: $e");
-      }
+      debugPrint("Xato: $e");
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  // --- MIJOZ QO'SHISH ---
+  // --- YANGI MIJOZ QO'SHISH DIALOGI ---
   void _showAddClientDialog() {
     final nameController = TextEditingController();
     final phoneController = TextEditingController();
@@ -60,48 +95,37 @@ class _ClientsScreenState extends State<ClientsScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text("Yangi Mijoz"),
+        title: const Text("Yangi Mijoz Qo'shish"),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(
-              controller: nameController,
-              decoration: const InputDecoration(labelText: "F.I.SH (Majburiy)", border: OutlineInputBorder()),
-            ),
+            TextField(controller: nameController, decoration: const InputDecoration(labelText: "F.I.SH *", border: OutlineInputBorder())),
             const SizedBox(height: 10),
-            TextField(
-              controller: phoneController,
-              keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(labelText: "Telefon", border: OutlineInputBorder()),
-            ),
+            TextField(controller: phoneController, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: "Telefon", border: OutlineInputBorder())),
             const SizedBox(height: 10),
-            TextField(
-              controller: addressController,
-              decoration: const InputDecoration(labelText: "Manzil", border: OutlineInputBorder()),
-            ),
+            TextField(controller: addressController, decoration: const InputDecoration(labelText: "Manzil", border: OutlineInputBorder())),
           ],
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("BEKOR")),
           ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2E5BFF), foregroundColor: Colors.white),
             onPressed: () async {
               if (nameController.text.trim().isEmpty) return;
               try {
                 await _supabase.from('clients').insert({
-                  'full_name': nameController.text.trim(), 
+                  'full_name': nameController.text.trim(),
                   'name': nameController.text.trim(),
                   'phone': phoneController.text.trim(),
                   'address': addressController.text.trim(),
                 });
-
                 if (mounted) {
                   Navigator.pop(ctx);
-                  _loadInitialData();
+                  _loadData();
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Mijoz qo'shildi!"), backgroundColor: Colors.green));
                 }
               } catch (e) {
-                debugPrint("Mijoz saqlashda xato: $e");
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e"), backgroundColor: Colors.red));
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e")));
               }
             },
             child: const Text("SAQLASH"),
@@ -111,186 +135,196 @@ class _ClientsScreenState extends State<ClientsScreen> {
     );
   }
 
-  // --- ZAKAZ (LOYIHA) QO'SHISH ---
-  void _showAddOrderDialog() {
-    // ID BigInt bo'lgani uchun dynamic yoki int ishlatamiz
-    dynamic selectedClientId; 
-    final projectController = TextEditingController();
-    final areaController = TextEditingController();
-    final priceController = TextEditingController();
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setModalState) => Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom + 20, left: 20, right: 20, top: 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text("Yangi Loyiha (Zakaz)", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 20),
-              
-              DropdownButtonFormField<dynamic>(
-                decoration: const InputDecoration(labelText: "Mijozni tanlang", border: OutlineInputBorder()),
-                items: _clients.map((c) => DropdownMenuItem<dynamic>(
-                  value: c['id'], 
-                  child: Text(c['full_name'] ?? c['name'] ?? "Noma'lum")
-                )).toList(),
-                onChanged: (v) => setModalState(() => selectedClientId = v),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: projectController, 
-                decoration: const InputDecoration(labelText: "Loyiha nomi (Masalan: Oshxona)", border: OutlineInputBorder())
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: areaController,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(labelText: "Umumiy kvadrat (m2)", border: OutlineInputBorder(), suffixText: "m2"),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: priceController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: "Shartnoma summasi", border: OutlineInputBorder(), suffixText: "so'm"),
-              ),
-              const SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: () async {
-                  if (selectedClientId == null || projectController.text.isEmpty) return;
-
-                  final client = _clients.firstWhere((c) => c['id'] == selectedClientId);
-                  String clientSafeName = (client['full_name'] ?? client['name']).toString().replaceAll(' ', '-');
-
-                  String prefix = "100";
-                  String seq = (_orders.length + 1).toString().padLeft(2, '0');
-                  String generatedName = "${prefix}_${seq}_${clientSafeName}_${projectController.text.replaceAll(' ', '-')}";
-
-                  double area = double.tryParse(areaController.text.replaceAll(',', '.')) ?? 0;
-
-                  try {
-                    await _supabase.from('orders').insert({
-                      'client_id': selectedClientId, 
-                      'project_name': generatedName,
-                      'order_number': generatedName,
-                      'total_area_m2': area,
-                      'measured_area': area,
-                      'total_price': double.tryParse(priceController.text) ?? 0,
-                      'status': 'pending', 
-                    });
-
-                    if (mounted) {
-                      Navigator.pop(ctx);
-                      _loadInitialData();
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Zakaz ochildi!"), backgroundColor: Colors.green));
-                    }
-                  } catch (e) {
-                    debugPrint("Order saqlashda xato: $e");
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e"), backgroundColor: Colors.red));
-                  }
-                },
-                style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 55), backgroundColor: Colors.blue.shade900),
-                child: const Text("LOYIHANI OCHISH", style: TextStyle(color: Colors.white)),
-              )
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey.shade50,
-      appBar: AppBar(title: const Text("Mijozlar va Loyihalar")),
+      backgroundColor: const Color(0xFFF4F6F8), // Rasm foniga o'xshash
+      appBar: AppBar(
+        title: const Text("Mijozlar", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.black),
+        actions: [
+          IconButton(onPressed: _loadData, icon: const Icon(Icons.refresh, color: Colors.blue)),
+        ],
+      ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                // 1. MIJOZLAR RO'YXATI
-                ExpansionTile(
-                  title: Text("Mijozlar Ro'yxati (${_clients.length})", style: const TextStyle(fontWeight: FontWeight.bold)),
-                  leading: const Icon(Icons.people, color: Colors.orange),
-                  children: [
-                    SizedBox(
-                      height: 200,
-                      child: _clients.isEmpty 
-                        ? const Center(child: Text("Mijozlar yo'q"))
-                        : ListView.builder(
-                          itemCount: _clients.length,
-                          itemBuilder: (ctx, i) {
-                            final c = _clients[i];
-                            return ListTile(
-                              leading: const CircleAvatar(child: Icon(Icons.person, size: 20)),
-                              title: Text(c['full_name'] ?? "Noma'lum"),
-                              subtitle: Text(c['phone'] ?? "Tel yo'q"),
-                              dense: true,
-                            );
-                          },
-                        ),
-                    )
-                  ],
+                // 1. STATISTIKA KARTALARI
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Row(
+                    children: [
+                      Expanded(child: _buildStatCard("Jami mijozlar", _totalClients.toString(), const Color(0xFF2E5BFF), Icons.people)),
+                      const SizedBox(width: 10),
+                      Expanded(child: _buildStatCard("Yangi mijozlar", _newClients.toString(), const Color(0xFF27AE60), Icons.new_releases)),
+                    ],
+                  ),
                 ),
-                
-                const Divider(thickness: 2),
-                
-                // 2. ZAKAZLAR RO'YXATI
+
+                // 2. QIDIRUV VA TUGMA
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  color: Colors.white,
+                  child: Column(
+                    children: [
+                      TextField(
+                        controller: _searchController,
+                        decoration: InputDecoration(
+                          hintText: "Mijozni qidirish...",
+                          prefixIcon: const Icon(Icons.search, color: Colors.grey),
+                          filled: true,
+                          fillColor: Colors.grey.shade100,
+                          contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text("Status: Barcha", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+                          ElevatedButton.icon(
+                            onPressed: _showAddClientDialog,
+                            icon: const Icon(Icons.add, size: 18),
+                            label: const Text("Yangi Mijoz"),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF2E5BFF),
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                          )
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 10),
+
+                // 3. JADVAL SARLAVHASI (HEADER)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  color: Colors.white,
+                  child: const Row(
+                    children: [
+                      SizedBox(width: 30, child: Text("#", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
+                      Expanded(flex: 3, child: Text("Mijoz nomi", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
+                      Expanded(flex: 2, child: Text("Telefon", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
+                      Expanded(flex: 2, child: Text("Manzil", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+
+                // 4. RO'YXAT (TABLE ROWS)
                 Expanded(
-                  child: _orders.isEmpty
-                      ? const Center(child: Text("Zakazlar mavjud emas"))
-                      : ListView.builder(
-                          padding: const EdgeInsets.all(12),
-                          itemCount: _orders.length,
+                  child: _filteredClients.isEmpty
+                      ? const Center(child: Text("Mijozlar topilmadi"))
+                      : ListView.separated(
+                          padding: EdgeInsets.zero,
+                          itemCount: _filteredClients.length,
+                          separatorBuilder: (ctx, i) => const Divider(height: 1, color: Colors.grey), // Ingichka chiziq
                           itemBuilder: (context, index) {
-                            final order = _orders[index];
-                            final clientName = order['clients']?['full_name'] ?? "Noma'lum mijoz";
-                            
-                            return Card(
-                              elevation: 2,
-                              margin: const EdgeInsets.only(bottom: 10),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                              child: ListTile(
-                                leading: Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(8)),
-                                  child: const Icon(Icons.folder, color: Colors.blue),
-                                ),
-                                title: Text("${order['project_name']}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                                subtitle: Text("Mijoz: $clientName\nHajm: ${order['total_area_m2']} m² | Status: ${order['status']}"),
-                                isThreeLine: true,
-                                trailing: const Icon(Icons.chevron_right),
-                                onTap: () {
-                                  // Detallar sahifasiga o'tish mantiqi
-                                },
+                            final client = _filteredClients[index];
+                            final name = client['full_name'] ?? client['name'] ?? "Noma'lum";
+                            final phone = client['phone'] ?? "-";
+                            final address = client['address'] ?? "-";
+
+                            return Container(
+                              color: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                              child: Row(
+                                children: [
+                                  SizedBox(width: 30, child: Text("${index + 1}.", style: const TextStyle(fontWeight: FontWeight.bold))),
+                                  Expanded(
+                                    flex: 3,
+                                    child: Row(
+                                      children: [
+                                        CircleAvatar(
+                                          radius: 14,
+                                          backgroundColor: Colors.blue.shade100,
+                                          child: Text(name[0].toUpperCase(), style: const TextStyle(fontSize: 12, color: Colors.blue)),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(child: Text(name, style: const TextStyle(fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis)),
+                                      ],
+                                    ),
+                                  ),
+                                  Expanded(flex: 2, child: Text(phone, style: const TextStyle(fontSize: 12, color: Colors.black87))),
+                                  Expanded(
+                                    flex: 2, 
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: address.toString().isNotEmpty ? Colors.green.shade50 : Colors.grey.shade100,
+                                        borderRadius: BorderRadius.circular(5)
+                                      ),
+                                      child: Text(
+                                        address.toString().isNotEmpty ? address : "Manzilsiz",
+                                        style: TextStyle(fontSize: 10, color: address.toString().isNotEmpty ? Colors.green : Colors.grey),
+                                        textAlign: TextAlign.center,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    )
+                                  ),
+                                ],
                               ),
                             );
                           },
                         ),
                 ),
+
+                // 5. PAGINATION (Pastki qism - Vizual)
+                Container(
+                  color: Colors.white,
+                  padding: const EdgeInsets.all(10),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      IconButton(icon: const Icon(Icons.chevron_left), onPressed: () {}),
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(color: Colors.blue.shade900, borderRadius: BorderRadius.circular(4)),
+                        child: const Text("1", style: TextStyle(color: Colors.white)),
+                      ),
+                      const SizedBox(width: 5),
+                      const Text("2", style: TextStyle(color: Colors.grey)),
+                      const SizedBox(width: 10),
+                      const Text("...", style: TextStyle(color: Colors.grey)),
+                      IconButton(icon: const Icon(Icons.chevron_right), onPressed: () {}),
+                    ],
+                  ),
+                )
               ],
             ),
-      floatingActionButton: Column(
-        mainAxisSize: MainAxisSize.min,
+    );
+  }
+
+  // Statistika uchun chiroyli kartochka yasovchi funksiya
+  Widget _buildStatCard(String title, String count, Color color, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(10),
+        boxShadow: [BoxShadow(color: color.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          FloatingActionButton.small(
-            heroTag: "add_client",
-            onPressed: _showAddClientDialog,
-            backgroundColor: Colors.orange,
-            child: const Icon(Icons.person_add, color: Colors.white),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Icon(icon, color: Colors.white.withOpacity(0.8), size: 20),
+              const Icon(Icons.more_horiz, color: Colors.white54, size: 16),
+            ],
           ),
           const SizedBox(height: 10),
-          FloatingActionButton.extended(
-            heroTag: "add_order",
-            onPressed: _showAddOrderDialog,
-            icon: const Icon(Icons.create_new_folder),
-            label: const Text("Yangi Loyiha"),
-            backgroundColor: Colors.blue.shade900,
-            foregroundColor: Colors.white,
-          ),
+          Text(title, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+          Text(count, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
         ],
       ),
     );
