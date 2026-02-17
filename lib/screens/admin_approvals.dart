@@ -23,7 +23,6 @@ class _AdminApprovalsScreenState extends State<AdminApprovalsScreen> {
     setState(() => _isLoading = true);
     try {
       // 1. Tasdiqlanmagan ishlarni olamiz
-      // profiles:worker_id(...) -> Bu sintaksis juda muhim!
       final response = await _supabase
           .from('work_logs')
           .select('*, profiles:worker_id(full_name), orders:order_id(order_number, client_name)')
@@ -57,14 +56,17 @@ class _AdminApprovalsScreenState extends State<AdminApprovalsScreen> {
         'approved_at': DateTime.now().toIso8601String(),
       }).eq('id', id);
 
-      // Ro'yxatdan olib tashlaymiz (qayta yuklamasdan)
       setState(() {
         _logs.removeWhere((log) => log['id'] == id);
       });
       
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Tasdiqlandi!"), duration: Duration(milliseconds: 500)));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Tasdiqlandi!"), duration: Duration(milliseconds: 500)));
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e")));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e")));
+      }
     }
   }
 
@@ -83,10 +85,19 @@ class _AdminApprovalsScreenState extends State<AdminApprovalsScreen> {
     );
 
     if (confirm == true) {
-      await _supabase.from('work_logs').delete().eq('id', id);
-      setState(() {
-        _logs.removeWhere((log) => log['id'] == id);
-      });
+      try {
+        await _supabase.from('work_logs').delete().eq('id', id);
+        setState(() {
+          _logs.removeWhere((log) => log['id'] == id);
+        });
+        if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("O'chirildi")));
+        }
+      } catch (e) {
+         if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e")));
+         }
+      }
     }
   }
 
@@ -114,20 +125,28 @@ class _AdminApprovalsScreenState extends State<AdminApprovalsScreen> {
         final userId = _supabase.auth.currentUser!.id;
         final ids = _logs.map((e) => e['id']).toList();
 
+        // --- XATOLIK TUZATILGAN JOY ---
+        // Eski: .in_('id', ids)
+        // Yangi: .inFilter('id', ids)
         await _supabase.from('work_logs').update({
           'is_approved': true,
           'approved_by': userId,
           'approved_at': DateTime.now().toIso8601String(),
-        }).in_('id', ids);
+        }).inFilter('id', ids); 
+        // ------------------------------
 
         setState(() {
           _logs.clear();
           _isLoading = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Barchasi tasdiqlandi!"), backgroundColor: Colors.green));
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Barchasi tasdiqlandi!"), backgroundColor: Colors.green));
+        }
       } catch (e) {
         setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e")));
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e")));
+        }
       }
     }
   }
@@ -156,7 +175,6 @@ class _AdminApprovalsScreenState extends State<AdminApprovalsScreen> {
                 itemCount: _logs.length,
                 itemBuilder: (context, index) {
                   final log = _logs[index];
-                  // Null checklar bilan ma'lumot olish
                   final workerName = log['profiles']?['full_name'] ?? "Noma'lum usta";
                   final orderNum = log['orders']?['order_number'] ?? "?";
                   final clientName = log['orders']?['client_name'] ?? "";
@@ -185,7 +203,9 @@ class _AdminApprovalsScreenState extends State<AdminApprovalsScreen> {
                             Text("Izoh: ${log['description']}", style: const TextStyle(fontStyle: FontStyle.italic, color: Colors.grey)),
                           const SizedBox(height: 5),
                           Text(
-                            log['created_at'].toString().substring(0, 16),
+                            (log['created_at'] != null && log['created_at'].toString().length >= 16) 
+                              ? log['created_at'].toString().substring(0, 16) 
+                              : "",
                             style: TextStyle(fontSize: 11, color: Colors.grey.shade400),
                           ),
                         ],
