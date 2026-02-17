@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-// --- DIQQAT: Importlar to'g'rilandi (screens papkasidan olinadi) ---
-import '../screens/home_screen.dart';
-import '../screens/stats_screen.dart';
-import '../screens/user_profile_screen.dart';
-import '../screens/manage_users_screen.dart';
+// Sahifalarni import qilamiz
+import 'home_screen.dart';
+import 'stats_screen.dart';
+import 'user_profile_screen.dart';
+import 'manage_users_screen.dart';
 
 class MainWrapper extends StatefulWidget {
   const MainWrapper({super.key});
@@ -26,46 +26,37 @@ class _MainWrapperState extends State<MainWrapper> {
   @override
   void initState() {
     super.initState();
-    _checkRoleAndSetup();
+    _setupRoleAndPages();
   }
 
-  Future<void> _checkRoleAndSetup() async {
+  Future<void> _setupRoleAndPages() async {
     final user = _supabase.auth.currentUser;
     if (user != null) {
       final data = await _supabase.from('profiles').select('role').eq('id', user.id).single();
       _userRole = data['role'] ?? 'worker';
     }
 
-    // Rolga qarab sahifalarni belgilaymiz
+    // Rolga qarab sahifalarni yig'amiz
     if (_userRole == 'admin' || _userRole == 'owner') {
       _pages = [
         const HomeScreen(),          // 0: Uy
-        const StatsScreen(),         // 1: Statistika (Faqat adminda)
-        const ManageUsersScreen(),   // 2: Xodimlar (Faqat adminda)
-        _buildProfilePage(user!),    // 3: Profil
+        const StatsScreen(),         // 1: Statistika
+        const ManageUsersScreen(),   // 2: Xodimlar
+        UserProfileScreen(user: await _fetchFullProfile(user!.id)), // 3: Profil
       ];
     } else {
-      // Oddiy ishchi uchun menyu
       _pages = [
         const HomeScreen(),          // 0: Uy
-        _buildProfilePage(user!),    // 1: Profil
+        UserProfileScreen(user: await _fetchFullProfile(user!.id)), // 1: Profil
       ];
     }
 
-    if (mounted) {
-      setState(() => _isLoading = false);
-    }
+    if (mounted) setState(() => _isLoading = false);
   }
 
-  // Profil sahifasini qurish uchun yordamchi
-  Widget _buildProfilePage(User user) {
-    return FutureBuilder(
-      future: _supabase.from('profiles').select().eq('id', user.id).single(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-        return UserProfileScreen(user: snapshot.data!);
-      },
-    );
+  // Profil uchun to'liq ma'lumot olish yordamchisi
+  Future<Map<String, dynamic>> _fetchFullProfile(String userId) async {
+    return await _supabase.from('profiles').select().eq('id', userId).single();
   }
 
   @override
@@ -73,24 +64,29 @@ class _MainWrapperState extends State<MainWrapper> {
     if (_isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
     return Scaffold(
+      // IndexedStack ishlatamiz - bu sahifalar holatini saqlab qoladi
+      // (Boshqa sahifaga o'tib qaytganda yozgan narsalaringiz o'chib ketmaydi)
       body: IndexedStack(
         index: _currentIndex,
         children: _pages,
       ),
+      
+      // --- PASTKI MENYU (MIXLANGAN QISM) ---
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           boxShadow: [
             BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, -5))
-          ]
+          ],
         ),
         child: BottomNavigationBar(
           currentIndex: _currentIndex,
           onTap: (index) => setState(() => _currentIndex = index),
-          type: BottomNavigationBarType.fixed,
+          type: BottomNavigationBarType.fixed, // 4 tadan ko'p bo'lsa ham joyida turadi
           backgroundColor: Colors.white,
           selectedItemColor: Colors.blue.shade900,
           unselectedItemColor: Colors.grey,
           showUnselectedLabels: true,
+          elevation: 0, // Soyani Containerga berdik, shuning uchun bu yerda 0
           items: _buildNavItems(),
         ),
       ),
@@ -100,15 +96,15 @@ class _MainWrapperState extends State<MainWrapper> {
   List<BottomNavigationBarItem> _buildNavItems() {
     if (_userRole == 'admin' || _userRole == 'owner') {
       return const [
-        BottomNavigationBarItem(icon: Icon(Icons.home), label: "Asosiy"),
-        BottomNavigationBarItem(icon: Icon(Icons.bar_chart), label: "Statistika"),
-        BottomNavigationBarItem(icon: Icon(Icons.people), label: "Xodimlar"),
-        BottomNavigationBarItem(icon: Icon(Icons.person), label: "Profil"),
+        BottomNavigationBarItem(icon: Icon(Icons.home_rounded), label: "Asosiy"),
+        BottomNavigationBarItem(icon: Icon(Icons.bar_chart_rounded), label: "Statistika"),
+        BottomNavigationBarItem(icon: Icon(Icons.people_alt_rounded), label: "Xodimlar"),
+        BottomNavigationBarItem(icon: Icon(Icons.person_rounded), label: "Profil"),
       ];
     } else {
       return const [
-        BottomNavigationBarItem(icon: Icon(Icons.home), label: "Asosiy"),
-        BottomNavigationBarItem(icon: Icon(Icons.person), label: "Profil"),
+        BottomNavigationBarItem(icon: Icon(Icons.home_rounded), label: "Asosiy"),
+        BottomNavigationBarItem(icon: Icon(Icons.person_rounded), label: "Profil"),
       ];
     }
   }
