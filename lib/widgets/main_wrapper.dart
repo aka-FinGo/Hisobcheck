@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-// --- MUHIM: Sahifalar "screens" papkasida bo'lgani uchun yo'lni to'g'irladik ---
+// --- Barcha sahifalarni import qilamiz ---
 import '../screens/home_screen.dart';
+import '../screens/clients_screen.dart'; // <--- YANGI QO'SHILDI
 import '../screens/stats_screen.dart';
 import '../screens/user_profile_screen.dart';
 import '../screens/manage_users_screen.dart';
@@ -19,9 +20,11 @@ class _MainWrapperState extends State<MainWrapper> {
   int _currentIndex = 0;
   String _userRole = 'worker';
   bool _isLoading = true;
+  String _currentUserId = '';
 
-  // Sahifalar ro'yxati
+  // Sahifalar va ularning nomlari
   List<Widget> _pages = [];
+  List<String> _titles = [];
 
   @override
   void initState() {
@@ -32,30 +35,34 @@ class _MainWrapperState extends State<MainWrapper> {
   Future<void> _setupRoleAndPages() async {
     final user = _supabase.auth.currentUser;
     if (user != null) {
+      _currentUserId = user.id;
       final data = await _supabase.from('profiles').select('role').eq('id', user.id).single();
       _userRole = data['role'] ?? 'worker';
     }
 
-    // Rolga qarab sahifalarni yig'amiz
+    // --- MENYU TARKIBINI TUZAMIZ ---
     if (_userRole == 'admin' || _userRole == 'owner') {
+      // ADMIN UCHUN:
       _pages = [
-        const HomeScreen(),          // 0: Uy
-        const StatsScreen(),         // 1: Statistika
+        const HomeScreen(),          // 0: Asosiy
+        const ClientsScreen(),       // 1: Mijozlar va Zakazlar (YANGI)
         const ManageUsersScreen(),   // 2: Xodimlar
-        // Profil uchun ma'lumotni fetch qilamiz
-        UserProfileScreen(user: await _fetchFullProfile(user!.id)), // 3: Profil
+        UserProfileScreen(user: await _fetchFullProfile(_currentUserId)), // 3: Profil
       ];
+      _titles = ["Bosh Sahifa", "Mijozlar va Zakazlar", "Xodimlar", "Mening Profilim"];
     } else {
+      // ISHCHI UCHUN:
       _pages = [
-        const HomeScreen(),          // 0: Uy
-        UserProfileScreen(user: await _fetchFullProfile(user!.id)), // 1: Profil
+        const HomeScreen(),          // 0: Asosiy
+        const ClientsScreen(),       // 1: Loyihalarim (Ular ham ko'rsin)
+        UserProfileScreen(user: await _fetchFullProfile(_currentUserId)), // 2: Profil
       ];
+      _titles = ["Ish Stoli", "Loyihalar", "Profil"];
     }
 
     if (mounted) setState(() => _isLoading = false);
   }
 
-  // Profil uchun to'liq ma'lumot olish yordamchisi
   Future<Map<String, dynamic>> _fetchFullProfile(String userId) async {
     return await _supabase.from('profiles').select().eq('id', userId).single();
   }
@@ -65,13 +72,21 @@ class _MainWrapperState extends State<MainWrapper> {
     if (_isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
     return Scaffold(
-      // IndexedStack ishlatamiz - bu sahifalar holatini saqlab qoladi
+      // --- 1. HEADER (TEPA QISM) ---
+      // Agar har bir sahifada o'zining AppBar-i bo'lsa, bu yerni olib tashlang.
+      // Lekin siz "Header mixlangan bo'lsin" dedingiz, shuning uchun bu yerda qoldiramiz.
+      // DIQQAT: Child sahifalardan (HomeScreen, ClientsScreen) Scaffold va AppBarni olib tashlash tavsiya etiladi,
+      // aks holda ikkita Header paydo bo'lib qoladi.
+      // Hozircha oddiy yechim sifatida body ichida sahifalar o'z headeri bilan chiqadi,
+      // lekin BottomNav joyida qoladi.
+      
+      // body qismi
       body: IndexedStack(
         index: _currentIndex,
         children: _pages,
       ),
-      
-      // --- PASTKI MENYU (MIXLANGAN QISM) ---
+
+      // --- 2. BOTTOM NAV (PASTKI MENYU) ---
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           boxShadow: [
@@ -80,13 +95,20 @@ class _MainWrapperState extends State<MainWrapper> {
         ),
         child: BottomNavigationBar(
           currentIndex: _currentIndex,
-          onTap: (index) => setState(() => _currentIndex = index),
-          type: BottomNavigationBarType.fixed, // 4 tadan ko'p bo'lsa ham joyida turadi
+          onTap: (index) {
+            setState(() {
+              _currentIndex = index;
+              // Agar Profil sahifasiga o'tsa, ma'lumotni yangilash uchun qayta yuklash mumkin
+              if (_pages[index] is UserProfileScreen) {
+                _setupRoleAndPages(); 
+              }
+            });
+          },
+          type: BottomNavigationBarType.fixed,
           backgroundColor: Colors.white,
           selectedItemColor: Colors.blue.shade900,
           unselectedItemColor: Colors.grey,
           showUnselectedLabels: true,
-          elevation: 0,
           items: _buildNavItems(),
         ),
       ),
@@ -96,15 +118,16 @@ class _MainWrapperState extends State<MainWrapper> {
   List<BottomNavigationBarItem> _buildNavItems() {
     if (_userRole == 'admin' || _userRole == 'owner') {
       return const [
-        BottomNavigationBarItem(icon: Icon(Icons.home_rounded), label: "Asosiy"),
-        BottomNavigationBarItem(icon: Icon(Icons.bar_chart_rounded), label: "Statistika"),
-        BottomNavigationBarItem(icon: Icon(Icons.people_alt_rounded), label: "Xodimlar"),
-        BottomNavigationBarItem(icon: Icon(Icons.person_rounded), label: "Profil"),
+        BottomNavigationBarItem(icon: Icon(Icons.home_filled), label: "Asosiy"),
+        BottomNavigationBarItem(icon: Icon(Icons.folder_shared), label: "Mijozlar"), // <---
+        BottomNavigationBarItem(icon: Icon(Icons.people_alt), label: "Xodimlar"),
+        BottomNavigationBarItem(icon: Icon(Icons.person), label: "Profil"),
       ];
     } else {
       return const [
-        BottomNavigationBarItem(icon: Icon(Icons.home_rounded), label: "Asosiy"),
-        BottomNavigationBarItem(icon: Icon(Icons.person_rounded), label: "Profil"),
+        BottomNavigationBarItem(icon: Icon(Icons.home_filled), label: "Asosiy"),
+        BottomNavigationBarItem(icon: Icon(Icons.folder_shared), label: "Loyihalar"), // <---
+        BottomNavigationBarItem(icon: Icon(Icons.person), label: "Profil"),
       ];
     }
   }
