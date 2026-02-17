@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'client_details_screen.dart'; // <--- YANGI FAYLNI ULAYMIZ
-import 'orders_list_screen.dart';
+import 'client_details_screen.dart'; // Mijoz ichiga kirish
+import 'orders_list_screen.dart';    // Zakazlar ro'yxati
 
 class ClientsScreen extends StatefulWidget {
   const ClientsScreen({super.key});
@@ -14,21 +14,18 @@ class _ClientsScreenState extends State<ClientsScreen> {
   final _supabase = Supabase.instance.client;
   bool _isLoading = true;
   
-  // Asl ma'lumotlar
+  // Ma'lumotlar
   List<Map<String, dynamic>> _allClients = [];
+  List<Map<String, dynamic>> _displayClients = []; // Ekranda ko'rinadigan
   List<Map<String, dynamic>> _allOrders = [];
-  
-  // Ekranda ko'rsatiladigan (Filtrlangan)
-  List<Map<String, dynamic>> _displayClients = [];
   
   // Statistika
   int _totalClients = 0;
   int _newClients = 0;
   int _activeClients = 0;
 
-  // Hozirgi tanlangan filtr
+  // Filtr
   String _currentFilter = 'all'; // 'all', 'active', 'new'
-
   final TextEditingController _searchController = TextEditingController();
 
   @override
@@ -38,7 +35,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
     _searchController.addListener(_filterData);
   }
 
-  // Ma'lumotlarni yuklash
+  // --- MA'LUMOT YUKLASH ---
   Future<void> _loadData() async {
     if (!mounted) return;
     setState(() => _isLoading = true);
@@ -79,18 +76,16 @@ class _ClientsScreenState extends State<ClientsScreen> {
           _activeClients = activeCount;
           _isLoading = false;
         });
-        _filterData(); // Yuklagandan keyin darhol filtrlash
+        _filterData(); 
       }
     } catch (e) {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  // Filtr va Qidiruv mantig'i
+  // --- FILTRLASH ---
   void _filterData() {
     final query = _searchController.text.toLowerCase();
-    
-    // 1. Avval kategoriyaga qarab saralaymiz
     List<Map<String, dynamic>> temp = [];
     
     if (_currentFilter == 'active') {
@@ -107,10 +102,9 @@ class _ClientsScreenState extends State<ClientsScreen> {
         return created.month == now.month && created.year == now.year;
       }).toList();
     } else {
-      temp = List.from(_allClients); // 'all'
+      temp = List.from(_allClients);
     }
 
-    // 2. Keyin qidiruv so'zi bo'yicha
     if (query.isNotEmpty) {
       temp = temp.where((c) {
         final name = (c['full_name'] ?? c['name'] ?? "").toString().toLowerCase();
@@ -124,25 +118,145 @@ class _ClientsScreenState extends State<ClientsScreen> {
     });
   }
 
-  // Filtrni o'zgartirish funksiyasi
   void _setFilter(String filterType) {
-    setState(() {
-      _currentFilter = filterType;
-    });
+    setState(() => _currentFilter = filterType);
     _filterData();
   }
 
-  // Mijoz tafsilotlariga o'tish
-  void _openClientDetails(Map<String, dynamic> client) async {
-    // await ishlatamiz, chunki u yoqdan qaytganda ma'lumot o'zgargan bo'lishi mumkin
-    await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => ClientDetailsScreen(client: client)),
+  // --- ZAKAZ (LOYIHA) QO'SHISH DIALOGI ---
+  void _showAddOrderDialog() {
+    dynamic selectedClientId; 
+    final projectController = TextEditingController();
+    final areaController = TextEditingController();
+    final priceController = TextEditingController();
+    final notesController = TextEditingController();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) => Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom + 20, left: 20, right: 20, top: 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Center(child: Text("Yangi Loyiha Ochish", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold))),
+              const SizedBox(height: 20),
+              
+              // 1. MIJOZNI TANLASH
+              DropdownButtonFormField<dynamic>(
+                decoration: const InputDecoration(
+                  labelText: "Mijozni tanlang", 
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.person)
+                ),
+                items: _allClients.map((c) => DropdownMenuItem<dynamic>(
+                  value: c['id'], 
+                  child: Text(c['full_name'] ?? c['name'] ?? "Noma'lum", overflow: TextOverflow.ellipsis)
+                )).toList(),
+                onChanged: (v) => setModalState(() => selectedClientId = v),
+              ),
+              const SizedBox(height: 12),
+
+              // 2. LOYIHA NOMI
+              TextField(
+                controller: projectController, 
+                decoration: const InputDecoration(labelText: "Loyiha nomi (Msl: Oshxona)", border: OutlineInputBorder(), prefixIcon: Icon(Icons.kitchen))
+              ),
+              const SizedBox(height: 12),
+
+              // 3. KVADRAT VA NARX
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: areaController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(labelText: "Hajm (m²)", border: OutlineInputBorder(), suffixText: "m²"),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: TextField(
+                      controller: priceController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: "Summa", border: OutlineInputBorder(), suffixText: "so'm"),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              // 4. IZOH
+              TextField(
+                controller: notesController,
+                maxLines: 2,
+                decoration: const InputDecoration(
+                  labelText: "Qo'shimcha ma'lumot (Ixtiyoriy)", 
+                  hintText: "Msl: Fasad oq MDF, shoshilinch...",
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.note_alt_outlined)
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // 5. SAQLASH TUGMASI
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  onPressed: () async {
+                    if (selectedClientId == null || projectController.text.isEmpty) {
+                       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Mijoz va Loyiha nomi majburiy!")));
+                       return;
+                    }
+
+                    final client = _allClients.firstWhere((c) => c['id'] == selectedClientId);
+                    String clientSafeName = (client['full_name'] ?? client['name']).toString().replaceAll(' ', '-');
+
+                    // Avtomatik ID: 100_01_Mijoz_Loyiha
+                    String prefix = "100";
+                    String seq = (_allOrders.length + 1).toString().padLeft(2, '0');
+                    String generatedName = "${prefix}_${seq}_${clientSafeName}_${projectController.text.replaceAll(' ', '-')}";
+
+                    double area = double.tryParse(areaController.text.replaceAll(',', '.')) ?? 0;
+
+                    try {
+                      await _supabase.from('orders').insert({
+                        'client_id': selectedClientId, 
+                        'project_name': generatedName,
+                        'order_number': generatedName,
+                        'total_area_m2': area,       
+                        'measured_area': area,      
+                        'total_price': double.tryParse(priceController.text) ?? 0,
+                        'notes': notesController.text,
+                        'status': 'pending', 
+                      });
+
+                      if (mounted) {
+                        Navigator.pop(ctx);
+                        _loadData();
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Loyiha yaratildi!"), backgroundColor: Colors.green));
+                      }
+                    } catch (e) {
+                      debugPrint("Order xato: $e");
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e")));
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade900, foregroundColor: Colors.white),
+                  child: const Text("ZAKAZNI YARATISH"),
+                ),
+              )
+            ],
+          ),
+        ),
+      ),
     );
-    _loadData(); // Qaytib kelganda yangilaymiz
   }
 
-  // Yangi Mijoz Dialogi (O'zgarmagan)
+  // --- YANGI MIJOZ DIALOGI ---
   void _showAddClientDialog() {
     final nameController = TextEditingController();
     final phoneController = TextEditingController();
@@ -179,15 +293,22 @@ class _ClientsScreenState extends State<ClientsScreen> {
                   Navigator.pop(ctx);
                   _loadData();
                 }
-              } catch (e) {
-                // Xatolikni ko'rsatish
-              }
+              } catch (e) { }
             },
             child: const Text("SAQLASH"),
           ),
         ],
       ),
     );
+  }
+
+  // --- MIJOZ TAFSILOTLARIGA O'TISH ---
+  void _openClientDetails(Map<String, dynamic> client) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => ClientDetailsScreen(client: client)),
+    );
+    _loadData();
   }
 
   @override
@@ -202,59 +323,36 @@ class _ClientsScreenState extends State<ClientsScreen> {
           IconButton(onPressed: _loadData, icon: const Icon(Icons.refresh, color: Colors.blue)),
         ],
       ),
+      
+      // --- TUGMA: YANGI ZAKAZ QO'SHISH ---
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _showAddOrderDialog,
+        backgroundColor: const Color(0xFFFFD700), // Sariq rang
+        foregroundColor: Colors.black,
+        icon: const Icon(Icons.add_task),
+        label: const Text("YANGI ZAKAZ"),
+      ),
+
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                // 1. STATISTIKA VA FILTR TUGMALARI
+                // 1. STATISTIKA
                 Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: Column(
                     children: [
                       Row(
                         children: [
-                          // TUGMA: JAMI
-                          Expanded(
-                            child: InkWell(
-                              onTap: () => _setFilter('all'),
-                              child: _buildStatCard(
-                                "Jami mijozlar", 
-                                _totalClients.toString(), 
-                                _currentFilter == 'all' ? const Color(0xFF2E5BFF) : Colors.grey.shade400, 
-                                Icons.people
-                              ),
-                            ),
-                          ),
+                          Expanded(child: InkWell(onTap: () => _setFilter('all'), child: _buildStatCard("Jami mijozlar", _totalClients.toString(), _currentFilter == 'all' ? const Color(0xFF2E5BFF) : Colors.grey.shade400, Icons.people))),
                           const SizedBox(width: 10),
-                          // TUGMA: FAOL
-                          Expanded(
-                            child: InkWell(
-                              onTap: () => _setFilter('active'),
-                              child: _buildStatCard(
-                                "Faol mijozlar", 
-                                _activeClients.toString(), 
-                                _currentFilter == 'active' ? const Color(0xFFFF8C00) : Colors.grey.shade400, 
-                                Icons.local_fire_department
-                              ),
-                            ),
-                          ),
+                          Expanded(child: InkWell(onTap: () => _setFilter('active'), child: _buildStatCard("Faol mijozlar", _activeClients.toString(), _currentFilter == 'active' ? const Color(0xFFFF8C00) : Colors.grey.shade400, Icons.local_fire_department))),
                         ],
                       ),
                       const SizedBox(height: 10),
                       Row(
                         children: [
-                          // TUGMA: YANGI
-                          Expanded(
-                            child: InkWell(
-                              onTap: () => _setFilter('new'),
-                              child: _buildStatCard(
-                                "Yangi mijozlar", 
-                                _newClients.toString(), 
-                                _currentFilter == 'new' ? const Color(0xFF27AE60) : Colors.grey.shade400, 
-                                Icons.new_releases
-                              ),
-                            ),
-                          ),
+                          Expanded(child: InkWell(onTap: () => _setFilter('new'), child: _buildStatCard("Yangi mijozlar", _newClients.toString(), _currentFilter == 'new' ? const Color(0xFF27AE60) : Colors.grey.shade400, Icons.new_releases))),
                           const SizedBox(width: 10),
                           Expanded(
                             child: InkWell(
@@ -262,17 +360,17 @@ class _ClientsScreenState extends State<ClientsScreen> {
                               child: Container(
                                 padding: const EdgeInsets.all(15),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFFFFD700),
+                                  color: Colors.white,
                                   borderRadius: BorderRadius.circular(10),
-                                  boxShadow: [BoxShadow(color: Colors.orange.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))],
+                                  border: Border.all(color: Colors.blue.shade200),
                                 ),
                                 child: const Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Icon(Icons.folder_special, color: Colors.black54, size: 20),
+                                    Icon(Icons.list_alt, color: Colors.blue, size: 20),
                                     SizedBox(height: 10),
-                                    Text("Barcha Zakazlar", style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)),
-                                    Text("Ro'yxat", style: TextStyle(color: Colors.black54, fontSize: 12)),
+                                    Text("Barcha Zakazlar", style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
+                                    Text("Ro'yxatni ko'rish", style: TextStyle(color: Colors.grey, fontSize: 10)),
                                   ],
                                 ),
                               ),
@@ -301,7 +399,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
                 
                 const SizedBox(height: 10),
 
-                // 3. QO'SHISH TUGMASI VA HEADER
+                // 3. QO'SHISH TUGMASI (MIJOZ)
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
                   child: Row(
@@ -311,14 +409,14 @@ class _ClientsScreenState extends State<ClientsScreen> {
                       ElevatedButton.icon(
                         onPressed: _showAddClientDialog,
                         icon: const Icon(Icons.person_add, size: 16),
-                        label: const Text("Qo'shish"),
+                        label: const Text("Yangi Mijoz"),
                         style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2E5BFF), foregroundColor: Colors.white),
                       )
                     ],
                   ),
                 ),
 
-                // 4. MUKAMMAL RO'YXAT
+                // 4. RO'YXAT
                 Expanded(
                   child: ListView.separated(
                     padding: const EdgeInsets.all(10),
@@ -330,7 +428,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
                         elevation: 2,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         child: InkWell(
-                          onTap: () => _openClientDetails(client), // <--- BOSGANDA ICHIGA KIRISH
+                          onTap: () => _openClientDetails(client),
                           borderRadius: BorderRadius.circular(12),
                           child: Padding(
                             padding: const EdgeInsets.all(12),
@@ -338,28 +436,16 @@ class _ClientsScreenState extends State<ClientsScreen> {
                               children: [
                                 CircleAvatar(
                                   backgroundColor: Colors.blue.shade50,
-                                  child: Text(
-                                    (client['full_name'] ?? client['name'] ?? "?").toString()[0].toUpperCase(),
-                                    style: TextStyle(color: Colors.blue.shade900),
-                                  ),
+                                  child: Text((client['full_name'] ?? client['name'] ?? "?").toString()[0].toUpperCase(), style: TextStyle(color: Colors.blue.shade900)),
                                 ),
                                 const SizedBox(width: 15),
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Text(
-                                        client['full_name'] ?? client['name'] ?? "Noma'lum",
-                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                                      ),
+                                      Text(client['full_name'] ?? client['name'] ?? "Noma'lum", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                                       const SizedBox(height: 4),
-                                      Row(
-                                        children: [
-                                          const Icon(Icons.phone, size: 14, color: Colors.grey),
-                                          const SizedBox(width: 5),
-                                          Text(client['phone'] ?? "-", style: const TextStyle(color: Colors.grey)),
-                                        ],
-                                      ),
+                                      Text(client['phone'] ?? "-", style: const TextStyle(color: Colors.grey)),
                                     ],
                                   ),
                                 ),
@@ -380,11 +466,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
   Widget _buildStatCard(String title, String count, Color color, IconData icon) {
     return Container(
       padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(10),
-        boxShadow: [BoxShadow(color: color.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))],
-      ),
+      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(10)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
