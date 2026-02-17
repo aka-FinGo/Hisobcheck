@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class OrderDetailsScreen extends StatefulWidget {
-  final int orderId; // ID turi int bo'lishi kerak (BigInt bo'lsa ham int ga o'girib uzatish kerak)
+  final int orderId;
 
   const OrderDetailsScreen({super.key, required this.orderId});
 
@@ -13,7 +13,7 @@ class OrderDetailsScreen extends StatefulWidget {
 class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   final _supabase = Supabase.instance.client;
   bool _isLoading = true;
-  String? _errorMessage; // Xatolikni saqlash uchun
+  String? _errorMessage;
   
   Map<String, dynamic> _order = {};
   List<Map<String, dynamic>> _workLogs = [];
@@ -28,6 +28,52 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   }
 
   Future<void> _loadOrderData() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      // 1. ZAKAZNI OLISH
+      final orderRes = await _supabase
+          .from('orders')
+          .select('*, clients(full_name, phone)')
+          .eq('id', widget.orderId)
+          .single();
+
+      // 2. ISHLAR TARIXINI OLISH (To'g'ri bog'lanish bilan)
+      final logsRes = await _supabase
+          .from('work_logs')
+          .select('*, profiles!work_logs_worker_id_fkey(full_name)') 
+          .eq('order_id', widget.orderId)
+          .order('created_at', ascending: false);
+
+      // 3. HISOB-KITOB
+      double expenses = 0;
+      final logs = List<Map<String, dynamic>>.from(logsRes);
+      for (var log in logs) {
+        expenses += (log['total_sum'] ?? 0).toDouble();
+      }
+
+      if (mounted) {
+        setState(() {
+          _order = orderRes;
+          _workLogs = logs;
+          _totalExpenses = expenses;
+          _profit = ((_order['total_price'] ?? 0) - expenses).toDouble();
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint("XATO: $e");
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = "Ma'lumot yuklashda xato:\n$e";
+        });
+      }
+    }
+  }
 
   // --- ZAKAZNI TAHRIRLASH ---
   void _editOrderDialog() {
@@ -80,6 +126,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     );
   }
 
+  // --- STATUSNI O'ZGARTIRISH ---
   void _changeStatus() {
     showModalBottomSheet(
       context: context,
@@ -112,6 +159,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     );
   }
 
+  // --- O'CHIRISH ---
   void _deleteOrder() async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -133,10 +181,8 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // 1. Loading holati
     if (_isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
-    // 2. Xatolik bo'lsa EKRANGA CHIQARAMIZ (muammoni ko'rish uchun)
     if (_errorMessage != null) {
       return Scaffold(
         appBar: AppBar(title: const Text("Xatolik")),
@@ -158,7 +204,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
       );
     }
 
-    // 3. Ma'lumot to'g'ri kelsa
     final clientName = _order['clients']?['full_name'] ?? "Noma'lum";
     final clientPhone = _order['clients']?['phone'] ?? "-";
     final area = _order['total_area_m2'] ?? 0;
@@ -274,6 +319,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     );
   }
 
+  // --- YORDAMCHI WIDGETLAR ---
   Widget _infoRow(IconData icon, String label, String value) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
