@@ -185,6 +185,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       return;
                     }
                     
+                    // ... (tepa qismi o'zgarishsiz)
+
                     try {
                       await _supabase.from('work_logs').insert({
                         'worker_id': _supabase.auth.currentUser!.id,
@@ -192,14 +194,17 @@ class _HomeScreenState extends State<HomeScreen> {
                         'task_type': selectedTask!['name'],
                         'area_m2': double.tryParse(areaController.text) ?? 0,
                         'rate': selectedTask!['default_rate'],
-                        'total_sum': currentTotal,
+                        
+                        // DIQQAT: Mana shu qatorni O'CHIRIB TASHLAYMIZ!
+                        // 'total_sum': currentTotal,  <-- BU KERAK EMAS, BAZA O'ZI HISOBLAYDI
+                        
                         'description': notesController.text,
                         'is_approved': false, 
                       });
                       
                       if (mounted) {
                         Navigator.pop(context);
-                        _loadUserData(); // Balansni yangilash
+                        _loadUserData(); 
                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ish topshirildi!"), backgroundColor: Colors.green));
                       }
                     } catch (e) {
