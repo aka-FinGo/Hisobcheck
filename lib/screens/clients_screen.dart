@@ -26,10 +26,10 @@ class _ClientsScreenState extends State<ClientsScreen> {
     setState(() => _isLoading = true);
     try {
       final results = await Future.wait([
-        // 1-So'rov: Mijozlar (full_name kerak)
+        // 1-So'rov: Mijozlar
         _supabase.from('clients').select().order('created_at', ascending: false),
         
-        // 2-So'rov: Zakazlar (bog'langan jadvallar bilan)
+        // 2-So'rov: Zakazlar
         _supabase
             .from('orders')
             .select('*, clients(full_name, phone), work_logs(total_sum, is_approved)')
@@ -87,18 +87,16 @@ class _ClientsScreenState extends State<ClientsScreen> {
             onPressed: () async {
               if (nameController.text.trim().isEmpty) return;
               try {
-                // SIZNING SQL SXEMANGIZGA MOSLANISH:
-                // clients jadvalida 'full_name' NOT NULL, shuning uchun unga yozish shart.
                 await _supabase.from('clients').insert({
                   'full_name': nameController.text.trim(), 
-                  'name': nameController.text.trim(), // Ehtiyot shart bunga ham yozamiz
+                  'name': nameController.text.trim(),
                   'phone': phoneController.text.trim(),
                   'address': addressController.text.trim(),
                 });
 
                 if (mounted) {
                   Navigator.pop(ctx);
-                  _loadInitialData(); // Ro'yxatni yangilash
+                  _loadInitialData();
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Mijoz qo'shildi!"), backgroundColor: Colors.green));
                 }
               } catch (e) {
@@ -115,8 +113,8 @@ class _ClientsScreenState extends State<ClientsScreen> {
 
   // --- ZAKAZ (LOYIHA) QO'SHISH ---
   void _showAddOrderDialog() {
-    // ID BigInt bo'lgani uchun int? ishlatsak bo'ladi (Dartda BigInt JSONda int keladi)
-    int? selectedClientId; 
+    // ID BigInt bo'lgani uchun dynamic yoki int ishlatamiz
+    dynamic selectedClientId; 
     final projectController = TextEditingController();
     final areaController = TextEditingController();
     final priceController = TextEditingController();
@@ -134,10 +132,10 @@ class _ClientsScreenState extends State<ClientsScreen> {
               const Text("Yangi Loyiha (Zakaz)", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 20),
               
-              DropdownButtonFormField<int>(
+              DropdownButtonFormField<dynamic>(
                 decoration: const InputDecoration(labelText: "Mijozni tanlang", border: OutlineInputBorder()),
-                items: _clients.map((c) => DropdownMenuItem<int>(
-                  value: c['id'] as int, // ID ni int sifatida olamiz
+                items: _clients.map((c) => DropdownMenuItem<dynamic>(
+                  value: c['id'], 
                   child: Text(c['full_name'] ?? c['name'] ?? "Noma'lum")
                 )).toList(),
                 onChanged: (v) => setModalState(() => selectedClientId = v),
@@ -167,22 +165,18 @@ class _ClientsScreenState extends State<ClientsScreen> {
                   final client = _clients.firstWhere((c) => c['id'] == selectedClientId);
                   String clientSafeName = (client['full_name'] ?? client['name']).toString().replaceAll(' ', '-');
 
-                  // Format: 100_01_Ism_Loyiha
                   String prefix = "100";
                   String seq = (_orders.length + 1).toString().padLeft(2, '0');
                   String generatedName = "${prefix}_${seq}_${clientSafeName}_${projectController.text.replaceAll(' ', '-')}";
 
-                  // Kvadratni raqamga o'girish
                   double area = double.tryParse(areaController.text.replaceAll(',', '.')) ?? 0;
 
                   try {
-                    // SIZNING SQL SXEMANGIZGA MOSLANISH:
-                    // orders jadvalida 'total_area_m2' NOT NULL.
                     await _supabase.from('orders').insert({
                       'client_id': selectedClientId, 
                       'project_name': generatedName,
                       'order_number': generatedName,
-                      'total_area_m2': area, // MAJBURIY
+                      'total_area_m2': area,
                       'measured_area': area,
                       'total_price': double.tryParse(priceController.text) ?? 0,
                       'status': 'pending', 
@@ -217,7 +211,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                // 1. MIJOZLAR RO'YXATI (TEPADA KO'RINISHI UCHUN)
+                // 1. MIJOZLAR RO'YXATI
                 ExpansionTile(
                   title: Text("Mijozlar Ro'yxati (${_clients.length})", style: const TextStyle(fontWeight: FontWeight.bold)),
                   leading: const Icon(Icons.people, color: Colors.orange),
@@ -281,3 +275,24 @@ class _ClientsScreenState extends State<ClientsScreen> {
             ),
       floatingActionButton: Column(
         mainAxisSize: MainAxisSize.min,
+        children: [
+          FloatingActionButton.small(
+            heroTag: "add_client",
+            onPressed: _showAddClientDialog,
+            backgroundColor: Colors.orange,
+            child: const Icon(Icons.person_add, color: Colors.white),
+          ),
+          const SizedBox(height: 10),
+          FloatingActionButton.extended(
+            heroTag: "add_order",
+            onPressed: _showAddOrderDialog,
+            icon: const Icon(Icons.create_new_folder),
+            label: const Text("Yangi Loyiha"),
+            backgroundColor: Colors.blue.shade900,
+            foregroundColor: Colors.white,
+          ),
+        ],
+      ),
+    );
+  }
+}
