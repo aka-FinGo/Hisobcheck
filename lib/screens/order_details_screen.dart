@@ -28,53 +28,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   }
 
   Future<void> _loadOrderData() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
-
-    try {
-      // 1. ZAKAZNI OLISH (Clients ulangan holda)
-      // DIQQAT: Agar 'clients' qizil yonayotgan bo'lsa, bazada Foreign Key noto'g'ri bo'lishi mumkin
-      final orderRes = await _supabase
-          .from('orders')
-          .select('*, clients(full_name, phone)')
-          .eq('id', widget.orderId)
-          .single(); // Bitta dona zakazni olamiz
-
-      // 2. ISHLAR TARIXINI OLISH
-      final logsRes = await _supabase
-          .from('work_logs')
-          .select('*, profiles(full_name)')
-          .eq('order_id', widget.orderId)
-          .order('created_at', ascending: false);
-
-      // 3. HISOB-KITOB
-      double expenses = 0;
-      final logs = List<Map<String, dynamic>>.from(logsRes);
-      for (var log in logs) {
-        expenses += (log['total_sum'] ?? 0).toDouble();
-      }
-
-      if (mounted) {
-        setState(() {
-          _order = orderRes;
-          _workLogs = logs;
-          _totalExpenses = expenses;
-          _profit = ((_order['total_price'] ?? 0) - expenses).toDouble();
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      debugPrint("XATO: $e"); // Konsolga yozamiz
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _errorMessage = "Ma'lumot yuklashda xato:\n$e"; // Ekranga chiqaramiz
-        });
-      }
-    }
-  }
 
   // --- ZAKAZNI TAHRIRLASH ---
   void _editOrderDialog() {
