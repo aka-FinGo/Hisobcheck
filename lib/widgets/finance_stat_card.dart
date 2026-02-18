@@ -53,9 +53,10 @@ class FinanceStatCard extends StatelessWidget {
               "$formattedAmount", 
               style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
             ),
-            const Text(
+            // TUZATILGAN JOY:
+            Text(
               "so'm",
-              style: TextStyle(color: Colors.white50, fontSize: 12),
+              style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12),
             ),
           ],
         ),
