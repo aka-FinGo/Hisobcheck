@@ -1,11 +1,11 @@
 name: moliyachi
 description: "Mebel sexi uchun moliyaviy ERP tizimi"
-publish_to: 'none' # GitHubga yuklanishi uchun buni yozish kerak
+publish_to: 'none'
 
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.0.0 <4.0.0' # MANA SHU QATOR YETISHMAYOTGAN EDI
+  sdk: '>=3.0.0 <4.0.0'
 
 dependencies:
   flutter:
@@ -20,6 +20,9 @@ dependencies:
   # 3. Ikonkalar
   cupertino_icons: ^1.0.6
 
+  # 4. Grafiklar (Charts) - MANA BU YERGA QO'SHDIK
+  fl_chart: ^0.66.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -27,7 +30,3 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-dependencies:
-  fl_chart: ^0.66.0
-  intl: ^0.19.0
-
