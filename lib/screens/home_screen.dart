@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'manage_users_screen.dart';   
 import 'clients_screen.dart';        
-import 'stats_screen.dart'; // Hisobotlar sahifasi
+import 'stats_screen.dart'; 
 import 'user_profile_screen.dart';
 import '../widgets/balance_card.dart'; 
 import '../widgets/reload_button.dart';
-// YANGI VIDJETLAR IMPORTI
+// YANGI VIDJETLAR
 import '../widgets/menu_button.dart';
 import '../widgets/mini_stat_card.dart';
 import '../widgets/big_action_button.dart';
@@ -38,7 +38,6 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _loadAllData();
   }
-
   Future<void> _loadAllData() async {
     if (!mounted) return;
     setState(() => _isLoading = true);
@@ -51,6 +50,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _userName = profile['full_name'] ?? 'Foydalanuvchi';
 
       if (_userRole == 'admin') {
+        // --- ADMIN UCHUN ---
         final orders = await _supabase.from('orders').select('total_price, status');
         final withdrawals = await _supabase.from('withdrawals').select('amount').eq('status', 'approved');
 
@@ -70,6 +70,7 @@ class _HomeScreenState extends State<HomeScreen> {
           });
         }
       } else {
+        // --- ISHCHI UCHUN ---
         final works = await _supabase.from('work_logs').select('total_sum').eq('worker_id', user.id);
         final withdraws = await _supabase.from('withdrawals').select('amount').eq('user_id', user.id).eq('status', 'approved');
 
@@ -91,27 +92,162 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) setState(() => _isLoading = false);
     }
   }
+  // --- PUL SO'RASH ---
+  void _showWithdrawDialog() {
+    final amountController = TextEditingController();
+    double currentBalance = _displayEarned - _displayWithdrawn;
 
-  // ... (Dialog funksiyalari o'sha-o'sha qoladi: _showWorkDialog, _showWithdrawDialog)
-  // Joyni tejash uchun ularni qisqartirib yozmadim, eski koddan ko'chirib qo'yishingiz mumkin.
-  // Lekin BigActionButton ishlashi uchun ular kerak bo'ladi.
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Pul so'rash (Avans)"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text("Mavjud: ${currentBalance.toStringAsFixed(0)} so'm", 
+                 style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+            const SizedBox(height: 15),
+            TextField(
+              controller: amountController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: "Summa", border: OutlineInputBorder(), suffixText: "so'm"),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("BEKOR")),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade900, foregroundColor: Colors.white),
+            onPressed: () async {
+              double amount = double.tryParse(amountController.text) ?? 0;
+              if (amount <= 0) return;
+              
+              await _supabase.from('withdrawals').insert({
+                'user_id': _supabase.auth.currentUser!.id,
+                'amount': amount,
+                'status': 'pending'
+              });
+              
+              if (mounted) {
+                Navigator.pop(ctx);
+                _loadAllData();
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("So'rov yuborildi!"), backgroundColor: Colors.blue));
+              }
+            },
+            child: const Text("YUBORISH"),
+          )
+        ],
+      ),
+    );
+  }
 
+  // --- ISH TOPSHIRISH ---
+  void _showWorkDialog() async {
+    final ordersResp = await _supabase.from('orders').select('*, clients(full_name)').neq('status', 'completed').order('created_at', ascending: false);
+    final taskTypesResp = await _supabase.from('task_types').select();
+
+    if (!mounted) return;
+    final orders = List<Map<String, dynamic>>.from(ordersResp);
+    final taskTypes = List<Map<String, dynamic>>.from(taskTypesResp);
+
+    dynamic selectedOrder;
+    Map<String, dynamic>? selectedTask;
+    final areaController = TextEditingController(); 
+    final notesController = TextEditingController();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) => Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom + 20, left: 20, right: 20, top: 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text("Ish Topshirish", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 20),
+              
+              DropdownButtonFormField<dynamic>(
+                decoration: const InputDecoration(labelText: "Zakaz", border: OutlineInputBorder()),
+                isExpanded: true,
+                items: orders.map((o) => DropdownMenuItem(value: o['id'], child: Text(o['project_name']))).toList(),
+                onChanged: (v) {
+                  setModalState(() {
+                    selectedOrder = v;
+                    final fullOrder = orders.firstWhere((o) => o['id'] == v);
+                    areaController.text = (fullOrder['total_area_m2'] ?? 0).toString();
+                  });
+                },
+              ),
+              const SizedBox(height: 10),
+
+              DropdownButtonFormField<Map<String, dynamic>>(
+                decoration: const InputDecoration(labelText: "Ish turi", border: OutlineInputBorder()),
+                items: taskTypes.map((t) => DropdownMenuItem(value: t, child: Text(t['name']))).toList(),
+                onChanged: (v) => setModalState(() => selectedTask = v),
+              ),
+              const SizedBox(height: 10),
+
+              TextField(controller: areaController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Hajm (m²)", border: OutlineInputBorder())),
+              const SizedBox(height: 10),
+              TextField(controller: notesController, decoration: const InputDecoration(labelText: "Izoh (ixtiyoriy)", border: OutlineInputBorder())),
+              const SizedBox(height: 20),
+
+              SizedBox(width: double.infinity, height: 50, child: ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade900, foregroundColor: Colors.white),
+                onPressed: () async {
+                  if (selectedOrder == null || selectedTask == null) return;
+                  try {
+                    await _supabase.from('work_logs').insert({
+                      'worker_id': _supabase.auth.currentUser!.id,
+                      'order_id': selectedOrder,
+                      'task_type': selectedTask!['name'],
+                      'area_m2': double.tryParse(areaController.text) ?? 0,
+                      'rate': selectedTask!['default_rate'],
+                      'description': notesController.text,
+                    });
+
+                    // AVTO STATUS
+                    if (selectedTask!['target_status'] != null && selectedTask!['target_status'].toString().isNotEmpty) {
+                      await _supabase.from('orders').update({'status': selectedTask!['target_status']}).eq('id', selectedOrder);
+                    } else if (_userRole == 'installer') {
+                       await _supabase.from('orders').update({'status': 'completed'}).eq('id', selectedOrder);
+                    }
+
+                    if (mounted) {
+                      Navigator.pop(context);
+                      _loadAllData(); 
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ish qabul qilindi!"), backgroundColor: Colors.green));
+                    }
+                  } catch (e) {
+                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e")));
+                  }
+                },
+                child: const Text("TOPSHIRISH"),
+              ))
+            ],
+          ),
+        ),
+      ),
+    );
+  }
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FE), // Juda och kulrang fon
+      backgroundColor: const Color(0xFFF8F9FE),
       body: _isLoading 
         ? const Center(child: CircularProgressIndicator())
         : SafeArea(
             child: Stack(
               children: [
-                // ASOSIY SCROLL QISMI
+                // ASOSIY SCROLL
                 SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 100), // Pastdan joy qoldiramiz (Tugma uchun)
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 100), 
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // 1. HEADER
+                      // HEADER
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -135,29 +271,19 @@ class _HomeScreenState extends State<HomeScreen> {
                       
                       const SizedBox(height: 25),
 
-                      // 2. ADMIN UCHUN KICHIK STATISTIKA
+                      // ADMIN STATISTIKA
                       if (_userRole == 'admin') ...[
                         Row(
                           children: [
-                            MiniStatCard(
-                              title: "Jami Zakaz", 
-                              value: "$_totalOrders", 
-                              color: Colors.blue, 
-                              icon: Icons.assignment
-                            ),
+                            MiniStatCard(title: "Jami Zakaz", value: "$_totalOrders", color: Colors.blue, icon: Icons.assignment),
                             const SizedBox(width: 15),
-                            MiniStatCard(
-                              title: "Jarayonda", 
-                              value: "$_activeOrders", 
-                              color: Colors.orange, 
-                              icon: Icons.timelapse
-                            ),
+                            MiniStatCard(title: "Jarayonda", value: "$_activeOrders", color: Colors.orange, icon: Icons.timelapse),
                           ],
                         ),
                         const SizedBox(height: 20),
                       ],
 
-                      // 3. BALANS KARTASI
+                      // BALANS KARTASI
                       BalanceCard(
                         earned: _displayEarned,
                         withdrawn: _displayWithdrawn,
@@ -173,14 +299,14 @@ class _HomeScreenState extends State<HomeScreen> {
                       const Text("Bo'limlar", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF2D3142))),
                       const SizedBox(height: 15),
 
-                      // 4. MENYU GRID (TUGMALAR)
+                      // MENYU GRID
                       GridView.count(
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
                         crossAxisCount: 2,
                         crossAxisSpacing: 20,
                         mainAxisSpacing: 20,
-                        childAspectRatio: 1.1, // Kvadratroq shakl
+                        childAspectRatio: 1.1,
                         children: [
                           MenuButton(
                             title: "Mijozlar",
@@ -209,8 +335,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               title: "Pul so'rash",
                               icon: Icons.account_balance_wallet_outlined,
                               color: Colors.green,
-                              // onTap: _showWithdrawDialog, // Bu funksiyani eski koddan qo'shing
-                              onTap: () {}, 
+                              onTap: _showWithdrawDialog, 
                             ),
                         ],
                       ),
@@ -218,7 +343,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
 
-                // 5. PASTKI KATTA TUGMA (FLOATING ACTION)
+                // PASTKI KATTA TUGMA
                 Positioned(
                   bottom: 20,
                   left: 20,
@@ -228,17 +353,13 @@ class _HomeScreenState extends State<HomeScreen> {
                         text: "ISH TOPSHIRISH",
                         icon: Icons.add_task,
                         color: const Color(0xFF2E5BFF),
-                        // onPressed: _showWorkDialog, // Eski koddan funksiyani qo'shing
-                        onPressed: () {},
+                        onPressed: _showWorkDialog,
                       )
                     : BigActionButton(
                         text: "YANGI MIJOZ QO'SHISH",
                         icon: Icons.person_add,
                         color: const Color(0xFF00C853),
-                        onPressed: () {
-                           // Mijoz qo'shish dialogini ochish
-                           Navigator.push(context, MaterialPageRoute(builder: (_) => const ClientsScreen()));
-                        },
+                        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ClientsScreen())),
                       ),
                 ),
               ],
