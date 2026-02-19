@@ -10,6 +10,7 @@ import '../widgets/menu_button.dart';
 import '../widgets/mini_stat_card.dart';
 import '../widgets/big_action_button.dart';
 import 'admin_finance_screen.dart';
+import '../widgets/pwa_prompt.dart';
 // --- 🟢 CONSTANTLAR (Magic String'larni yo'qotish uchun) ---
 class AppRoles {
   static const admin = 'admin';
@@ -263,6 +264,18 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
+  }
+  @override
+  void initState() {
+    super.initState();
+    _loadAllData();
+    
+    // Ilova ochilgandan 3 soniya o'tib, agar o'rnatilmagan bo'lsa, taklif chiqaramiz
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted) {
+        checkAndShowPwaPrompt(context);
+      }
+    });
   }
 
   @override
