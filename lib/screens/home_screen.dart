@@ -356,8 +356,15 @@ class _HomeScreenState extends State<HomeScreen> {
                               color: Colors.purple,
                               onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ManageUsersScreen())),
                             ),
+                            // MANA SHU TUGMA QO'SHILDI:
+                            MenuButton(
+                              title: "Moliya",
+                              icon: Icons.account_balance_wallet,
+                              color: Colors.teal,
+                              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminFinanceScreen())),
+                            ),
                           ],
-
+                          
                           if (_userRole != AppRoles.admin)
                             MenuButton(
                               title: "Pul so'rash",
