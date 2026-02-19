@@ -3,9 +3,11 @@
     "short_name": "Aristokrat",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0D47A1",
-    "theme_color": "#0D47A1",
-    "orientation": "portrait",
+    "background_color": "#F8F9FE",
+    "theme_color": "#2E5BFF",
+    "description": "Mebel sexi uchun ERP tizimi",
+    "orientation": "portrait-primary",
+    "prefer_related_applications": false,
     "icons": [
         {
             "src": "icons/Icon-192.png",
