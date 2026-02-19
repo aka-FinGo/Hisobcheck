@@ -13,6 +13,7 @@ class ClientsScreen extends StatefulWidget {
 class _ClientsScreenState extends State<ClientsScreen> {
   final _supabase = Supabase.instance.client;
   bool _isLoading = true;
+  
   // --- KEYINGI ZAKAZ RAQAMINI HISOBLASH ---
   Future<String> _calculateNextOrderNumber() async {
     try {
@@ -48,6 +49,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
       return "100_${DateTime.now().month.toString().padLeft(2, '0')}";
     }
   }
+
   // Ma'lumotlar
   List<Map<String, dynamic>> _allClients = [];
   List<Map<String, dynamic>> _displayClients = []; // Ekranda ko'rinadigan
@@ -113,7 +115,11 @@ class _ClientsScreenState extends State<ClientsScreen> {
         _filterData(); 
       }
     } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
+      debugPrint("Ma'lumotlarni yuklashda xato: $e"); // TUZATILDI: Bo'sh catch o'rniga xabar
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Yuklashda xato: $e"), backgroundColor: Colors.red));
+      }
     }
   }
 
@@ -159,15 +165,12 @@ class _ClientsScreenState extends State<ClientsScreen> {
 
   // --- ZAKAZ (LOYIHA) QO'SHISH DIALOGI ---
   void _showAddOrderDialog() async {
-    // 1. Dialog ochilishidan oldin keyingi raqamni hisoblaymiz (Loading ko'rsatib turish mumkin)
-    // Lekin tezroq bo'lishi uchun hozircha kutib turamiz:
     String suggestedId = await _calculateNextOrderNumber();
 
     if (!mounted) return;
 
     dynamic selectedClientId;
-    // Controllerlarga boshlang'ich qiymat beramiz
-    final idController = TextEditingController(text: suggestedId); // <--- AVTO TAKLIF (101_02)
+    final idController = TextEditingController(text: suggestedId);
     final projectController = TextEditingController();
     final areaController = TextEditingController();
     final priceController = TextEditingController();
@@ -187,7 +190,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
               const Center(child: Text("Yangi Loyiha Ochish", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold))),
               const SizedBox(height: 20),
 
-              // 1. ZAKAZ RAQAMI (ID) - TIZIM TAKLIF QILADI
+              // 1. ZAKAZ RAQAMI (ID)
               TextField(
                 controller: idController,
                 decoration: const InputDecoration(
@@ -269,28 +272,33 @@ class _ClientsScreenState extends State<ClientsScreen> {
                 child: ElevatedButton(
                   onPressed: () async {
                     if (selectedClientId == null || projectController.text.isEmpty || idController.text.isEmpty) {
-                       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Mijoz, Zakaz ID va Loyiha nomi majburiy!")));
+                       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Mijoz, Zakaz ID va Loyiha nomi majburiy!"), backgroundColor: Colors.orange));
                        return;
+                    }
+
+                    // TUZATILDI: Xavfsiz parse qilish (SQL Injection va Crash oldini oladi)
+                    double area = double.tryParse(areaController.text.replaceAll(',', '.')) ?? 0.0;
+                    double price = double.tryParse(priceController.text.replaceAll(',', '.')) ?? 0.0;
+
+                    if (area <= 0 || price <= 0) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Hajm va Summani to'g'ri kiriting!"), backgroundColor: Colors.red));
+                      return;
                     }
 
                     final client = _allClients.firstWhere((c) => c['id'] == selectedClientId);
                     String clientSafeName = (client['full_name'] ?? client['name']).toString().replaceAll(' ', '-');
 
-                    // Endi nomni generatsiya qilayotganda, inputdagi ID dan foydalanamiz
-                    // Format: 101_02_Ali_Oshxona
-                    String finalOrderNumber = idController.text.trim(); // 101_02
+                    String finalOrderNumber = idController.text.trim();
                     String fullProjectName = "${finalOrderNumber}_${clientSafeName}_${projectController.text.replaceAll(' ', '-')}";
-
-                    double area = double.tryParse(areaController.text.replaceAll(',', '.')) ?? 0;
 
                     try {
                       await _supabase.from('orders').insert({
                         'client_id': selectedClientId, 
-                        'project_name': fullProjectName,   // To'liq nom (Qidiruv uchun qulay)
-                        'order_number': finalOrderNumber,  // Faqat ID (Keyingi safar hisoblash uchun kerak)
+                        'project_name': fullProjectName,   
+                        'order_number': finalOrderNumber,  
                         'total_area_m2': area,       
                         'measured_area': area,      
-                        'total_price': double.tryParse(priceController.text) ?? 0,
+                        'total_price': price,
                         'notes': notesController.text,
                         'status': 'pending', 
                       });
@@ -302,7 +310,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
                       }
                     } catch (e) {
                       debugPrint("Order xato: $e");
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e")));
+                      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e"), backgroundColor: Colors.red));
                     }
                   },
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade900, foregroundColor: Colors.white),
@@ -352,8 +360,13 @@ class _ClientsScreenState extends State<ClientsScreen> {
                 if (mounted) {
                   Navigator.pop(ctx);
                   _loadData();
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Mijoz qo'shildi!"), backgroundColor: Colors.green));
                 }
-              } catch (e) { }
+              } catch (e) { 
+                // TUZATILDI: Bo'sh catch olib tashlandi
+                debugPrint("Mijoz qo'shishda xato: $e");
+                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato yuz berdi: $e"), backgroundColor: Colors.red));
+              }
             },
             child: const Text("SAQLASH"),
           ),
