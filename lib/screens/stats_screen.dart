@@ -30,7 +30,7 @@ class _StatsScreenState extends State<StatsScreen> {
   List<Map<String, dynamic>> _topWorkers = [];
 
   // Sana
-  final String _currentMonth = DateFormat('MMMM yyyy', 'uz').format(DateTime.now());
+  final String _currentMonth = DateFormat('MMMM yyyy').format(DateTime.now());
 
   @override
   void initState() {
@@ -288,8 +288,22 @@ class _StatsScreenState extends State<StatsScreen> {
     );
   }
 
-  // GRAFIK BO'LAKLARI
+  // GRAFIK BO'LAKLARI (Nol bo'lganda himoyalangan versiya)
   List<PieChartSectionData> _showingSections() {
+    // 🔴 AGAR BAZADA ZAKAZ UUMUMAN YO'Q BO'LSA:
+    if (_activeOrders == 0 && _completedOrders == 0 && _canceledOrders == 0) {
+      return [
+        PieChartSectionData(
+          color: Colors.grey.shade300,
+          value: 1,
+          title: '0',
+          radius: 50,
+          titleStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black54),
+        )
+      ];
+    }
+
+    // AGAR ZAKAZLAR BO'LSA:
     return List.generate(3, (i) {
       final isTouched = i == _touchedIndex;
       final fontSize = isTouched ? 20.0 : 14.0;
@@ -304,7 +318,7 @@ class _StatsScreenState extends State<StatsScreen> {
             title: '$_activeOrders',
             radius: radius,
             titleStyle: TextStyle(fontSize: fontSize, fontWeight: FontWeight.bold, color: Colors.white),
-            badgeWidget: _Badge(Icons.timelapse, size: widgetSize, borderColor: Colors.blue),
+            badgeWidget: _activeOrders > 0 ? _Badge(Icons.timelapse, size: widgetSize, borderColor: Colors.blue) : null,
             badgePositionPercentageOffset: .98,
           );
         case 1:
@@ -314,7 +328,7 @@ class _StatsScreenState extends State<StatsScreen> {
             title: '$_completedOrders',
             radius: radius,
             titleStyle: TextStyle(fontSize: fontSize, fontWeight: FontWeight.bold, color: Colors.white),
-            badgeWidget: _Badge(Icons.check_circle, size: widgetSize, borderColor: const Color(0xFF00C853)),
+            badgeWidget: _completedOrders > 0 ? _Badge(Icons.check_circle, size: widgetSize, borderColor: const Color(0xFF00C853)) : null,
             badgePositionPercentageOffset: .98,
           );
         case 2:
@@ -324,7 +338,7 @@ class _StatsScreenState extends State<StatsScreen> {
             title: '$_canceledOrders',
             radius: radius,
             titleStyle: TextStyle(fontSize: fontSize, fontWeight: FontWeight.bold, color: Colors.white),
-            badgeWidget: _Badge(Icons.cancel, size: widgetSize, borderColor: const Color(0xFFFF3D00)),
+            badgeWidget: _canceledOrders > 0 ? _Badge(Icons.cancel, size: widgetSize, borderColor: const Color(0xFFFF3D00)) : null,
             badgePositionPercentageOffset: .98,
           );
         default:
