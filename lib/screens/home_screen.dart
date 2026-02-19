@@ -45,11 +45,19 @@ class _HomeScreenState extends State<HomeScreen> {
   int _totalOrders = 0;
   int _activeOrders = 0;
 
-  @override
+    @override
   void initState() {
     super.initState();
     _loadAllData();
+    
+    // Ilova ochilgandan 3 soniya o'tib, agar o'rnatilmagan bo'lsa, taklif chiqaramiz
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted) {
+        checkAndShowPwaPrompt(context);
+      }
+    });
   }
+
 
   Future<void> _loadAllData() async {
     if (!mounted) return;
@@ -265,19 +273,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
-  @override
-  void initState() {
-    super.initState();
-    _loadAllData();
-    
-    // Ilova ochilgandan 3 soniya o'tib, agar o'rnatilmagan bo'lsa, taklif chiqaramiz
-    Future.delayed(const Duration(seconds: 3), () {
-      if (mounted) {
-        checkAndShowPwaPrompt(context);
-      }
-    });
-  }
-
+  
   @override
   Widget build(BuildContext context) {
     return Scaffold(
