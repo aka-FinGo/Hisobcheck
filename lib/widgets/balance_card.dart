@@ -61,7 +61,7 @@ class BalanceCard extends StatelessWidget {
                 children: const [
                   Icon(Icons.analytics, color: Colors.amber, size: 18),
                   SizedBox(width: 8),
-                  Text("Sex umumiy statistikasi", style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold)),
+                  Text("Umumiy statistikasi", style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold)),
                   Icon(Icons.chevron_right, color: Colors.amber),
                 ],
               ),
