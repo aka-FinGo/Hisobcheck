@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <base href="$FLUTTER_BASE_HREF">
+  <base href="/hisobcheck/">
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
@@ -16,11 +16,24 @@
 
   <title>Aristokrat ERP</title>
 
-  <script src="flutter_bootstrap.js" defer></script>
+  <script src="flutter.js" defer></script>
 </head>
 <body>
   <style>
     body { background-color: #F8F9FE; }
   </style>
+
+  <script>
+    window.addEventListener('load', function(ev) {
+      // Flutter ilovasini ishga tushirish
+      _flutter.loader.loadEntrypoint({
+        onEntrypointLoaded: function(engineInitializer) {
+          engineInitializer.initializeEngine().then(function(appRunner) {
+            appRunner.runApp();
+          });
+        }
+      });
+    });
+  </script>
 </body>
 </html>
