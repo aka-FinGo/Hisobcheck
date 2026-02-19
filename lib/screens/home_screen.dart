@@ -9,7 +9,7 @@ import '../widgets/reload_button.dart';
 import '../widgets/menu_button.dart';
 import '../widgets/mini_stat_card.dart';
 import '../widgets/big_action_button.dart';
-
+import 'admin_finance_screen.dart';
 // --- 🟢 CONSTANTLAR (Magic String'larni yo'qotish uchun) ---
 class AppRoles {
   static const admin = 'admin';
