@@ -6,10 +6,23 @@ import 'stats_screen.dart';
 import 'user_profile_screen.dart';
 import '../widgets/balance_card.dart'; 
 import '../widgets/reload_button.dart';
-// YANGI VIDJETLAR
 import '../widgets/menu_button.dart';
 import '../widgets/mini_stat_card.dart';
 import '../widgets/big_action_button.dart';
+
+// --- 🟢 CONSTANTLAR (Magic String'larni yo'qotish uchun) ---
+class AppRoles {
+  static const admin = 'admin';
+  static const worker = 'worker';
+  static const installer = 'installer';
+}
+
+class OrderStatus {
+  static const pending = 'pending';
+  static const completed = 'completed';
+  static const canceled = 'canceled';
+}
+// -------------------------------------------------------------
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -22,14 +35,12 @@ class _HomeScreenState extends State<HomeScreen> {
   final _supabase = Supabase.instance.client;
   bool _isLoading = true;
   
-  String _userRole = 'worker';
+  String _userRole = AppRoles.worker;
   String _userName = '';
   
-  // Balans
   double _displayEarned = 0;   
   double _displayWithdrawn = 0; 
   
-  // Admin stats
   int _totalOrders = 0;
   int _activeOrders = 0;
 
@@ -38,6 +49,7 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _loadAllData();
   }
+
   Future<void> _loadAllData() async {
     if (!mounted) return;
     setState(() => _isLoading = true);
@@ -46,11 +58,10 @@ class _HomeScreenState extends State<HomeScreen> {
       if (user == null) return;
 
       final profile = await _supabase.from('profiles').select().eq('id', user.id).single();
-      _userRole = profile['role'] ?? 'worker';
+      _userRole = profile['role'] ?? AppRoles.worker;
       _userName = profile['full_name'] ?? 'Foydalanuvchi';
 
-      if (_userRole == 'admin') {
-        // --- ADMIN UCHUN ---
+      if (_userRole == AppRoles.admin) {
         final orders = await _supabase.from('orders').select('total_price, status');
         final withdrawals = await _supabase.from('withdrawals').select('amount').eq('status', 'approved');
 
@@ -65,14 +76,14 @@ class _HomeScreenState extends State<HomeScreen> {
             _displayEarned = totalIncome;    
             _displayWithdrawn = totalPaid;   
             _totalOrders = orders.length;
-            _activeOrders = orders.where((o) => o['status'] != 'completed' && o['status'] != 'canceled').length;
+            _activeOrders = orders.where((o) => o['status'] != OrderStatus.completed && o['status'] != OrderStatus.canceled).length;
             _isLoading = false;
           });
         }
       } else {
-        // --- ISHCHI UCHUN ---
         final works = await _supabase.from('work_logs').select('total_sum').eq('worker_id', user.id);
-        final withdraws = await _supabase.from('withdrawals').select('amount').eq('user_id', user.id).eq('status', 'approved');
+        // 🔴 KRITIK TUZATISH: user_id o'rniga worker_id ishlatildi
+        final withdraws = await _supabase.from('withdrawals').select('amount').eq('worker_id', user.id).eq('status', 'approved');
 
         double earned = 0;
         double paid = 0;
@@ -89,10 +100,15 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       }
     } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
+      // 🟡 XATOLIKNI YUTIB YUBORMASLIK
+      debugPrint("Ma'lumot yuklashda xato: $e");
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e"), backgroundColor: Colors.red));
+      }
     }
   }
-  // --- PUL SO'RASH ---
+
   void _showWithdrawDialog() {
     final amountController = TextEditingController();
     double currentBalance = _displayEarned - _displayWithdrawn;
@@ -119,19 +135,33 @@ class _HomeScreenState extends State<HomeScreen> {
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade900, foregroundColor: Colors.white),
             onPressed: () async {
-              double amount = double.tryParse(amountController.text) ?? 0;
-              if (amount <= 0) return;
+              // 🟡 SQL INJECTION / CRASH OLDINI OLISH
+              final amount = double.tryParse(amountController.text) ?? 0;
+              if (amount <= 0) {
+                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Noto'g'ri summa!")));
+                 return;
+              }
+              if (amount > currentBalance) {
+                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Balans yetarli emas!")));
+                 return;
+              }
               
-              await _supabase.from('withdrawals').insert({
-                'user_id': _supabase.auth.currentUser!.id,
-                'amount': amount,
-                'status': 'pending'
-              });
-              
-              if (mounted) {
-                Navigator.pop(ctx);
-                _loadAllData();
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("So'rov yuborildi!"), backgroundColor: Colors.blue));
+              try {
+                await _supabase.from('withdrawals').insert({
+                  'worker_id': _supabase.auth.currentUser!.id, // 🔴 KRITIK TUZATISH
+                  'amount': amount,
+                  'status': OrderStatus.pending // Constant
+                });
+                
+                if (mounted) {
+                  Navigator.pop(ctx);
+                  _loadAllData();
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("So'rov yuborildi!"), backgroundColor: Colors.blue));
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("So'rov yuborishda xato: $e"), backgroundColor: Colors.red));
+                }
               }
             },
             child: const Text("YUBORISH"),
@@ -141,9 +171,8 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // --- ISH TOPSHIRISH ---
   void _showWorkDialog() async {
-    final ordersResp = await _supabase.from('orders').select('*, clients(full_name)').neq('status', 'completed').order('created_at', ascending: false);
+    final ordersResp = await _supabase.from('orders').select('*, clients(full_name)').neq('status', OrderStatus.completed).order('created_at', ascending: false);
     final taskTypesResp = await _supabase.from('task_types').select();
 
     if (!mounted) return;
@@ -197,22 +226,25 @@ class _HomeScreenState extends State<HomeScreen> {
               SizedBox(width: double.infinity, height: 50, child: ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade900, foregroundColor: Colors.white),
                 onPressed: () async {
-                  if (selectedOrder == null || selectedTask == null) return;
+                  if (selectedOrder == null || selectedTask == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Barcha maydonlarni to'ldiring!")));
+                    return;
+                  }
+                  
                   try {
                     await _supabase.from('work_logs').insert({
                       'worker_id': _supabase.auth.currentUser!.id,
                       'order_id': selectedOrder,
                       'task_type': selectedTask!['name'],
-                      'area_m2': double.tryParse(areaController.text) ?? 0,
+                      'area_m2': double.tryParse(areaController.text) ?? 0, // Xavfsiz parse
                       'rate': selectedTask!['default_rate'],
                       'description': notesController.text,
                     });
 
-                    // AVTO STATUS
                     if (selectedTask!['target_status'] != null && selectedTask!['target_status'].toString().isNotEmpty) {
                       await _supabase.from('orders').update({'status': selectedTask!['target_status']}).eq('id', selectedOrder);
-                    } else if (_userRole == 'installer') {
-                       await _supabase.from('orders').update({'status': 'completed'}).eq('id', selectedOrder);
+                    } else if (_userRole == AppRoles.installer) {
+                       await _supabase.from('orders').update({'status': OrderStatus.completed}).eq('id', selectedOrder);
                     }
 
                     if (mounted) {
@@ -221,7 +253,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ish qabul qilindi!"), backgroundColor: Colors.green));
                     }
                   } catch (e) {
-                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e")));
+                     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e")));
                   }
                 },
                 child: const Text("TOPSHIRISH"),
@@ -232,6 +264,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -241,13 +274,11 @@ class _HomeScreenState extends State<HomeScreen> {
         : SafeArea(
             child: Stack(
               children: [
-                // ASOSIY SCROLL
                 SingleChildScrollView(
                   padding: const EdgeInsets.fromLTRB(20, 20, 20, 100), 
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // HEADER
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -271,8 +302,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       
                       const SizedBox(height: 25),
 
-                      // ADMIN STATISTIKA
-                      if (_userRole == 'admin') ...[
+                      if (_userRole == AppRoles.admin) ...[
                         Row(
                           children: [
                             MiniStatCard(title: "Jami Zakaz", value: "$_totalOrders", color: Colors.blue, icon: Icons.assignment),
@@ -283,13 +313,12 @@ class _HomeScreenState extends State<HomeScreen> {
                         const SizedBox(height: 20),
                       ],
 
-                      // BALANS KARTASI
                       BalanceCard(
                         earned: _displayEarned,
                         withdrawn: _displayWithdrawn,
                         role: _userRole,
                         onStatsTap: () {
-                          if (_userRole == 'admin') {
+                          if (_userRole == AppRoles.admin) {
                             Navigator.push(context, MaterialPageRoute(builder: (_) => const StatsScreen()));
                           }
                         },
@@ -299,7 +328,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       const Text("Bo'limlar", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF2D3142))),
                       const SizedBox(height: 15),
 
-                      // MENYU GRID
                       GridView.count(
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
@@ -315,7 +343,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ClientsScreen())),
                           ),
                           
-                          if (_userRole == 'admin') ...[
+                          if (_userRole == AppRoles.admin) ...[
                             MenuButton(
                               title: "Hisobotlar",
                               icon: Icons.bar_chart,
@@ -330,7 +358,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                           ],
 
-                          if (_userRole != 'admin')
+                          if (_userRole != AppRoles.admin)
                             MenuButton(
                               title: "Pul so'rash",
                               icon: Icons.account_balance_wallet_outlined,
@@ -343,12 +371,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
 
-                // PASTKI KATTA TUGMA
                 Positioned(
                   bottom: 20,
                   left: 20,
                   right: 20,
-                  child: _userRole != 'admin' 
+                  child: _userRole != AppRoles.admin 
                     ? BigActionButton(
                         text: "ISH TOPSHIRISH",
                         icon: Icons.add_task,
