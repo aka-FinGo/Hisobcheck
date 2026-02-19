@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
-import '../widgets/finance_stat_card.dart'; // Biz yaratgan moliya kartasi
+import '../widgets/finance_stat_card.dart';
 
 class StatsScreen extends StatefulWidget {
   const StatsScreen({super.key});
@@ -14,14 +14,14 @@ class StatsScreen extends StatefulWidget {
 class _StatsScreenState extends State<StatsScreen> {
   final _supabase = Supabase.instance.client;
   bool _isLoading = true;
-  int _touchedIndex = -1; // Grafikni bosganda kattalashishi uchun
+  int _touchedIndex = -1;
 
   // Moliya
   double _totalIncome = 0;
   double _totalExpense = 0;
   double _netProfit = 0;
 
-  // Zakazlar soni
+  // Zakazlar
   int _completedOrders = 0;
   int _activeOrders = 0;
   int _canceledOrders = 0;
@@ -29,8 +29,8 @@ class _StatsScreenState extends State<StatsScreen> {
   // Top Xodimlar
   List<Map<String, dynamic>> _topWorkers = [];
 
-  // Sana
-  final String _currentMonth = DateFormat('MMMM yyyy').format(DateTime.now());
+  // Sana (Lokalizatsiya xatosi bermasligi uchun oddiy format)
+  final String _currentMonth = DateFormat('MMMM, yyyy').format(DateTime.now());
 
   @override
   void initState() {
@@ -50,30 +50,38 @@ class _StatsScreenState extends State<StatsScreen> {
       int canceled = 0;
 
       for (var o in orders) {
-        income += (o['total_price'] ?? 0).toDouble();
+        income += double.tryParse(o['total_price'].toString()) ?? 0.0;
         String status = o['status'] ?? 'pending';
         
-        if (status == 'completed') completed++;
-        else if (status == 'canceled') canceled++;
-        else active++;
+        if (status == 'completed') {
+          completed++;
+        } else if (status == 'canceled') {
+          canceled++;
+        } else {
+          active++;
+        }
       }
 
-      // 2. XARAJATLAR (Tasdiqlangan to'lovlar)
+      // 2. XARAJATLAR
       final withdrawals = await _supabase.from('withdrawals').select('amount').eq('status', 'approved');
       double expense = 0;
-      for (var w in withdrawals) expense += (w['amount'] ?? 0).toDouble();
+      for (var w in withdrawals) {
+        expense += double.tryParse(w['amount'].toString()) ?? 0.0;
+      }
 
-      // 3. TOP XODIMLAR (Eng ko'p ish bajarganlar)
-      final workersStats = await _supabase
-          .from('work_logs')
-          .select('worker_id, total_sum, profiles(full_name)');
+      // 3. TOP XODIMLAR
+      final workersStats = await _supabase.from('work_logs').select('worker_id, total_sum, profiles(full_name)');
       
-      // Ma'lumotlarni jamlash
       Map<String, dynamic> workerMap = {};
       for (var log in workersStats) {
-        String uid = log['worker_id'];
-        String name = log['profiles']?['full_name'] ?? "Noma'lum";
-        double sum = (log['total_sum'] ?? 0).toDouble();
+        String uid = log['worker_id'].toString();
+        String name = "Noma'lum";
+        
+        if (log['profiles'] != null && log['profiles']['full_name'] != null) {
+          name = log['profiles']['full_name'].toString();
+        }
+        
+        double sum = double.tryParse(log['total_sum'].toString()) ?? 0.0;
 
         if (workerMap.containsKey(uid)) {
           workerMap[uid]['sum'] += sum;
@@ -82,7 +90,6 @@ class _StatsScreenState extends State<StatsScreen> {
         }
       }
 
-      // Ro'yxatga aylantirish va saralash (Eng ko'p pul ishlaganlar tepada)
       List<Map<String, dynamic>> sortedWorkers = workerMap.values.toList().cast<Map<String, dynamic>>();
       sortedWorkers.sort((a, b) => b['sum'].compareTo(a['sum']));
 
@@ -94,20 +101,23 @@ class _StatsScreenState extends State<StatsScreen> {
           _completedOrders = completed;
           _activeOrders = active;
           _canceledOrders = canceled;
-          _topWorkers = sortedWorkers.take(5).toList(); // Faqat top 5 ta
+          _topWorkers = sortedWorkers.take(5).toList();
           _isLoading = false;
         });
       }
     } catch (e) {
-      debugPrint("Statistika xatosi: $e");
-      if (mounted) setState(() => _isLoading = false);
+      debugPrint("Statistika yuklash xatosi: $e");
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e"), backgroundColor: Colors.red));
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FE), // Och kulrang fon
+      backgroundColor: const Color(0xFFF8F9FE),
       appBar: AppBar(
         title: const Text("Hisobotlar", style: TextStyle(color: Color(0xFF2D3142), fontWeight: FontWeight.bold)),
         backgroundColor: Colors.transparent,
@@ -125,7 +135,6 @@ class _StatsScreenState extends State<StatsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // SANA
                 Center(
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -139,20 +148,20 @@ class _StatsScreenState extends State<StatsScreen> {
                 ),
                 const SizedBox(height: 20),
 
-                // 1. MOLIYA KARTALARI
+                // MOLIYA KARTALARI
                 Row(
                   children: [
                     FinanceStatCard(
                       title: "Jami Kirim",
                       amount: _totalIncome,
-                      color: const Color(0xFF00C853), // Yashil
+                      color: const Color(0xFF00C853),
                       icon: Icons.arrow_downward,
                     ),
                     const SizedBox(width: 15),
                     FinanceStatCard(
                       title: "Xarajatlar",
                       amount: _totalExpense,
-                      color: const Color(0xFFFF3D00), // Qizil
+                      color: const Color(0xFFFF3D00),
                       icon: Icons.arrow_upward,
                       isExpense: true,
                     ),
@@ -160,7 +169,7 @@ class _StatsScreenState extends State<StatsScreen> {
                 ),
                 const SizedBox(height: 20),
 
-                // 2. SOF FOYDA (KATTA KO'K KARTA)
+                // SOF FOYDA
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(24),
@@ -191,7 +200,7 @@ class _StatsScreenState extends State<StatsScreen> {
                 const Text("Zakazlar Statistikasi", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF2D3142))),
                 const SizedBox(height: 15),
 
-                // 3. GRAFIK (PIE CHART)
+                // GRAFIK (QOTIB QOLMASLIGI UCHUN HIMOYALANGAN)
                 Container(
                   height: 320,
                   padding: const EdgeInsets.all(20),
@@ -203,28 +212,29 @@ class _StatsScreenState extends State<StatsScreen> {
                   child: Column(
                     children: [
                       Expanded(
-                        child: PieChart(
-                          PieChartData(
-                            pieTouchData: PieTouchData(
-                              touchCallback: (FlTouchEvent event, pieTouchResponse) {
-                                setState(() {
-                                  if (!event.isInterestedForInteractions || pieTouchResponse == null || pieTouchResponse.touchedSection == null) {
-                                    _touchedIndex = -1;
-                                    return;
-                                  }
-                                  _touchedIndex = pieTouchResponse.touchedSection!.touchedSectionIndex;
-                                });
-                              },
-                            ),
-                            borderData: FlBorderData(show: false),
-                            sectionsSpace: 2,
-                            centerSpaceRadius: 40,
-                            sections: _showingSections(),
-                          ),
-                        ),
+                        child: (_activeOrders == 0 && _completedOrders == 0 && _canceledOrders == 0)
+                            ? const Center(child: Text("Hozircha zakazlar yo'q", style: TextStyle(color: Colors.grey)))
+                            : PieChart(
+                                PieChartData(
+                                  pieTouchData: PieTouchData(
+                                    touchCallback: (FlTouchEvent event, pieTouchResponse) {
+                                      setState(() {
+                                        if (!event.isInterestedForInteractions || pieTouchResponse == null || pieTouchResponse.touchedSection == null) {
+                                          _touchedIndex = -1;
+                                          return;
+                                        }
+                                        _touchedIndex = pieTouchResponse.touchedSection!.touchedSectionIndex;
+                                      });
+                                    },
+                                  ),
+                                  borderData: FlBorderData(show: false),
+                                  sectionsSpace: 2,
+                                  centerSpaceRadius: 40,
+                                  sections: _showingSections(),
+                                ),
+                              ),
                       ),
                       const SizedBox(height: 20),
-                      // Legend (Tushuntirish)
                       const Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
@@ -241,9 +251,9 @@ class _StatsScreenState extends State<StatsScreen> {
                 const Text("Top Xodimlar (Reyting)", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF2D3142))),
                 const SizedBox(height: 15),
 
-                // 4. TOP XODIMLAR RO'YXATI
+                // TOP XODIMLAR
                 _topWorkers.isEmpty 
-                  ? const Center(child: Text("Hozircha ma'lumot yo'q"))
+                  ? const Center(child: Text("Hozircha ma'lumot yo'q", style: TextStyle(color: Colors.grey)))
                   : ListView.builder(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
@@ -262,7 +272,7 @@ class _StatsScreenState extends State<StatsScreen> {
                             children: [
                               CircleAvatar(
                                 radius: 20,
-                                backgroundColor: i == 0 ? const Color(0xFFFFD700) : (i == 1 ? Colors.grey.shade300 : const Color(0xFFCD7F32)), // Oltin, Kumush, Bronza
+                                backgroundColor: i == 0 ? const Color(0xFFFFD700) : (i == 1 ? Colors.grey.shade300 : const Color(0xFFCD7F32)),
                                 child: Text("${i + 1}", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black)),
                               ),
                               const SizedBox(width: 15),
@@ -288,58 +298,36 @@ class _StatsScreenState extends State<StatsScreen> {
     );
   }
 
-  // GRAFIK BO'LAKLARI (Nol bo'lganda himoyalangan versiya)
   List<PieChartSectionData> _showingSections() {
-    // 🔴 AGAR BAZADA ZAKAZ UUMUMAN YO'Q BO'LSA:
-    if (_activeOrders == 0 && _completedOrders == 0 && _canceledOrders == 0) {
-      return [
-        PieChartSectionData(
-          color: Colors.grey.shade300,
-          value: 1,
-          title: '0',
-          radius: 50,
-          titleStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black54),
-        )
-      ];
-    }
-
-    // AGAR ZAKAZLAR BO'LSA:
     return List.generate(3, (i) {
       final isTouched = i == _touchedIndex;
       final fontSize = isTouched ? 20.0 : 14.0;
       final radius = isTouched ? 60.0 : 50.0;
-      final widgetSize = isTouched ? 55.0 : 40.0;
 
       switch (i) {
         case 0:
           return PieChartSectionData(
             color: Colors.blue,
             value: _activeOrders.toDouble(),
-            title: '$_activeOrders',
+            title: _activeOrders > 0 ? '$_activeOrders' : '',
             radius: radius,
             titleStyle: TextStyle(fontSize: fontSize, fontWeight: FontWeight.bold, color: Colors.white),
-            badgeWidget: _activeOrders > 0 ? _Badge(Icons.timelapse, size: widgetSize, borderColor: Colors.blue) : null,
-            badgePositionPercentageOffset: .98,
           );
         case 1:
           return PieChartSectionData(
             color: const Color(0xFF00C853),
             value: _completedOrders.toDouble(),
-            title: '$_completedOrders',
+            title: _completedOrders > 0 ? '$_completedOrders' : '',
             radius: radius,
             titleStyle: TextStyle(fontSize: fontSize, fontWeight: FontWeight.bold, color: Colors.white),
-            badgeWidget: _completedOrders > 0 ? _Badge(Icons.check_circle, size: widgetSize, borderColor: const Color(0xFF00C853)) : null,
-            badgePositionPercentageOffset: .98,
           );
         case 2:
           return PieChartSectionData(
             color: const Color(0xFFFF3D00),
             value: _canceledOrders.toDouble(),
-            title: '$_canceledOrders',
+            title: _canceledOrders > 0 ? '$_canceledOrders' : '',
             radius: radius,
             titleStyle: TextStyle(fontSize: fontSize, fontWeight: FontWeight.bold, color: Colors.white),
-            badgeWidget: _canceledOrders > 0 ? _Badge(Icons.cancel, size: widgetSize, borderColor: const Color(0xFFFF3D00)) : null,
-            badgePositionPercentageOffset: .98,
           );
         default:
           throw Error();
@@ -348,32 +336,6 @@ class _StatsScreenState extends State<StatsScreen> {
   }
 }
 
-// Yordamchi Badge (Grafik ustidagi ikonka)
-class _Badge extends StatelessWidget {
-  const _Badge(this.icon, {required this.size, required this.borderColor});
-  final IconData icon;
-  final double size;
-  final Color borderColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: PieChart.defaultDuration,
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        shape: BoxShape.circle,
-        border: Border.all(color: borderColor, width: 2),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 3)],
-      ),
-      padding: EdgeInsets.all(size * .15),
-      child: Center(child: Icon(icon, color: borderColor, size: size * 0.6)),
-    );
-  }
-}
-
-// Yordamchi Legend (Pastdagi yozuvlar)
 class _Indicator extends StatelessWidget {
   final Color color;
   final String text;
