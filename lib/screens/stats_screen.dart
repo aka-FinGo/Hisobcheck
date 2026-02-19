@@ -92,7 +92,7 @@ class _StatsScreenState extends State<StatsScreen> {
       // 3. TOP XODIMLAR
       final workersStats = await _supabase
           .from('work_logs')
-          .select('worker_id, total_sum, profiles(full_name)');
+          .select('worker_id, total_sum, profiles!work_logs_worker_id_fkey(full_name)');
 
       final Map<String, Map<String, dynamic>> workerMap = {};
 
