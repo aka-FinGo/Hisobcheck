@@ -1,7 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'client_details_screen.dart'; // Mijoz ichiga kirish
-import 'orders_list_screen.dart';    // Zakazlar ro'yxati
+import 'client_details_screen.dart';
+import 'orders_list_screen.dart';
+
+// ✅ Magic string'lar uchun constants
+class _OrderStatus {
+  static const pending = 'pending';
+  static const completed = 'completed';
+  static const canceled = 'canceled';
+}
 
 class ClientsScreen extends StatefulWidget {
   const ClientsScreen({super.key});
@@ -13,55 +20,25 @@ class ClientsScreen extends StatefulWidget {
 class _ClientsScreenState extends State<ClientsScreen> {
   final _supabase = Supabase.instance.client;
   bool _isLoading = true;
-  
-  // --- KEYINGI ZAKAZ RAQAMINI HISOBLASH ---
-  Future<String> _calculateNextOrderNumber() async {
-    try {
-      // 1. Bazadan eng oxirgi yaratilgan zakazni olamiz
-      final response = await _supabase
-          .from('orders')
-          .select('order_number')
-          .order('created_at', ascending: false) // Eng yangisi birinchi
-          .limit(1)
-          .maybeSingle();
-
-      String currentMonth = DateTime.now().month.toString().padLeft(2, '0'); // Masalan: "02"
-      int nextSeq = 100; // Agar baza bo'm-bo'sh bo'lsa, 100 dan boshlaymiz
-
-      if (response != null && response['order_number'] != null) {
-        String lastOrderStr = response['order_number'].toString();
-        // Formatimiz: "100_02_Ali_Oshxona" yoki "100_02"
-        // Biz "_" belgisiga qarab bo'laklaymiz
-        List<String> parts = lastOrderStr.split('_');
-
-        if (parts.isNotEmpty) {
-          // Birinchi bo'lakni (masalan "100") son qilib olamiz
-          int? lastSeq = int.tryParse(parts[0]);
-          if (lastSeq != null) {
-            nextSeq = lastSeq + 1; // 1 qo'shamiz -> 101
-          }
-        }
-      }
-
-      return "${nextSeq}_$currentMonth"; // Natija: "101_02"
-    } catch (e) {
-      debugPrint("Raqam hisoblashda xato: $e");
-      return "100_${DateTime.now().month.toString().padLeft(2, '0')}";
-    }
-  }
 
   // Ma'lumotlar
   List<Map<String, dynamic>> _allClients = [];
-  List<Map<String, dynamic>> _displayClients = []; // Ekranda ko'rinadigan
+  List<Map<String, dynamic>> _displayClients = [];
   List<Map<String, dynamic>> _allOrders = [];
-  
+
   // Statistika
   int _totalClients = 0;
   int _newClients = 0;
   int _activeClients = 0;
 
+  // ✅ activeClientIds bir marta hisoblanadi, qayta ishlatiladi
+  Set<dynamic> _activeClientIds = {};
+
+  // ✅ Zakaz raqami bir marta yuklanadi (har safar baza so'rovi emas)
+  String _nextOrderNumber = '';
+
   // Filtr
-  String _currentFilter = 'all'; // 'all', 'active', 'new'
+  String _currentFilter = 'all';
   final TextEditingController _searchController = TextEditingController();
 
   @override
@@ -71,7 +48,45 @@ class _ClientsScreenState extends State<ClientsScreen> {
     _searchController.addListener(_filterData);
   }
 
-  // --- MA'LUMOT YUKLASH ---
+  // ✅ TUZATILDI: dispose() — Memory Leak yo'q!
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  // ✅ Zakaz raqami faqat bir marta yuklanadi
+  Future<void> _loadNextOrderNumber() async {
+    _nextOrderNumber = await _calculateNextOrderNumber();
+  }
+
+  Future<String> _calculateNextOrderNumber() async {
+    try {
+      final response = await _supabase
+          .from('orders')
+          .select('order_number')
+          .order('created_at', ascending: false)
+          .limit(1)
+          .maybeSingle();
+
+      final currentMonth = DateTime.now().month.toString().padLeft(2, '0');
+      int nextSeq = 100;
+
+      if (response != null && response['order_number'] != null) {
+        final parts = response['order_number'].toString().split('_');
+        if (parts.isNotEmpty) {
+          final lastSeq = int.tryParse(parts[0]);
+          if (lastSeq != null) nextSeq = lastSeq + 1;
+        }
+      }
+
+      return '${nextSeq}_$currentMonth';
+    } catch (e) {
+      debugPrint('Raqam hisoblashda xato: $e');
+      return '100_${DateTime.now().month.toString().padLeft(2, '0')}';
+    }
+  }
+
   Future<void> _loadData() async {
     if (!mounted) return;
     setState(() => _isLoading = true);
@@ -84,15 +99,21 @@ class _ClientsScreenState extends State<ClientsScreen> {
       final clients = List<Map<String, dynamic>>.from(results[0]);
       final orders = List<Map<String, dynamic>>.from(results[1]);
 
-      // Statistikani hisoblash
       final now = DateTime.now();
       int newCount = 0;
-      final activeClientIds = orders
-          .where((o) => o['status'] != 'completed' && o['status'] != 'canceled')
+
+      // ✅ TUZATILDI: _activeClientIds bir marta hisoblanadi
+      _activeClientIds = orders
+          .where(
+            (o) =>
+                o['status'] != _OrderStatus.completed &&
+                o['status'] != _OrderStatus.canceled,
+          )
           .map((o) => o['client_id'])
           .toSet();
-      
-      int activeCount = clients.where((c) => activeClientIds.contains(c['id'])).length;
+
+      final activeCount =
+          clients.where((c) => _activeClientIds.contains(c['id'])).length;
 
       for (var c in clients) {
         if (c['created_at'] != null) {
@@ -112,28 +133,32 @@ class _ClientsScreenState extends State<ClientsScreen> {
           _activeClients = activeCount;
           _isLoading = false;
         });
-        _filterData(); 
+        _filterData();
+
+        // ✅ Ma'lumot yuklanganidan keyin zakaz raqamini yangilaymiz
+        _loadNextOrderNumber();
       }
     } catch (e) {
-      debugPrint("Ma'lumotlarni yuklashda xato: $e"); // TUZATILDI: Bo'sh catch o'rniga xabar
+      debugPrint("Ma'lumotlarni yuklashda xato: $e");
       if (mounted) {
         setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Yuklashda xato: $e"), backgroundColor: Colors.red));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Yuklashda xato: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     }
   }
 
-  // --- FILTRLASH ---
   void _filterData() {
     final query = _searchController.text.toLowerCase();
     List<Map<String, dynamic>> temp = [];
-    
+
     if (_currentFilter == 'active') {
-      final activeIds = _allOrders
-          .where((o) => o['status'] != 'completed' && o['status'] != 'canceled')
-          .map((o) => o['client_id'])
-          .toSet();
-      temp = _allClients.where((c) => activeIds.contains(c['id'])).toList();
+      // ✅ TUZATILDI: tayyor _activeClientIds ishlatiladi, qayta hisoblanmaydi
+      temp = _allClients.where((c) => _activeClientIds.contains(c['id'])).toList();
     } else if (_currentFilter == 'new') {
       final now = DateTime.now();
       temp = _allClients.where((c) {
@@ -147,15 +172,13 @@ class _ClientsScreenState extends State<ClientsScreen> {
 
     if (query.isNotEmpty) {
       temp = temp.where((c) {
-        final name = (c['full_name'] ?? c['name'] ?? "").toString().toLowerCase();
-        final phone = (c['phone'] ?? "").toString().toLowerCase();
+        final name = (c['full_name'] ?? c['name'] ?? '').toString().toLowerCase();
+        final phone = (c['phone'] ?? '').toString().toLowerCase();
         return name.contains(query) || phone.contains(query);
       }).toList();
     }
 
-    setState(() {
-      _displayClients = temp;
-    });
+    setState(() => _displayClients = temp);
   }
 
   void _setFilter(String filterType) {
@@ -163,191 +186,299 @@ class _ClientsScreenState extends State<ClientsScreen> {
     _filterData();
   }
 
-  // --- ZAKAZ (LOYIHA) QO'SHISH DIALOGI ---
+  // ✅ TUZATILDI: Dialog controllerlari whenComplete da dispose qilinadi
   void _showAddOrderDialog() async {
-    String suggestedId = await _calculateNextOrderNumber();
-
+    if (_nextOrderNumber.isEmpty) {
+      _nextOrderNumber = await _calculateNextOrderNumber();
+    }
     if (!mounted) return;
 
     dynamic selectedClientId;
-    final idController = TextEditingController(text: suggestedId);
+    final idController = TextEditingController(text: _nextOrderNumber);
     final projectController = TextEditingController();
     final areaController = TextEditingController();
     final priceController = TextEditingController();
     final notesController = TextEditingController();
 
+    void disposeControllers() {
+      idController.dispose();
+      projectController.dispose();
+      areaController.dispose();
+      priceController.dispose();
+      notesController.dispose();
+    }
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
+      ),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setModalState) => Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom + 20, left: 20, right: 20, top: 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Center(child: Text("Yangi Loyiha Ochish", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold))),
-              const SizedBox(height: 20),
-
-              // 1. ZAKAZ RAQAMI (ID)
-              TextField(
-                controller: idController,
-                decoration: const InputDecoration(
-                  labelText: "Zakaz ID (Tartib_Oy)",
-                  hintText: "Masalan: 101_02",
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.confirmation_number),
-                  helperText: "Tizim avtomatik hisobladi, o'zgartirishingiz mumkin",
-                ),
-              ),
-              const SizedBox(height: 12),
-              
-              // 2. MIJOZNI TANLASH
-              DropdownButtonFormField<dynamic>(
-                decoration: const InputDecoration(
-                  labelText: "Mijozni tanlang", 
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.person)
-                ),
-                items: _allClients.map((c) => DropdownMenuItem<dynamic>(
-                  value: c['id'], 
-                  child: Text(c['full_name'] ?? c['name'] ?? "Noma'lum", overflow: TextOverflow.ellipsis)
-                )).toList(),
-                onChanged: (v) => setModalState(() => selectedClientId = v),
-              ),
-              const SizedBox(height: 12),
-
-              // 3. LOYIHA NOMI
-              TextField(
-                controller: projectController, 
-                decoration: const InputDecoration(
-                  labelText: "Loyiha nomi", 
-                  hintText: "Msl: Oshxona", 
-                  border: OutlineInputBorder(), 
-                  prefixIcon: Icon(Icons.kitchen)
-                )
-              ),
-              const SizedBox(height: 12),
-
-              // 4. KVADRAT VA NARX
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: areaController,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      decoration: const InputDecoration(labelText: "Hajm (m²)", border: OutlineInputBorder(), suffixText: "m²"),
-                    ),
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
+            left: 20,
+            right: 20,
+            top: 20,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Center(
+                  child: Text(
+                    'Yangi Loyiha Ochish',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: TextField(
-                      controller: priceController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: "Summa", border: OutlineInputBorder(), suffixText: "so'm"),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-
-              // 5. IZOH
-              TextField(
-                controller: notesController,
-                maxLines: 2,
-                decoration: const InputDecoration(
-                  labelText: "Qo'shimcha ma'lumot (Ixtiyoriy)", 
-                  hintText: "Msl: Fasad oq MDF, shoshilinch...",
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.note_alt_outlined)
                 ),
-              ),
-              const SizedBox(height: 20),
+                const SizedBox(height: 20),
 
-              // 6. SAQLASH TUGMASI
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton(
-                  onPressed: () async {
-                    if (selectedClientId == null || projectController.text.isEmpty || idController.text.isEmpty) {
-                       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Mijoz, Zakaz ID va Loyiha nomi majburiy!"), backgroundColor: Colors.orange));
-                       return;
-                    }
+                // 1. ZAKAZ RAQAMI
+                TextField(
+                  controller: idController,
+                  decoration: const InputDecoration(
+                    labelText: 'Zakaz ID (Tartib_Oy)',
+                    hintText: 'Masalan: 101_02',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.confirmation_number),
+                    helperText: "Tizim avtomatik hisobladi, o'zgartirishingiz mumkin",
+                  ),
+                ),
+                const SizedBox(height: 12),
 
-                    // TUZATILDI: Xavfsiz parse qilish (SQL Injection va Crash oldini oladi)
-                    double area = double.tryParse(areaController.text.replaceAll(',', '.')) ?? 0.0;
-                    double price = double.tryParse(priceController.text.replaceAll(',', '.')) ?? 0.0;
+                // 2. MIJOZNI TANLASH
+                DropdownButtonFormField<dynamic>(
+                  decoration: const InputDecoration(
+                    labelText: 'Mijozni tanlang',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.person),
+                  ),
+                  items: _allClients
+                      .map(
+                        (c) => DropdownMenuItem<dynamic>(
+                          value: c['id'],
+                          child: Text(
+                            c['full_name'] ?? c['name'] ?? "Noma'lum",
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (v) => setModalState(() => selectedClientId = v),
+                ),
+                const SizedBox(height: 12),
 
-                    if (area <= 0 || price <= 0) {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Hajm va Summani to'g'ri kiriting!"), backgroundColor: Colors.red));
-                      return;
-                    }
+                // 3. LOYIHA NOMI
+                TextField(
+                  controller: projectController,
+                  decoration: const InputDecoration(
+                    labelText: 'Loyiha nomi',
+                    hintText: 'Msl: Oshxona',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.kitchen),
+                  ),
+                ),
+                const SizedBox(height: 12),
 
-                    final client = _allClients.firstWhere((c) => c['id'] == selectedClientId);
-                    String clientSafeName = (client['full_name'] ?? client['name']).toString().replaceAll(' ', '-');
+                // 4. KVADRAT VA NARX
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: areaController,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        decoration: const InputDecoration(
+                          labelText: 'Hajm (m²)',
+                          border: OutlineInputBorder(),
+                          suffixText: 'm²',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TextField(
+                        controller: priceController,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Summa',
+                          border: OutlineInputBorder(),
+                          suffixText: "so'm",
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
 
-                    String finalOrderNumber = idController.text.trim();
-                    String fullProjectName = "${finalOrderNumber}_${clientSafeName}_${projectController.text.replaceAll(' ', '-')}";
+                // 5. IZOH
+                TextField(
+                  controller: notesController,
+                  maxLines: 2,
+                  decoration: const InputDecoration(
+                    labelText: "Qo'shimcha ma'lumot (Ixtiyoriy)",
+                    hintText: 'Msl: Fasad oq MDF, shoshilinch...',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.note_alt_outlined),
+                  ),
+                ),
+                const SizedBox(height: 20),
 
-                    try {
-                      await _supabase.from('orders').insert({
-                        'client_id': selectedClientId, 
-                        'project_name': fullProjectName,   
-                        'order_number': finalOrderNumber,  
-                        'total_area_m2': area,       
-                        'measured_area': area,      
-                        'total_price': price,
-                        'notes': notesController.text,
-                        'status': 'pending', 
-                      });
-
-                      if (mounted) {
-                        Navigator.pop(ctx);
-                        _loadData();
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Loyiha yaratildi!"), backgroundColor: Colors.green));
+                // 6. SAQLASH TUGMASI
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      if (selectedClientId == null ||
+                          projectController.text.isEmpty ||
+                          idController.text.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text("Mijoz, Zakaz ID va Loyiha nomi majburiy!"),
+                            backgroundColor: Colors.orange,
+                          ),
+                        );
+                        return;
                       }
-                    } catch (e) {
-                      debugPrint("Order xato: $e");
-                      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e"), backgroundColor: Colors.red));
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade900, foregroundColor: Colors.white),
-                  child: const Text("ZAKAZNI YARATISH"),
+
+                      final area = double.tryParse(
+                            areaController.text.replaceAll(',', '.'),
+                          ) ??
+                          0.0;
+                      final price = double.tryParse(
+                            priceController.text.replaceAll(',', '.'),
+                          ) ??
+                          0.0;
+
+                      if (area <= 0 || price <= 0) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text("Hajm va Summani to'g'ri kiriting!"),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                        return;
+                      }
+
+                      final client = _allClients
+                          .firstWhere((c) => c['id'] == selectedClientId);
+                      final clientSafeName =
+                          (client['full_name'] ?? client['name'])
+                              .toString()
+                              .replaceAll(' ', '-');
+
+                      final finalOrderNumber = idController.text.trim();
+                      final fullProjectName =
+                          '${finalOrderNumber}_${clientSafeName}_'
+                          '${projectController.text.replaceAll(' ', '-')}';
+
+                      try {
+                        await _supabase.from('orders').insert({
+                          'client_id': selectedClientId,
+                          'project_name': fullProjectName,
+                          'order_number': finalOrderNumber,
+                          'total_area_m2': area,
+                          'measured_area': area,
+                          'total_price': price,
+                          'notes': notesController.text,
+                          'status': _OrderStatus.pending, // ✅ constant
+                        });
+
+                        if (mounted) {
+                          Navigator.pop(ctx);
+                          _loadData();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Loyiha yaratildi!'),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        debugPrint('Order xato: $e');
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Xato: $e'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue.shade900,
+                      foregroundColor: Colors.white,
+                    ),
+                    child: const Text('ZAKAZNI YARATISH'),
+                  ),
                 ),
-              )
-            ],
+                const SizedBox(height: 10),
+              ],
+            ),
           ),
         ),
       ),
-    );
+    ).whenComplete(disposeControllers); // ✅ Controller tozalanadi
   }
 
-  // --- YANGI MIJOZ DIALOGI ---
+  // ✅ TUZATILDI: Dialog controllerlari dispose qilinadi
   void _showAddClientDialog() {
     final nameController = TextEditingController();
     final phoneController = TextEditingController();
     final addressController = TextEditingController();
 
+    void disposeControllers() {
+      nameController.dispose();
+      phoneController.dispose();
+      addressController.dispose();
+    }
+
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text("Yangi Mijoz"),
+        title: const Text('Yangi Mijoz'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(controller: nameController, decoration: const InputDecoration(labelText: "F.I.SH *", border: OutlineInputBorder())),
+            TextField(
+              controller: nameController,
+              decoration: const InputDecoration(
+                labelText: 'F.I.SH *',
+                border: OutlineInputBorder(),
+              ),
+            ),
             const SizedBox(height: 10),
-            TextField(controller: phoneController, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: "Telefon", border: OutlineInputBorder())),
+            TextField(
+              controller: phoneController,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(
+                labelText: 'Telefon',
+                border: OutlineInputBorder(),
+              ),
+            ),
             const SizedBox(height: 10),
-            TextField(controller: addressController, decoration: const InputDecoration(labelText: "Manzil", border: OutlineInputBorder())),
+            TextField(
+              controller: addressController,
+              decoration: const InputDecoration(
+                labelText: 'Manzil',
+                border: OutlineInputBorder(),
+              ),
+            ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("BEKOR")),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('BEKOR'),
+          ),
           ElevatedButton(
-             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2E5BFF), foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF2E5BFF),
+              foregroundColor: Colors.white,
+            ),
             onPressed: () async {
               if (nameController.text.trim().isEmpty) return;
               try {
@@ -360,22 +491,32 @@ class _ClientsScreenState extends State<ClientsScreen> {
                 if (mounted) {
                   Navigator.pop(ctx);
                   _loadData();
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Mijoz qo'shildi!"), backgroundColor: Colors.green));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text("Mijoz qo'shildi!"),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
                 }
-              } catch (e) { 
-                // TUZATILDI: Bo'sh catch olib tashlandi
+              } catch (e) {
                 debugPrint("Mijoz qo'shishda xato: $e");
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato yuz berdi: $e"), backgroundColor: Colors.red));
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Xato yuz berdi: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
               }
             },
-            child: const Text("SAQLASH"),
+            child: const Text('SAQLASH'),
           ),
         ],
       ),
-    );
+    ).whenComplete(disposeControllers); // ✅ Controller tozalanadi
   }
 
-  // --- MIJOZ TAFSILOTLARIGA O'TISH ---
   void _openClientDetails(Map<String, dynamic> client) async {
     await Navigator.push(
       context,
@@ -389,23 +530,26 @@ class _ClientsScreenState extends State<ClientsScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6F8),
       appBar: AppBar(
-        title: const Text("Mijozlar Bazasi", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+        title: const Text(
+          'Mijozlar Bazasi',
+          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+        ),
         backgroundColor: Colors.white,
         elevation: 0,
         actions: [
-          IconButton(onPressed: _loadData, icon: const Icon(Icons.refresh, color: Colors.blue)),
+          IconButton(
+            onPressed: _loadData,
+            icon: const Icon(Icons.refresh, color: Colors.blue),
+          ),
         ],
       ),
-      
-      // --- TUGMA: YANGI ZAKAZ QO'SHISH ---
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _showAddOrderDialog,
-        backgroundColor: const Color(0xFFFFD700), // Sariq rang
+        backgroundColor: const Color(0xFFFFD700),
         foregroundColor: Colors.black,
         icon: const Icon(Icons.add_task),
-        label: const Text("YANGI ZAKAZ"),
+        label: const Text('YANGI ZAKAZ'),
       ),
-
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : Column(
@@ -417,19 +561,60 @@ class _ClientsScreenState extends State<ClientsScreen> {
                     children: [
                       Row(
                         children: [
-                          Expanded(child: InkWell(onTap: () => _setFilter('all'), child: _buildStatCard("Jami mijozlar", _totalClients.toString(), _currentFilter == 'all' ? const Color(0xFF2E5BFF) : Colors.grey.shade400, Icons.people))),
+                          Expanded(
+                            child: InkWell(
+                              onTap: () => _setFilter('all'),
+                              child: _buildStatCard(
+                                'Jami mijozlar',
+                                _totalClients.toString(),
+                                _currentFilter == 'all'
+                                    ? const Color(0xFF2E5BFF)
+                                    : Colors.grey.shade400,
+                                Icons.people,
+                              ),
+                            ),
+                          ),
                           const SizedBox(width: 10),
-                          Expanded(child: InkWell(onTap: () => _setFilter('active'), child: _buildStatCard("Faol mijozlar", _activeClients.toString(), _currentFilter == 'active' ? const Color(0xFFFF8C00) : Colors.grey.shade400, Icons.local_fire_department))),
+                          Expanded(
+                            child: InkWell(
+                              onTap: () => _setFilter('active'),
+                              child: _buildStatCard(
+                                'Faol mijozlar',
+                                _activeClients.toString(),
+                                _currentFilter == 'active'
+                                    ? const Color(0xFFFF8C00)
+                                    : Colors.grey.shade400,
+                                Icons.local_fire_department,
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 10),
                       Row(
                         children: [
-                          Expanded(child: InkWell(onTap: () => _setFilter('new'), child: _buildStatCard("Yangi mijozlar", _newClients.toString(), _currentFilter == 'new' ? const Color(0xFF27AE60) : Colors.grey.shade400, Icons.new_releases))),
+                          Expanded(
+                            child: InkWell(
+                              onTap: () => _setFilter('new'),
+                              child: _buildStatCard(
+                                'Yangi mijozlar',
+                                _newClients.toString(),
+                                _currentFilter == 'new'
+                                    ? const Color(0xFF27AE60)
+                                    : Colors.grey.shade400,
+                                Icons.new_releases,
+                              ),
+                            ),
+                          ),
                           const SizedBox(width: 10),
                           Expanded(
                             child: InkWell(
-                              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersListScreen())),
+                              onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const OrdersListScreen(),
+                                ),
+                              ),
                               child: Container(
                                 padding: const EdgeInsets.all(15),
                                 decoration: BoxDecoration(
@@ -442,8 +627,17 @@ class _ClientsScreenState extends State<ClientsScreen> {
                                   children: [
                                     Icon(Icons.list_alt, color: Colors.blue, size: 20),
                                     SizedBox(height: 10),
-                                    Text("Barcha Zakazlar", style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
-                                    Text("Ro'yxatni ko'rish", style: TextStyle(color: Colors.grey, fontSize: 10)),
+                                    Text(
+                                      'Barcha Zakazlar',
+                                      style: TextStyle(
+                                        color: Colors.blue,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    Text(
+                                      "Ro'yxatni ko'rish",
+                                      style: TextStyle(color: Colors.grey, fontSize: 10),
+                                    ),
                                   ],
                                 ),
                               ),
@@ -461,30 +655,39 @@ class _ClientsScreenState extends State<ClientsScreen> {
                   child: TextField(
                     controller: _searchController,
                     decoration: InputDecoration(
-                      hintText: "Mijozni qidirish...",
+                      hintText: 'Mijozni qidirish...',
                       prefixIcon: const Icon(Icons.search),
                       filled: true,
                       fillColor: Colors.white,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide.none,
+                      ),
                     ),
                   ),
                 ),
-                
+
                 const SizedBox(height: 10),
 
-                // 3. QO'SHISH TUGMASI (MIJOZ)
+                // 3. MIJOZ QO'SHISH TUGMASI
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text("${_displayClients.length} ta mijoz topildi", style: const TextStyle(color: Colors.grey)),
+                      Text(
+                        '${_displayClients.length} ta mijoz topildi',
+                        style: const TextStyle(color: Colors.grey),
+                      ),
                       ElevatedButton.icon(
                         onPressed: _showAddClientDialog,
                         icon: const Icon(Icons.person_add, size: 16),
-                        label: const Text("Yangi Mijoz"),
-                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2E5BFF), foregroundColor: Colors.white),
-                      )
+                        label: const Text('Yangi Mijoz'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF2E5BFF),
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -497,9 +700,15 @@ class _ClientsScreenState extends State<ClientsScreen> {
                     separatorBuilder: (ctx, i) => const SizedBox(height: 10),
                     itemBuilder: (context, index) {
                       final client = _displayClients[index];
+                      // ✅ TUZATILDI: null bo'lsa crash yo'q
+                      final clientName =
+                          (client['full_name'] ?? client['name'] ?? '?')
+                              .toString();
                       return Card(
                         elevation: 2,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                         child: InkWell(
                           onTap: () => _openClientDetails(client),
                           borderRadius: BorderRadius.circular(12),
@@ -509,16 +718,28 @@ class _ClientsScreenState extends State<ClientsScreen> {
                               children: [
                                 CircleAvatar(
                                   backgroundColor: Colors.blue.shade50,
-                                  child: Text((client['full_name'] ?? client['name'] ?? "?").toString()[0].toUpperCase(), style: TextStyle(color: Colors.blue.shade900)),
+                                  child: Text(
+                                    clientName[0].toUpperCase(),
+                                    style: TextStyle(color: Colors.blue.shade900),
+                                  ),
                                 ),
                                 const SizedBox(width: 15),
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Text(client['full_name'] ?? client['name'] ?? "Noma'lum", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                      Text(
+                                        clientName,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 16,
+                                        ),
+                                      ),
                                       const SizedBox(height: 4),
-                                      Text(client['phone'] ?? "-", style: const TextStyle(color: Colors.grey)),
+                                      Text(
+                                        client['phone'] ?? '-',
+                                        style: const TextStyle(color: Colors.grey),
+                                      ),
                                     ],
                                   ),
                                 ),
@@ -539,14 +760,24 @@ class _ClientsScreenState extends State<ClientsScreen> {
   Widget _buildStatCard(String title, String count, Color color, IconData icon) {
     return Container(
       padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(10)),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(10),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(icon, color: Colors.white.withOpacity(0.8), size: 20),
           const SizedBox(height: 10),
           Text(title, style: const TextStyle(color: Colors.white70, fontSize: 12)),
-          Text(count, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+          Text(
+            count,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
         ],
       ),
     );
