@@ -1,23 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
-import 'dart:html' as html; // Faqat Web uchun kerakli kutubxona
+// MANA SHU YERDA SHARTLI CHAQIRUV ISHLAYDI:
+import 'pwa_stub.dart' if (dart.library.html) 'pwa_web.dart';
 
 void checkAndShowPwaPrompt(BuildContext context) {
-  // 1. Agar dastur Web (Brauzer) da ishlamayotgan bo'lsa, to'xtatamiz
   if (!kIsWeb) return;
 
   try {
-    // 2. Dastur allaqachon o'rnatilgan (PWA) rejimida ekanligini tekshiramiz
-    bool isStandalone = html.window.matchMedia('(display-mode: standalone)').matches;
-    if (isStandalone) return; // O'rnatilgan bo'lsa, hech narsa ko'rsatmaymiz!
+    // Agar dastur PWA qilib o'rnatilgan bo'lsa, oyna chiqarmaymiz
+    if (isStandaloneMode()) return; 
   } catch (e) {
     debugPrint("PWA tekshirishda xato: $e");
   }
 
-  // 3. Qaysi telefon ekanligini aniqlaymiz (iOS yoki Android)
   final isIOS = defaultTargetPlatform == TargetPlatform.iOS;
 
-  // 4. O'rnatish yo'riqnomasini ekranga chiqaramiz
   showModalBottomSheet(
     context: context,
     backgroundColor: Colors.white,
@@ -47,8 +44,6 @@ void checkAndShowPwaPrompt(BuildContext context) {
             style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)
           ),
           const SizedBox(height: 15),
-          
-          // Telefonga mos tushuntirish
           Text(
             isIOS 
               ? "1. Safari brauzerining pastidagi 'Ulashish' (📤) tugmasini bosing.\n\n2. Ro'yxatdan 'Ekranga qo'shish' (Add to Home Screen - ➕) ni tanlang."
@@ -56,7 +51,6 @@ void checkAndShowPwaPrompt(BuildContext context) {
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 15, color: Colors.grey.shade800, height: 1.5),
           ),
-          
           const SizedBox(height: 25),
           SizedBox(
             width: double.infinity,
