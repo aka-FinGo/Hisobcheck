@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import '../widgets/finance_stat_card.dart';
 
@@ -14,8 +13,9 @@ class StatsScreen extends StatefulWidget {
 class _StatsScreenState extends State<StatsScreen> {
   final _supabase = Supabase.instance.client;
   bool _isLoading = true;
-  String? _errorMessage; // ✅ YANGI: xato xabarini saqlash
-  int _touchedIndex = -1;
+  String? _errorMessage;
+  String _selectedFilter = 'Shu oy'; // 'Bugun', 'Hafta', 'Shu oy', 'Hammasi'
+
 
   // Moliya
   double _totalIncome = 0;
@@ -54,10 +54,26 @@ class _StatsScreenState extends State<StatsScreen> {
     });
 
     try {
+      DateTime? startDate;
+      final now = DateTime.now();
+
+      if (_selectedFilter == 'Bugun') {
+        startDate = DateTime(now.year, now.month, now.day);
+      } else if (_selectedFilter == 'Hafta') {
+        startDate = now.subtract(Duration(days: now.weekday - 1));
+        startDate = DateTime(startDate.year, startDate.month, startDate.day);
+      } else if (_selectedFilter == 'Shu oy') {
+        startDate = DateTime(now.year, now.month, 1);
+      }
+
       // 1. ZAKAZLAR VA KIRIM
-      final orders = await _supabase
-          .from('orders')
-          .select('status, total_price');
+      var query = _supabase.from('orders').select('status, total_price, created_at');
+
+      if (startDate != null) {
+        query = query.gte('created_at', startDate.toIso8601String());
+      }
+
+      final orders = await query;
 
       double income = 0;
       int completed = 0;
@@ -65,7 +81,6 @@ class _StatsScreenState extends State<StatsScreen> {
       int canceled = 0;
 
       for (var o in orders) {
-        // ✅ TUZATILDI: null bo'lsa 0 qaytaradi, crash yo'q
         income += double.tryParse(o['total_price']?.toString() ?? '0') ?? 0.0;
         final status = (o['status'] ?? 'pending').toString();
 
@@ -79,10 +94,17 @@ class _StatsScreenState extends State<StatsScreen> {
       }
 
       // 2. XARAJATLAR
-      final withdrawals = await _supabase
+      var withdrawalQuery = _supabase
           .from('withdrawals')
-          .select('amount')
+          .select('amount, created_at')
           .eq('status', 'approved');
+
+      if (startDate != null) {
+        withdrawalQuery =
+            withdrawalQuery.gte('created_at', startDate.toIso8601String());
+      }
+
+      final withdrawals = await withdrawalQuery;
 
       double expense = 0;
       for (var w in withdrawals) {
@@ -90,9 +112,14 @@ class _StatsScreenState extends State<StatsScreen> {
       }
 
       // 3. TOP XODIMLAR
-      final workersStats = await _supabase
-          .from('work_logs')
-          .select('worker_id, total_sum, profiles!work_logs_worker_id_fkey(full_name)');
+      var logsQuery = _supabase.from('work_logs').select(
+          'worker_id, total_sum, created_at, profiles!work_logs_worker_id_fkey(full_name)');
+
+      if (startDate != null) {
+        logsQuery = logsQuery.gte('created_at', startDate.toIso8601String());
+      }
+
+      final workersStats = await logsQuery;
 
       final Map<String, Map<String, dynamic>> workerMap = {};
 
@@ -218,21 +245,20 @@ class _StatsScreenState extends State<StatsScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // OY BADGE
-          Center(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.grey.shade300),
-              ),
-              child: Text(
-                _currentMonth,
-                style: TextStyle(
-                  color: Colors.grey[700],
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+          // PERIOD FILTR
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _buildFilterChip('Bugun'),
+                const SizedBox(width: 8),
+                _buildFilterChip('Hafta'),
+                const SizedBox(width: 8),
+                _buildFilterChip('Shu oy'),
+                const SizedBox(width: 8),
+                _buildFilterChip('Hammasi'),
+              ],
             ),
           ),
           const SizedBox(height: 20),
@@ -312,8 +338,8 @@ class _StatsScreenState extends State<StatsScreen> {
           const SizedBox(height: 15),
 
           // GRAFIK
+          // ZAKAZLAR STATISTIKASI
           Container(
-            height: 320,
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
               color: Colors.white,
@@ -327,50 +353,32 @@ class _StatsScreenState extends State<StatsScreen> {
             ),
             child: Column(
               children: [
-                Expanded(
-                  child: (_activeOrders == 0 &&
-                          _completedOrders == 0 &&
-                          _canceledOrders == 0)
-                      ? const Center(
-                          child: Text(
-                            "Hozircha zakazlar yo'q",
-                            style: TextStyle(color: Colors.grey),
-                          ),
-                        )
-                      : PieChart(
-                          PieChartData(
-                            pieTouchData: PieTouchData(
-                              touchCallback:
-                                  (FlTouchEvent event, pieTouchResponse) {
-                                if (!mounted) return;
-                                setState(() {
-                                  if (!event.isInterestedForInteractions ||
-                                      pieTouchResponse == null ||
-                                      pieTouchResponse.touchedSection ==
-                                          null) {
-                                    _touchedIndex = -1;
-                                    return;
-                                  }
-                                  _touchedIndex = pieTouchResponse
-                                      .touchedSection!.touchedSectionIndex;
-                                });
-                              },
-                            ),
-                            borderData: FlBorderData(show: false),
-                            sectionsSpace: 2,
-                            centerSpaceRadius: 40,
-                            sections: _showingSections(),
-                          ),
-                        ),
+                _buildOrderStatItem(
+                  "Jaryondagi zakazlar",
+                  _activeOrders,
+                  Colors.blue,
+                  Icons.pending_actions,
                 ),
-                const SizedBox(height: 20),
-                const Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _Indicator(color: Colors.blue, text: 'Jarayonda'),
-                    _Indicator(color: Color(0xFF00C853), text: 'Bitgan'),
-                    _Indicator(color: Color(0xFFFF3D00), text: 'Bekor'),
-                  ],
+                const Divider(),
+                _buildOrderStatItem(
+                  "Bitgan zakazlar",
+                  _completedOrders,
+                  const Color(0xFF00C853),
+                  Icons.check_circle_outline,
+                ),
+                const Divider(),
+                _buildOrderStatItem(
+                  "Bekor qilinganlar",
+                  _canceledOrders,
+                  const Color(0xFFFF3D00),
+                  Icons.cancel_outlined,
+                ),
+                const Divider(),
+                _buildOrderStatItem(
+                  "Jami zakazlar",
+                  _activeOrders + _completedOrders + _canceledOrders,
+                  Colors.grey.shade700,
+                  Icons.format_list_bulleted,
                 ),
               ],
             ),
@@ -474,92 +482,61 @@ class _StatsScreenState extends State<StatsScreen> {
     );
   }
 
-  // ✅ ASOSIY TUZATISH: throw Error() o'chirildi — oq ekran yo'q!
-  List<PieChartSectionData> _showingSections() {
-    // Agar barcha qiymatlar 0 bo'lsa — bo'sh ro'yxat
-    if (_activeOrders == 0 && _completedOrders == 0 && _canceledOrders == 0) {
-      return [];
-    }
-
-    final isTouched0 = 0 == _touchedIndex;
-    final isTouched1 = 1 == _touchedIndex;
-    final isTouched2 = 2 == _touchedIndex;
-
-    final sections = <PieChartSectionData>[];
-
-    // Jarayondagi zakazlar
-    if (_activeOrders > 0) {
-      sections.add(PieChartSectionData(
-        color: Colors.blue,
-        value: _activeOrders.toDouble(),
-        title: '$_activeOrders',
-        radius: isTouched0 ? 60.0 : 50.0,
-        titleStyle: TextStyle(
-          fontSize: isTouched0 ? 20.0 : 14.0,
-          fontWeight: FontWeight.bold,
-          color: Colors.white,
-        ),
-      ));
-    }
-
-    // Bitgan zakazlar
-    if (_completedOrders > 0) {
-      sections.add(PieChartSectionData(
-        color: const Color(0xFF00C853),
-        value: _completedOrders.toDouble(),
-        title: '$_completedOrders',
-        radius: isTouched1 ? 60.0 : 50.0,
-        titleStyle: TextStyle(
-          fontSize: isTouched1 ? 20.0 : 14.0,
-          fontWeight: FontWeight.bold,
-          color: Colors.white,
-        ),
-      ));
-    }
-
-    // Bekor qilingan zakazlar
-    if (_canceledOrders > 0) {
-      sections.add(PieChartSectionData(
-        color: const Color(0xFFFF3D00),
-        value: _canceledOrders.toDouble(),
-        title: '$_canceledOrders',
-        radius: isTouched2 ? 60.0 : 50.0,
-        titleStyle: TextStyle(
-          fontSize: isTouched2 ? 20.0 : 14.0,
-          fontWeight: FontWeight.bold,
-          color: Colors.white,
-        ),
-      ));
-    }
-
-    return sections;
+  Widget _buildFilterChip(String label) {
+    final isSelected = _selectedFilter == label;
+    return ChoiceChip(
+      label: Text(label),
+      selected: isSelected,
+      onSelected: (selected) {
+        if (selected) {
+          setState(() {
+            _selectedFilter = label;
+            _loadStats();
+          });
+        }
+      },
+      selectedColor: const Color(0xFF2E5BFF),
+      labelStyle: TextStyle(
+        color: isSelected ? Colors.white : Colors.black87,
+        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+      ),
+    );
   }
-}
 
-class _Indicator extends StatelessWidget {
-  final Color color;
-  final String text;
-
-  const _Indicator({required this.color, required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Container(
-          width: 12,
-          height: 12,
-          decoration: BoxDecoration(shape: BoxShape.circle, color: color),
-        ),
-        const SizedBox(width: 6),
-        Text(
-          text,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            color: Colors.black54,
+  Widget _buildOrderStatItem(
+      String title, int count, Color color, IconData icon) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: color, size: 20),
           ),
-        ),
-      ],
+          const SizedBox(width: 15),
+          Expanded(
+            child: Text(
+              title,
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          Text(
+            "$count",
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
