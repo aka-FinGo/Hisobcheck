@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import '../screens/home_screen.dart';
+
+// --- EKRANLAR IMPORTI (O'zingizdagi yo'llar bilan tekshirib oling) ---
+import '../screens/home_screen.dart'; // Faqat Dashboard qismini qoldirganingizga ishonch hosil qiling
 import '../screens/clients_screen.dart';
+import '../screens/orders_list_screen.dart';
+import '../screens/stats_screen.dart';
 import '../screens/user_profile_screen.dart';
+
+// PWA taklifi uchun
+import 'pwa_prompt.dart';
 
 class MainWrapper extends StatefulWidget {
   const MainWrapper({super.key});
@@ -12,70 +18,172 @@ class MainWrapper extends StatefulWidget {
 }
 
 class _MainWrapperState extends State<MainWrapper> {
-  final _supabase = Supabase.instance.client;
   int _currentIndex = 0;
-  bool _isLoading = true;
-  
-  // Sahifalar ro'yxati oldindan bo'sh turadi
-  List<Widget> _pages = [];
+
+  // Sahifalar ro'yxati
+  final List<Widget> _pages = const [
+    HomeScreen(),         // 0 - Asosiy
+    ClientsScreen(),      // 1 - Mijozlar
+    OrdersListScreen(),   // 2 - Buyurtmalar
+    StatsScreen(),        // 3 - Hisobotlar
+    UserProfileScreen(),  // 4 - Profil
+  ];
+
+  // CSS'dagi kabi ranglarni belgilaymiz
+  final Color bgColor = const Color(0xFFF8F9FE); // Dastur orqa foni
+  final Color navColor = Colors.white;           // Menyu foni
+  final Color activeColor = const Color(0xFF29fd53); // Sizning CSS'dagi yashil rang (xohlasangiz 0xFF2E5BFF ko'k rang qiling)
+
+  // Ikonkalar va Yozuvlar ro'yxati
+  final List<Map<String, dynamic>> navItems = [
+    {'icon': Icons.home_outlined, 'activeIcon': Icons.home_rounded, 'label': 'Asosiy'},
+    {'icon': Icons.people_outline, 'activeIcon': Icons.people_alt_rounded, 'label': 'Mijozlar'},
+    {'icon': Icons.list_alt_outlined, 'activeIcon': Icons.list_alt_rounded, 'label': 'Zakazlar'},
+    {'icon': Icons.bar_chart_outlined, 'activeIcon': Icons.bar_chart_rounded, 'label': 'Hisobot'},
+    {'icon': Icons.settings_outlined, 'activeIcon': Icons.settings_rounded, 'label': 'Profil'},
+  ];
 
   @override
   void initState() {
     super.initState();
-    _initApp();
-  }
-
-  // 🔴 KRITIK TUZATISH: Async muammosi hal qilindi
-  Future<void> _initApp() async {
-    try {
-      final user = _supabase.auth.currentUser;
-      if (user == null) return;
-
-      // Profil ma'lumotlarini kutamiz
-      final profile = await _supabase.from('profiles').select().eq('id', user.id).single();
-
-      if (mounted) {
-        setState(() {
-          // Barcha sahifalar to'liq ma'lumot bilan initsializatsiya qilinadi
-          _pages = [
-            const HomeScreen(),
-            const ClientsScreen(),
-            UserProfileScreen(user: profile), // Profil ma'lumoti uzatildi
-          ];
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      debugPrint("MainWrapper init xatosi: $e");
-      if (mounted) setState(() => _isLoading = false);
-    }
+    // PWA (Ekranga o'rnatish) oynasini chaqirish
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted) checkAndShowPwaPrompt(context);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading || _pages.isEmpty) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
-    }
+    // Ekranning kengligini hisoblash (5 ta tab uchun bo'lamiz)
+    final double screenWidth = MediaQuery.of(context).size.width;
+    final double itemWidth = screenWidth / navItems.length;
 
     return Scaffold(
-      body: _pages[_currentIndex],
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        selectedItemColor: Colors.blue.shade900,
-        unselectedItemColor: Colors.grey,
-        // 🟡 O'RTA DARAJALI TUZATISH: Cheksiz loop yo'q qilindi
-        onTap: (index) {
-          setState(() {
-            _currentIndex = index;
-          });
-        },
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: "Asosiy"),
-          BottomNavigationBarItem(icon: Icon(Icons.people), label: "Mijozlar"),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: "Profil"),
-        ],
+      backgroundColor: bgColor,
+      body: IndexedStack(
+        index: _currentIndex,
+        children: _pages,
+      ),
+      // Maxsus Suyuq Menyu (Animated Navbar)
+      bottomNavigationBar: Container(
+        height: 70,
+        decoration: BoxDecoration(
+          color: navColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(15)),
+          boxShadow: [
+            BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))
+          ],
+        ),
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            // 1. CSS'dagi ".indicator" (Aylanib yuruvchi pufakcha va kesik)
+            AnimatedPositioned(
+              duration: const Duration(milliseconds: 400),
+              curve: Curves.fastOutSlowIn,
+              top: -25, // CSS'dagi translateY(-35px) ga mos keladi
+              left: (_currentIndex * itemWidth) + (itemWidth - 60) / 2, // 60 pufakcha kengligi
+              child: Stack(
+                clipBehavior: Clip.none,
+                alignment: Alignment.center,
+                children: [
+                  // --- CSS "Water Blow" effektlari ---
+                  // Chap yon tomondagi bukilgan qism (pseudo-element o'rniga)
+                  Positioned(
+                    left: -22,
+                    top: 25,
+                    child: Container(
+                      width: 25,
+                      height: 25,
+                      decoration: BoxDecoration(
+                        color: Colors.transparent,
+                        borderRadius: const BorderRadius.only(topRight: Radius.circular(20)),
+                        boxShadow: [BoxShadow(color: bgColor, offset: const Offset(2, -10))],
+                      ),
+                    ),
+                  ),
+                  // O'ng yon tomondagi bukilgan qism
+                  Positioned(
+                    right: -22,
+                    top: 25,
+                    child: Container(
+                      width: 25,
+                      height: 25,
+                      decoration: BoxDecoration(
+                        color: Colors.transparent,
+                        borderRadius: const BorderRadius.only(topLeft: Radius.circular(20)),
+                        boxShadow: [BoxShadow(color: bgColor, offset: const Offset(-2, -10))],
+                      ),
+                    ),
+                  ),
+                  // Asosiy harakatlanuvchi Pufakcha (Indicator)
+                  Container(
+                    width: 60,
+                    height: 60,
+                    decoration: BoxDecoration(
+                      color: activeColor, // Yashil yoki Ko'k
+                      shape: BoxShape.circle,
+                      border: Border.all(color: bgColor, width: 6), // Fonga mos qalin chegara kesik illyuziyasini beradi
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // 2. Ikonkalar va Yozuvlar (HTML'dagi <ul> <li> ro'yxati)
+            Row(
+              children: List.generate(navItems.length, (index) {
+                final bool isActive = _currentIndex == index;
+
+                return GestureDetector(
+                  onTap: () {
+                    setState(() => _currentIndex = index);
+                  },
+                  behavior: HitTestBehavior.opaque,
+                  child: SizedBox(
+                    width: itemWidth,
+                    height: 70,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        // Ikonka (Aktiv bo'lsa tepaga ko'tariladi)
+                        AnimatedPositioned(
+                          duration: const Duration(milliseconds: 400),
+                          curve: Curves.fastOutSlowIn,
+                          top: isActive ? -12 : 22, // Yuqoriga ko'tarilish effekti
+                          child: Icon(
+                            isActive ? navItems[index]['activeIcon'] : navItems[index]['icon'],
+                            color: isActive ? Colors.white : Colors.grey.shade600,
+                            size: 26,
+                          ),
+                        ),
+                        
+                        // Yozuv (Aktiv bo'lsa pastdan o'rtaga chiqadi va ko'rinadi)
+                        AnimatedPositioned(
+                          duration: const Duration(milliseconds: 400),
+                          curve: Curves.fastOutSlowIn,
+                          bottom: isActive ? 12 : -20, // CSS'dagi transformY effekti
+                          child: AnimatedOpacity(
+                            duration: const Duration(milliseconds: 400),
+                            opacity: isActive ? 1.0 : 0.0,
+                            child: Text(
+                              navItems[index]['label'],
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.grey.shade800,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }),
+            ),
+          ],
+        ),
       ),
     );
   }
