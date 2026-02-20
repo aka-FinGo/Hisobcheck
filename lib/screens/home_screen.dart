@@ -485,7 +485,7 @@ class _HomeScreenState extends State<HomeScreen> {
       const SizedBox(height: 10),
       _listTile(Icons.manage_accounts, "Xodimlarni boshqarish",  const Color(0xFF1565C0),
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ManageUsersScreen()))),
-      _listTile(Icons.orders_rounded ?? Icons.list_alt, "Barcha buyurtmalar", const Color(0xFF2E7D32),
+      _listTile(Icons.receipt_long, "Barcha buyurtmalar", const Color(0xFF2E7D32),
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersListScreen()))),
     ]);
   }
