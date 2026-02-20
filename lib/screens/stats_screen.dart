@@ -66,15 +66,37 @@ class _StatsScreenState extends State<StatsScreen> {
         startDate = DateTime(now.year, now.month, 1);
       }
 
-      // 1. ZAKAZLAR VA KIRIM
-      var query = _supabase.from('orders').select('status, total_price, created_at');
+      // BARCHA 3 SO'ROV BIR VAQTDA YUBORILADI (parallel)
+      var ordersQuery = _supabase
+          .from('orders')
+          .select('status, total_price');
+      var withdrawalQuery = _supabase
+          .from('withdrawals')
+          .select('amount')
+          .eq('status', 'approved');
+      var logsQuery = _supabase
+          .from('work_logs')
+          .select('worker_id, total_sum, profiles!work_logs_worker_id_fkey(full_name)');
 
       if (startDate != null) {
-        query = query.gte('created_at', startDate.toIso8601String());
+        final iso = startDate.toIso8601String();
+        ordersQuery = ordersQuery.gte('created_at', iso);
+        withdrawalQuery = withdrawalQuery.gte('created_at', iso);
+        logsQuery = logsQuery.gte('created_at', iso);
       }
 
-      final orders = await query;
+      // Parallel fetch — 3x tezroq!
+      final results = await Future.wait([
+        ordersQuery,
+        withdrawalQuery,
+        logsQuery,
+      ]);
 
+      final orders = results[0];
+      final withdrawals = results[1];
+      final workersStats = results[2];
+
+      // Zakazlarni hisoblash
       double income = 0;
       int completed = 0;
       int active = 0;
@@ -83,7 +105,6 @@ class _StatsScreenState extends State<StatsScreen> {
       for (var o in orders) {
         income += double.tryParse(o['total_price']?.toString() ?? '0') ?? 0.0;
         final status = (o['status'] ?? 'pending').toString();
-
         if (status == 'completed') {
           completed++;
         } else if (status == 'canceled') {
@@ -93,33 +114,11 @@ class _StatsScreenState extends State<StatsScreen> {
         }
       }
 
-      // 2. XARAJATLAR
-      var withdrawalQuery = _supabase
-          .from('withdrawals')
-          .select('amount, created_at')
-          .eq('status', 'approved');
-
-      if (startDate != null) {
-        withdrawalQuery =
-            withdrawalQuery.gte('created_at', startDate.toIso8601String());
-      }
-
-      final withdrawals = await withdrawalQuery;
-
+      // Xarajatlarni hisoblash
       double expense = 0;
       for (var w in withdrawals) {
         expense += double.tryParse(w['amount']?.toString() ?? '0') ?? 0.0;
       }
-
-      // 3. TOP XODIMLAR
-      var logsQuery = _supabase.from('work_logs').select(
-          'worker_id, total_sum, created_at, profiles!work_logs_worker_id_fkey(full_name)');
-
-      if (startDate != null) {
-        logsQuery = logsQuery.gte('created_at', startDate.toIso8601String());
-      }
-
-      final workersStats = await logsQuery;
 
       final Map<String, Map<String, dynamic>> workerMap = {};
 
