@@ -2,12 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 
-// --- SAHIFALAR ---
-import 'clients_screen.dart';
-import 'stats_screen.dart';
-import 'orders_list_screen.dart';
-import 'user_profile_screen.dart';
-
 // --- VIDJETLAR ---
 import '../widgets/pwa_prompt.dart';
 
@@ -17,9 +11,6 @@ class AppRoles {
   static const installer = 'installer';
 }
 
-// ============================================================================
-// 1. ASOSIY WRAPPER (PASTKI MENYUNI BOSHQARUVCHI QISM)
-// ============================================================================
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -28,67 +19,6 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  int _bottomIdx = 0;
-
-  // Tablar ro'yxati (Pastki menyu bosilganda shu sahifalar ochiladi)
-  final List<Widget> _pages = [
-    const HomeDashboard(),       // 0 - Asosiy (Statistika)
-    const ClientsScreen(),       // 1 - Mijozlar
-    const OrdersListScreen(),    // 2 - Buyurtmalar
-    const StatsScreen(),         // 3 - Hisobotlar
-    const UserProfileScreen(),   // 4 - Profil
-  ];
-
-  @override
-  void initState() {
-    super.initState();
-    // PWA (Ekranga o'rnatish) oynasini chaqirish
-    Future.delayed(const Duration(seconds: 3), () {
-      if (mounted) checkAndShowPwaPrompt(context);
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      // E'tibor bering: Bosh sahifada AppBar yo'q, uni o'rniga IndexedStack ishlatamiz.
-      // Har bir sahifa o'zini AppBarini o'zi chiqaradi.
-      body: IndexedStack(
-        index: _bottomIdx,
-        children: _pages,
-      ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _bottomIdx,
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: const Color(0xFF2E5BFF), // Faol menyu rangi (Ko'k)
-        unselectedItemColor: Colors.grey,
-        backgroundColor: Colors.white,
-        elevation: 15,
-        onTap: (i) => setState(() => _bottomIdx = i),
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.dashboard_rounded), label: "Asosiy"),
-          BottomNavigationBarItem(icon: Icon(Icons.people_alt_rounded), label: "Mijozlar"),
-          BottomNavigationBarItem(icon: Icon(Icons.list_alt_rounded), label: "Zakazlar"),
-          BottomNavigationBarItem(icon: Icon(Icons.bar_chart_rounded), label: "Hisobot"),
-          BottomNavigationBarItem(icon: Icon(Icons.person_rounded), label: "Profil"),
-        ],
-      ),
-    );
-  }
-}
-
-
-// ============================================================================
-// 2. BOSH SAHIFA (FAQAT BALANS VA TUGMALAR KO'RINADIGAN QISM)
-// ============================================================================
-class HomeDashboard extends StatefulWidget {
-  const HomeDashboard({super.key});
-
-  @override
-  State<HomeDashboard> createState() => _HomeDashboardState();
-}
-
-class _HomeDashboardState extends State<HomeDashboard> {
   final _supabase = Supabase.instance.client;
   bool _isLoading = true;
   String _userRole = AppRoles.worker;
@@ -106,6 +36,11 @@ class _HomeDashboardState extends State<HomeDashboard> {
   void initState() {
     super.initState();
     _loadData();
+    
+    // PWA (Ekranga o'rnatish) oynasini chaqirish
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted) checkAndShowPwaPrompt(context);
+    });
   }
 
   Future<void> _loadData() async {
@@ -328,6 +263,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
               ],
             ),
           ),
+      // BIZ BU YERDAN BOTTOM NAVIGATION BAR'NI O'CHIRIB TASHLADIK!
     );
   }
 
