@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
-import '../widgets/finance_stat_card.dart';
 
 class StatsScreen extends StatefulWidget {
   const StatsScreen({super.key});
@@ -14,13 +13,11 @@ class _StatsScreenState extends State<StatsScreen> {
   final _supabase = Supabase.instance.client;
   bool _isLoading = true;
   String? _errorMessage;
-  String _selectedFilter = 'Shu oy'; // 'Bugun', 'Hafta', 'Shu oy', 'Hammasi'
-
+  String _selectedFilter = 'Shu oy';
 
   // Moliya
   double _totalIncome = 0;
   double _totalExpense = 0;
-  double _netProfit = 0;
 
   // Zakazlar
   int _completedOrders = 0;
@@ -30,15 +27,10 @@ class _StatsScreenState extends State<StatsScreen> {
   // Top Xodimlar
   List<Map<String, dynamic>> _topWorkers = [];
 
-  // ✅ TUZATILDI: DateFormat o'rniga oddiy O'zbek formati — crash yo'q
-  String get _currentMonth {
-    final now = DateTime.now();
-    const months = [
-      'Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun',
-      'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr'
-    ];
-    return '${months[now.month - 1]}, ${now.year}';
-  }
+  final _fmt = NumberFormat('#,###');
+
+  String _formatSum(double amount) =>
+      '${_fmt.format(amount).replaceAll(',', ' ')} so\'m';
 
   @override
   void initState() {
@@ -60,80 +52,53 @@ class _StatsScreenState extends State<StatsScreen> {
       if (_selectedFilter == 'Bugun') {
         startDate = DateTime(now.year, now.month, now.day);
       } else if (_selectedFilter == 'Hafta') {
-        startDate = now.subtract(Duration(days: now.weekday - 1));
-        startDate = DateTime(startDate.year, startDate.month, startDate.day);
+        final d = now.subtract(Duration(days: now.weekday - 1));
+        startDate = DateTime(d.year, d.month, d.day);
       } else if (_selectedFilter == 'Shu oy') {
         startDate = DateTime(now.year, now.month, 1);
       }
 
-      // BARCHA 3 SO'ROV BIR VAQTDA YUBORILADI (parallel)
-      var ordersQuery = _supabase
-          .from('orders')
-          .select('status, total_price');
-      var withdrawalQuery = _supabase
-          .from('withdrawals')
-          .select('amount')
-          .eq('status', 'approved');
-      var logsQuery = _supabase
-          .from('work_logs')
-          .select('worker_id, total_sum, profiles!work_logs_worker_id_fkey(full_name)');
+      final iso = startDate?.toIso8601String();
 
-      if (startDate != null) {
-        final iso = startDate.toIso8601String();
-        ordersQuery = ordersQuery.gte('created_at', iso);
-        withdrawalQuery = withdrawalQuery.gte('created_at', iso);
-        logsQuery = logsQuery.gte('created_at', iso);
+      // PARALLEL so'rovlar
+      var ordersQ = _supabase.from('orders').select('status, total_price');
+      var withdrawQ = _supabase.from('withdrawals').select('amount').eq('status', 'approved');
+      var logsQ = _supabase.from('work_logs').select(
+          'worker_id, total_sum, profiles!work_logs_worker_id_fkey(full_name)');
+
+      if (iso != null) {
+        ordersQ    = ordersQ.gte('created_at', iso);
+        withdrawQ  = withdrawQ.gte('created_at', iso);
+        logsQ      = logsQ.gte('created_at', iso);
       }
 
-      // Parallel fetch — 3x tezroq!
-      final results = await Future.wait([
-        ordersQuery,
-        withdrawalQuery,
-        logsQuery,
-      ]);
+      final results = await Future.wait([ordersQ, withdrawQ, logsQ]);
 
-      final orders = results[0];
+      final orders      = results[0];
       final withdrawals = results[1];
-      final workersStats = results[2];
+      final logs        = results[2];
 
-      // Zakazlarni hisoblash
       double income = 0;
-      int completed = 0;
-      int active = 0;
-      int canceled = 0;
-
-      for (var o in orders) {
-        income += double.tryParse(o['total_price']?.toString() ?? '0') ?? 0.0;
-        final status = (o['status'] ?? 'pending').toString();
-        if (status == 'completed') {
-          completed++;
-        } else if (status == 'canceled') {
-          canceled++;
-        } else {
-          active++;
-        }
+      int completed = 0, active = 0, canceled = 0;
+      for (final o in orders) {
+        income += double.tryParse(o['total_price']?.toString() ?? '0') ?? 0;
+        final s = (o['status'] ?? 'pending').toString();
+        if (s == 'completed')     completed++;
+        else if (s == 'canceled') canceled++;
+        else                      active++;
       }
 
-      // Xarajatlarni hisoblash
       double expense = 0;
-      for (var w in withdrawals) {
-        expense += double.tryParse(w['amount']?.toString() ?? '0') ?? 0.0;
+      for (final w in withdrawals) {
+        expense += double.tryParse(w['amount']?.toString() ?? '0') ?? 0;
       }
 
       final Map<String, Map<String, dynamic>> workerMap = {};
-
-      for (var log in workersStats) {
+      for (final log in logs) {
         final uid = log['worker_id']?.toString() ?? '';
         if (uid.isEmpty) continue;
-
-        final name = (log['profiles'] != null &&
-                log['profiles']['full_name'] != null)
-            ? log['profiles']['full_name'].toString()
-            : "Noma'lum";
-
-        final sum =
-            double.tryParse(log['total_sum']?.toString() ?? '0') ?? 0.0;
-
+        final name = log['profiles']?['full_name']?.toString() ?? "Noma'lum";
+        final sum  = double.tryParse(log['total_sum']?.toString() ?? '0') ?? 0;
         if (workerMap.containsKey(uid)) {
           workerMap[uid]!['sum'] = (workerMap[uid]!['sum'] as double) + sum;
         } else {
@@ -141,401 +106,211 @@ class _StatsScreenState extends State<StatsScreen> {
         }
       }
 
-      final sortedWorkers = workerMap.values.toList()
+      final sorted = workerMap.values.toList()
         ..sort((a, b) => (b['sum'] as double).compareTo(a['sum'] as double));
 
       if (mounted) {
         setState(() {
-          _totalIncome = income;
-          _totalExpense = expense;
-          _netProfit = income - expense;
-          _completedOrders = completed;
-          _activeOrders = active;
-          _canceledOrders = canceled;
-          _topWorkers = sortedWorkers.take(5).toList();
-          _isLoading = false;
+          _totalIncome      = income;
+          _totalExpense     = expense;
+          _completedOrders  = completed;
+          _activeOrders     = active;
+          _canceledOrders   = canceled;
+          _topWorkers       = sorted.take(5).toList();
+          _isLoading        = false;
         });
       }
     } catch (e) {
-      debugPrint("Statistika yuklash xatosi: $e");
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _errorMessage = e.toString(); // ✅ xatoni saqlaymiz
-        });
-      }
+      debugPrint('Stats error: $e');
+      if (mounted) setState(() { _isLoading = false; _errorMessage = e.toString(); });
     }
   }
+
+  // ── HELPERS ──────────────────────────────────────────────
+
+  Widget _sectionTitle(String text) => Padding(
+    padding: const EdgeInsets.only(top: 24, bottom: 10),
+    child: Text(
+      text,
+      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
+          color: Color(0xFF7B8BB2), letterSpacing: 1),
+    ),
+  );
+
+  Widget _card(Widget child) => Container(
+    width: double.infinity,
+    margin: const EdgeInsets.only(bottom: 10),
+    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(14),
+      border: Border.all(color: const Color(0xFFEEF0F7)),
+    ),
+    child: child,
+  );
+
+  Widget _row(String label, String value, Color valueColor) => Row(
+    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    children: [
+      Text(label, style: const TextStyle(fontSize: 15, color: Color(0xFF4A4E6B))),
+      Text(value, style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: valueColor)),
+    ],
+  );
+
+  Widget _skeletonBox(double w, double h) => Container(
+    width: w, height: h,
+    decoration: BoxDecoration(
+      color: const Color(0xFFEEF0F7),
+      borderRadius: BorderRadius.circular(8),
+    ),
+  );
+
+  Widget _skeletonCard() => _card(Column(children: [
+    Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [_skeletonBox(120, 14), _skeletonBox(80, 14)]),
+    const SizedBox(height: 12),
+    Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [_skeletonBox(100, 14), _skeletonBox(90, 14)]),
+    const SizedBox(height: 12),
+    Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [_skeletonBox(110, 14), _skeletonBox(85, 14)]),
+  ]));
+
+  // ── BUILD ─────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FE),
+      backgroundColor: const Color(0xFFF4F6FB),
       appBar: AppBar(
-        title: const Text(
-          "Hisobotlar",
-          style: TextStyle(
-            color: Color(0xFF2D3142),
-            fontWeight: FontWeight.bold,
-          ),
-        ),
+        title: const Text('Hisobotlar',
+            style: TextStyle(color: Color(0xFF2D3142), fontWeight: FontWeight.bold)),
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
         iconTheme: const IconThemeData(color: Color(0xFF2D3142)),
         actions: [
-          IconButton(
-            onPressed: _loadStats,
-            icon: const Icon(Icons.refresh),
-          ),
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _loadStats),
         ],
       ),
-
-      // ✅ TUZATILDI: 3 holat — loading, xato, ma'lumot
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _errorMessage != null
-              ? _buildErrorWidget()
-              : _buildContent(),
+      body: _errorMessage != null ? _buildError() : _buildBody(),
     );
   }
 
-  // ✅ YANGI: Xato ko'rsatuvchi widget
-  Widget _buildErrorWidget() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(30),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline, color: Colors.red, size: 60),
-            const SizedBox(height: 16),
-            const Text(
-              "Ma'lumot yuklanmadi",
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _errorMessage ?? '',
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.grey, fontSize: 13),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: _loadStats,
-              icon: const Icon(Icons.refresh),
-              label: const Text("Qayta urinish"),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue.shade900,
-                foregroundColor: Colors.white,
-              ),
-            ),
-          ],
+  Widget _buildError() => Center(
+    child: Padding(
+      padding: const EdgeInsets.all(32),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const Icon(Icons.wifi_off_rounded, size: 56, color: Color(0xFFB0B8D1)),
+        const SizedBox(height: 16),
+        const Text("Ma'lumot yuklanmadi",
+            style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        Text(_errorMessage ?? '', textAlign: TextAlign.center,
+            style: const TextStyle(color: Color(0xFF7B8BB2), fontSize: 13)),
+        const SizedBox(height: 24),
+        ElevatedButton.icon(
+          onPressed: _loadStats,
+          icon: const Icon(Icons.refresh),
+          label: const Text('Qayta urinish'),
+          style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF2E5BFF), foregroundColor: Colors.white),
         ),
-      ),
-    );
-  }
+      ]),
+    ),
+  );
 
-  // ✅ YANGI: Asosiy kontent alohida widget
-  Widget _buildContent() {
+  Widget _buildBody() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // OY BADGE
-          // PERIOD FILTR
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _buildFilterChip('Bugun'),
-                const SizedBox(width: 8),
-                _buildFilterChip('Hafta'),
-                const SizedBox(width: 8),
-                _buildFilterChip('Shu oy'),
-                const SizedBox(width: 8),
-                _buildFilterChip('Hammasi'),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // ── FILTRLAR ──
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(children: [
+            _chip('Bugun'),
+            const SizedBox(width: 8),
+            _chip('Hafta'),
+            const SizedBox(width: 8),
+            _chip('Shu oy'),
+            const SizedBox(width: 8),
+            _chip('Hammasi'),
+          ]),
+        ),
 
-          // MOLIYA KARTALARI
-          Row(
-            children: [
-              FinanceStatCard(
-                title: "Jami Kirim",
-                amount: _totalIncome,
-                color: const Color(0xFF00C853),
-                icon: Icons.arrow_downward,
-              ),
-              const SizedBox(width: 15),
-              FinanceStatCard(
-                title: "Xarajatlar",
-                amount: _totalExpense,
-                color: const Color(0xFFFF3D00),
-                icon: Icons.arrow_upward,
-                isExpense: true,
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
+        // ── MOLIYA ──
+        _sectionTitle('💰  MOLIYA'),
+        _isLoading ? _skeletonCard() : _card(Column(children: [
+          _row('Jami kirim',    _formatSum(_totalIncome),        const Color(0xFF00A86B)),
+          const Divider(height: 20),
+          _row('Xarajatlar',   _formatSum(_totalExpense),        const Color(0xFFE53935)),
+          const Divider(height: 20),
+          _row('Sof foyda',    _formatSum(_totalIncome - _totalExpense),
+              (_totalIncome - _totalExpense) >= 0
+                  ? const Color(0xFF2E5BFF) : const Color(0xFFE53935)),
+        ])),
 
-          // SOF FOYDA
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF2E5BFF), Color(0xFF1441E6)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(24),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF2E5BFF).withOpacity(0.4),
-                  blurRadius: 15,
-                  offset: const Offset(0, 8),
-                ),
-              ],
+        // ── ZAKAZLAR ──
+        _sectionTitle('📦  ZAKAZLAR'),
+        _isLoading ? _skeletonCard() : _card(Column(children: [
+          _row('Jarayonda',            '$_activeOrders ta',     const Color(0xFFFF8C00)),
+          const Divider(height: 20),
+          _row('Bajarilgan',           '$_completedOrders ta',  const Color(0xFF00A86B)),
+          const Divider(height: 20),
+          _row('Bekor qilingan',       '$_canceledOrders ta',   const Color(0xFFE53935)),
+          const Divider(height: 20),
+          _row('Jami',
+              '${_activeOrders + _completedOrders + _canceledOrders} ta',
+              const Color(0xFF2D3142)),
+        ])),
+
+        // ── TOP XODIMLAR ──
+        _sectionTitle('🏆  TOP XODIMLAR'),
+        if (_isLoading)
+          ...[_skeletonCard(), _skeletonCard()]
+        else if (_topWorkers.isEmpty)
+          _card(const Center(
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Text("Ma'lumot yo'q", style: TextStyle(color: Color(0xFFB0B8D1))),
             ),
-            child: Column(
-              children: [
-                const Text(
-                  "SOF FOYDA (KASSA)",
-                  style: TextStyle(
-                    color: Colors.white70,
-                    letterSpacing: 1.2,
-                    fontSize: 12,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  "${NumberFormat("#,###").format(_netProfit).replaceAll(',', ' ')} so'm",
+          ))
+        else
+          ...List.generate(_topWorkers.length, (i) {
+            final w = _topWorkers[i];
+            final medals = ['🥇', '🥈', '🥉'];
+            final badge  = i < 3 ? medals[i] : '${i + 1}.';
+            return _card(Row(children: [
+              Text(badge, style: const TextStyle(fontSize: 20)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(w['name']?.toString() ?? "Noma'lum",
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+              ),
+              Text(_formatSum(w['sum'] as double),
                   style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 30,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 30),
-          const Text(
-            "Zakazlar Statistikasi",
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF2D3142),
-            ),
-          ),
-          const SizedBox(height: 15),
-
-          // GRAFIK
-          // ZAKAZLAR STATISTIKASI
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.grey.withOpacity(0.1),
-                  blurRadius: 10,
-                ),
-              ],
-            ),
-            child: Column(
-              children: [
-                _buildOrderStatItem(
-                  "Jaryondagi zakazlar",
-                  _activeOrders,
-                  Colors.blue,
-                  Icons.pending_actions,
-                ),
-                const Divider(),
-                _buildOrderStatItem(
-                  "Bitgan zakazlar",
-                  _completedOrders,
-                  const Color(0xFF00C853),
-                  Icons.check_circle_outline,
-                ),
-                const Divider(),
-                _buildOrderStatItem(
-                  "Bekor qilinganlar",
-                  _canceledOrders,
-                  const Color(0xFFFF3D00),
-                  Icons.cancel_outlined,
-                ),
-                const Divider(),
-                _buildOrderStatItem(
-                  "Jami zakazlar",
-                  _activeOrders + _completedOrders + _canceledOrders,
-                  Colors.grey.shade700,
-                  Icons.format_list_bulleted,
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 30),
-          const Text(
-            "Top Xodimlar (Reyting)",
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF2D3142),
-            ),
-          ),
-          const SizedBox(height: 15),
-
-          // TOP XODIMLAR
-          _topWorkers.isEmpty
-              ? const Center(
-                  child: Text(
-                    "Hozircha ma'lumot yo'q",
-                    style: TextStyle(color: Colors.grey),
-                  ),
-                )
-              : ListView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: _topWorkers.length,
-                  itemBuilder: (ctx, i) {
-                    final w = _topWorkers[i];
-                    // ✅ Medal ranglari faqat 0,1,2 uchun, qolganlari kulrang
-                    final medalColor = i == 0
-                        ? const Color(0xFFFFD700)
-                        : i == 1
-                            ? Colors.grey.shade300
-                            : i == 2
-                                ? const Color(0xFFCD7F32)
-                                : Colors.grey.shade200;
-
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.grey.withOpacity(0.05),
-                            blurRadius: 5,
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        children: [
-                          CircleAvatar(
-                            radius: 20,
-                            backgroundColor: medalColor,
-                            child: Text(
-                              "${i + 1}",
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.black,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 15),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  w['name']?.toString() ?? "Noma'lum",
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                                Text(
-                                  "Ish haqi: ${NumberFormat("#,###").format(w['sum']).replaceAll(',', ' ')} so'm",
-                                  style: TextStyle(
-                                    color: Colors.grey[600],
-                                    fontSize: 13,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          if (i == 0)
-                            const Icon(
-                              Icons.emoji_events,
-                              color: Color(0xFFFFD700),
-                            ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-          const SizedBox(height: 40),
-        ],
-      ),
+                      fontSize: 14, color: Color(0xFF2E5BFF), fontWeight: FontWeight.bold)),
+            ]));
+          }),
+      ]),
     );
   }
 
-  Widget _buildFilterChip(String label) {
-    final isSelected = _selectedFilter == label;
+  Widget _chip(String label) {
+    final ok = _selectedFilter == label;
     return ChoiceChip(
       label: Text(label),
-      selected: isSelected,
-      onSelected: (selected) {
-        if (selected) {
-          setState(() {
-            _selectedFilter = label;
-            _loadStats();
-          });
-        }
-      },
+      selected: ok,
+      onSelected: (_) => setState(() { _selectedFilter = label; _loadStats(); }),
       selectedColor: const Color(0xFF2E5BFF),
+      backgroundColor: Colors.white,
+      side: BorderSide(color: ok ? const Color(0xFF2E5BFF) : const Color(0xFFDDE1EF)),
       labelStyle: TextStyle(
-        color: isSelected ? Colors.white : Colors.black87,
-        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+        color: ok ? Colors.white : const Color(0xFF4A4E6B),
+        fontWeight: ok ? FontWeight.bold : FontWeight.normal,
+        fontSize: 13,
       ),
-    );
-  }
-
-  Widget _buildOrderStatItem(
-      String title, int count, Color color, IconData icon) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, color: color, size: 20),
-          ),
-          const SizedBox(width: 15),
-          Expanded(
-            child: Text(
-              title,
-              style: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-          Text(
-            "$count",
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: color,
-            ),
-          ),
-        ],
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 4),
     );
   }
 }
