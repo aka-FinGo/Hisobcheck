@@ -72,7 +72,7 @@ class _HomeScreenState extends State<HomeScreen> {
       } else {
         // Ishchi uchun ishlab topilgan pullar
         final works = await _supabase.from('work_logs').select('total_sum').eq('worker_id', user.id);
-        final withdraws = await _supabase.from('withdrawals').select('amount').eq('user_id', user.id).eq('status', 'approved');
+        final withdraws = await _supabase.from('withdrawals').select('amount').eq('worker_id', user.id).eq('status', 'approved');
         double earned = 0;
         double paid = 0;
         for (var w in works) earned += (w['total_sum'] ?? 0).toDouble();
@@ -212,10 +212,10 @@ class _HomeScreenState extends State<HomeScreen> {
               if (amount <= 0) return;
               
               await _supabase.from('withdrawals').insert({
-                'user_id': _supabase.auth.currentUser!.id,
-                'amount': amount,
-                'status': 'pending'
-              });
+  'worker_id': _supabase.auth.currentUser!.id,
+  'amount': amount,
+  'status': 'pending'
+});
               
               if (mounted) {
                 Navigator.pop(ctx);
