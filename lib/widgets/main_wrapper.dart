@@ -29,10 +29,13 @@ class _MainWrapperState extends State<MainWrapper> {
     UserProfileScreen(),
   ];
 
-  // CSS'dagi kabi ranglarni belgilaymiz
-  final Color bgColor = const Color(0xFFF8F9FE); // Dastur orqa foni
-  final Color navColor = Colors.white;           // Menyu foni
-  final Color activeColor = const Color(0xFF29fd53); // Sizning CSS'dagi yashil rang (xohlasangiz 0xFF2E5BFF ko'k rang qiling)
+  // Yashil tema: pastki navbar
+  final Color bgColor = const Color(0xFFF8F9FE);      // Dastur orqa foni
+  final Color navColor = const Color(0xFF00C853);    // Navbar fon — yashil
+  final Color activeColor = Colors.white;            // Aktiv tab indikatori (oq doira)
+  final Color activeIconColor = const Color(0xFF00C853); // Aktiv ikonka rang (yashil)
+  static const Color _inactiveIconColor = Colors.white70; // Noaktiv ikonka
+  static const Color _inactiveLabelColor = Colors.white70; // Noaktiv yozuv
 
   // Ikonkalar va Yozuvlar ro'yxati
   final List<Map<String, dynamic>> navItems = [
@@ -116,14 +119,15 @@ class _MainWrapperState extends State<MainWrapper> {
                       ),
                     ),
                   ),
-                  // Asosiy harakatlanuvchi Pufakcha (Indicator)
+                  // Asosiy harakatlanuvchi pufakcha (oq doira)
                   Container(
                     width: 60,
                     height: 60,
                     decoration: BoxDecoration(
-                      color: activeColor, // Yashil yoki Ko'k
+                      color: activeColor,
                       shape: BoxShape.circle,
-                      border: Border.all(color: bgColor, width: 6), // Fonga mos qalin chegara kesik illyuziyasini beradi
+                      border: Border.all(color: navColor, width: 5),
+                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 8, offset: const Offset(0, 2))],
                     ),
                   ),
                 ],
@@ -146,23 +150,22 @@ class _MainWrapperState extends State<MainWrapper> {
                     child: Stack(
                       alignment: Alignment.center,
                       children: [
-                        // Ikonka (Aktiv bo'lsa tepaga ko'tariladi)
+                        // Ikonka (aktiv — yashil, noaktiv — oq/opacity)
                         AnimatedPositioned(
                           duration: const Duration(milliseconds: 400),
                           curve: Curves.fastOutSlowIn,
-                          top: isActive ? -12 : 22, // Yuqoriga ko'tarilish effekti
+                          top: isActive ? -12 : 22,
                           child: Icon(
                             isActive ? navItems[index]['activeIcon'] : navItems[index]['icon'],
-                            color: isActive ? Colors.white : Colors.grey.shade600,
+                            color: isActive ? activeIconColor : _inactiveIconColor,
                             size: 26,
                           ),
                         ),
-                        
-                        // Yozuv (Aktiv bo'lsa pastdan o'rtaga chiqadi va ko'rinadi)
+                        // Yozuv (aktiv — yashil, noaktiv — oq/opacity)
                         AnimatedPositioned(
                           duration: const Duration(milliseconds: 400),
                           curve: Curves.fastOutSlowIn,
-                          bottom: isActive ? 12 : -20, // CSS'dagi transformY effekti
+                          bottom: isActive ? 12 : -20,
                           child: AnimatedOpacity(
                             duration: const Duration(milliseconds: 400),
                             opacity: isActive ? 1.0 : 0.0,
@@ -171,7 +174,7 @@ class _MainWrapperState extends State<MainWrapper> {
                               style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.bold,
-                                color: Colors.grey.shade800,
+                                color: isActive ? activeIconColor : _inactiveLabelColor,
                               ),
                             ),
                           ),
