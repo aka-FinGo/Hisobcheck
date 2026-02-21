@@ -11,8 +11,11 @@ class AppRoles {
   static const installer = 'installer';
 }
 
+/// Bosh sahifa. [onNavigateToTab] berilsa, pastdagi menyudagi tab ga o'tish mumkin (0=Asosiy, 1=Mijozlar, 2=Zakazlar, 3=Hisobot, 4=Profil).
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final void Function(int index)? onNavigateToTab;
+
+  const HomeScreen({super.key, this.onNavigateToTab});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -237,33 +240,146 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        title: Text("Salom, $_userName!", style: const TextStyle(color: Color(0xFF2D3142), fontWeight: FontWeight.bold, fontSize: 20)),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text("Salom, $_userName!", style: const TextStyle(color: Color(0xFF2D3142), fontWeight: FontWeight.bold, fontSize: 20)),
+            Text(_welcomeSubtitle(), style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+          ],
+        ),
         actions: [
-          IconButton(icon: const Icon(Icons.refresh, color: Color(0xFF2E5BFF)), onPressed: _loadData),
+          IconButton(icon: const Icon(Icons.refresh_rounded, color: Color(0xFF2E5BFF)), onPressed: _loadData),
         ],
       ),
       body: _isLoading
-        ? const Center(child: CircularProgressIndicator())
+        ? const Center(child: CircularProgressIndicator(color: Color(0xFF2E5BFF)))
         : RefreshIndicator(
             onRefresh: _loadData,
+            color: const Color(0xFF2E5BFF),
             child: ListView(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
               children: [
                 if (_userRole == AppRoles.admin) _buildAdminCard(),
                 if (_userRole != AppRoles.admin) _buildWorkerCard(),
-
-                const SizedBox(height: 30),
-                
-                // Ishchilar uchun harakat tugmalari
-                if (_userRole != AppRoles.admin) ...[
-                  _actionButton(Icons.add_task, "ISH TOPSHIRISH", const Color(0xFF2E5BFF), _showWorkDialog),
-                  const SizedBox(height: 15),
-                  _actionButton(Icons.account_balance_wallet, "PUL SO'RASH (AVANS)", const Color(0xFF00C853), _showWithdrawDialog),
-                ],
+                const SizedBox(height: 28),
+                _sectionTitle('Tez harakatlar'),
+                const SizedBox(height: 12),
+                if (_userRole == AppRoles.admin) _buildAdminQuickActions(),
+                if (_userRole != AppRoles.admin) _buildWorkerQuickActions(),
               ],
             ),
           ),
-      // BIZ BU YERDAN BOTTOM NAVIGATION BAR'NI O'CHIRIB TASHLADIK!
+    );
+  }
+
+  String _welcomeSubtitle() {
+    final now = DateTime.now();
+    return DateFormat('d MMMM, EEEE').format(now);
+  }
+
+  Widget _sectionTitle(String text) {
+    return Text(
+      text,
+      style: const TextStyle(
+        fontSize: 18,
+        fontWeight: FontWeight.bold,
+        color: Color(0xFF2D3142),
+      ),
+    );
+  }
+
+  /// Admin: Mijozlar, Zakazlar, Hisobot, Profil — kartochkalar
+  Widget _buildAdminQuickActions() {
+    final items = [
+      {'icon': Icons.people_rounded, 'label': 'Mijozlar', 'color': const Color(0xFF2E5BFF), 'tab': 1},
+      {'icon': Icons.list_alt_rounded, 'label': 'Zakazlar', 'color': const Color(0xFF5C6BC0), 'tab': 2},
+      {'icon': Icons.bar_chart_rounded, 'label': 'Hisobot', 'color': const Color(0xFF00BFA5), 'tab': 3},
+      {'icon': Icons.person_rounded, 'label': 'Profil', 'color': const Color(0xFF78909C), 'tab': 4},
+    ];
+    return GridView.count(
+      crossAxisCount: 2,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      mainAxisSpacing: 12,
+      crossAxisSpacing: 12,
+      childAspectRatio: 1.15,
+      children: items.map<Widget>((e) => _quickActionCard(
+        icon: e['icon'] as IconData,
+        label: e['label'] as String,
+        color: e['color'] as Color,
+        onTap: () => widget.onNavigateToTab?.call(e['tab'] as int),
+      )).toList(),
+    );
+  }
+
+  /// Ishchi: Ish topshirish va Pul so'rash — 2 ta katta kartochka
+  Widget _buildWorkerQuickActions() {
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: _quickActionCard(
+                icon: Icons.add_task_rounded,
+                label: "Ish topshirish",
+                color: const Color(0xFF2E5BFF),
+                onTap: _showWorkDialog,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _quickActionCard(
+                icon: Icons.account_balance_wallet_rounded,
+                label: "Pul so'rash",
+                color: const Color(0xFF00C853),
+                onTap: _showWithdrawDialog,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _quickActionCard({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(20),
+      elevation: 0,
+      shadowColor: color.withOpacity(0.2),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.grey.shade200),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(color: color.withOpacity(0.12), shape: BoxShape.circle),
+                child: Icon(icon, color: color, size: 28),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF2D3142)),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -343,23 +459,4 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // --- KATTA TUGMALAR ---
-  Widget _actionButton(IconData icon, String text, Color color, VoidCallback onTap) {
-    return SizedBox(
-      width: double.infinity,
-      height: 60,
-      child: ElevatedButton.icon(
-        onPressed: onTap,
-        icon: Icon(icon, color: Colors.white, size: 24),
-        label: Text(text, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1)),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: color,
-          foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          elevation: 4,
-          shadowColor: color.withOpacity(0.4),
-        ),
-      ),
-    );
-  }
 }
