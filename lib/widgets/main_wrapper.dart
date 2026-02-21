@@ -6,6 +6,8 @@ import '../screens/clients_screen.dart';
 import '../screens/orders_list_screen.dart';
 import '../screens/stats_screen.dart';
 import '../screens/user_profile_screen.dart';
+
+// PWA taklifi uchun
 import 'pwa_prompt.dart';
 
 class MainWrapper extends StatefulWidget {
@@ -18,27 +20,21 @@ class MainWrapper extends StatefulWidget {
 class _MainWrapperState extends State<MainWrapper> {
   int _currentIndex = 0;
 
-  // 1. Har bir tab (sahifa) uchun alohida "Eshik" (Navigator) kalitlarini yaratamiz
-  final List<GlobalKey<NavigatorState>> _navigatorKeys = [
-    GlobalKey<NavigatorState>(),
-    GlobalKey<NavigatorState>(),
-    GlobalKey<NavigatorState>(),
-    GlobalKey<NavigatorState>(),
-    GlobalKey<NavigatorState>(),
-  ];
-
+  // Sahifalar ro'yxati
   final List<Widget> _pages = const [
-    HomeScreen(),         
-    ClientsScreen(),      
-    OrdersListScreen(),   
-    StatsScreen(),        
-    UserProfileScreen(),  
+    HomeScreen(),         // 0 - Asosiy
+    ClientsScreen(),      // 1 - Mijozlar
+    OrdersListScreen(),   // 2 - Buyurtmalar
+    StatsScreen(),        // 3 - Hisobotlar
+    UserProfileScreen(),  // 4 - Profil
   ];
 
+  // Ranglar
   final Color bgColor = const Color(0xFFF8F9FE); 
   final Color navColor = Colors.white;           
-  final Color activeColor = const Color(0xFF29fd53); 
+  final Color activeColor = const Color(0xFF29fd53); // Yashil rang
 
+  // Ikonkalar ro'yxati
   final List<Map<String, dynamic>> navItems = [
     {'icon': Icons.home_outlined, 'activeIcon': Icons.home_rounded, 'label': 'Asosiy'},
     {'icon': Icons.people_outline, 'activeIcon': Icons.people_alt_rounded, 'label': 'Mijozlar'},
@@ -60,149 +56,119 @@ class _MainWrapperState extends State<MainWrapper> {
     final double screenWidth = MediaQuery.of(context).size.width;
     final double itemWidth = screenWidth / navItems.length;
 
-    // 2. PopScope - Telefonning "Orqaga" (Back) tugmasini boshqaradi
-    return PopScope(
-      canPop: false, 
-      onPopInvoked: (didPop) async {
-        if (didPop) return;
-        
-        // Agar foydalanuvchi ichki sahifada bo'lsa, o'sha tabning ichida orqaga qaytadi
-        final isFirstRouteInCurrentTab = !await _navigatorKeys[_currentIndex].currentState!.maybePop();
-        
-        // Agar tabning eng birinchi sahifasida turib "Orqaga" bossa:
-        if (isFirstRouteInCurrentTab) {
-          if (_currentIndex != 0) {
-            // Asosiy (0) sahifaga qaytarib qo'yamiz
-            setState(() => _currentIndex = 0);
-          }
-        }
-      },
-      child: Scaffold(
-        backgroundColor: bgColor,
-        // 3. IndexedStack o'rniga ichki Navigatorlarni chaqiramiz
-        body: IndexedStack(
-          index: _currentIndex,
-          children: List.generate(_pages.length, (index) {
-            return Navigator(
-              key: _navigatorKeys[index],
-              onGenerateRoute: (settings) {
-                return MaterialPageRoute(
-                  builder: (_) => _pages[index],
-                );
-              },
-            );
-          }),
+    return Scaffold(
+      backgroundColor: bgColor,
+      body: IndexedStack(
+        index: _currentIndex,
+        children: _pages,
+      ),
+      bottomNavigationBar: Container(
+        height: 70,
+        decoration: BoxDecoration(
+          color: navColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(15)),
+          boxShadow: [
+            BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))
+          ],
         ),
-        
-        // --- Suyuq Animatsiyali Bottom Navigation Bar (O'zgarishsiz) ---
-        bottomNavigationBar: Container(
-          height: 70,
-          decoration: BoxDecoration(
-            color: navColor,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(15)),
-            boxShadow: [
-              BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))
-            ],
-          ),
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              AnimatedPositioned(
-                duration: const Duration(milliseconds: 400),
-                curve: Curves.fastOutSlowIn,
-                top: -25, 
-                left: (_currentIndex * itemWidth) + (itemWidth - 60) / 2, 
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  alignment: Alignment.center,
-                  children: [
-                    Positioned(
-                      left: -22,
-                      top: 25,
-                      child: Container(
-                        width: 25,
-                        height: 25,
-                        decoration: BoxDecoration(
-                          color: Colors.transparent,
-                          borderRadius: const BorderRadius.only(topRight: Radius.circular(20)),
-                          boxShadow: [BoxShadow(color: bgColor, offset: const Offset(2, -10))],
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      right: -22,
-                      top: 25,
-                      child: Container(
-                        width: 25,
-                        height: 25,
-                        decoration: BoxDecoration(
-                          color: Colors.transparent,
-                          borderRadius: const BorderRadius.only(topLeft: Radius.circular(20)),
-                          boxShadow: [BoxShadow(color: bgColor, offset: const Offset(-2, -10))],
-                        ),
-                      ),
-                    ),
-                    Container(
-                      width: 60,
-                      height: 60,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            AnimatedPositioned(
+              duration: const Duration(milliseconds: 400),
+              curve: Curves.fastOutSlowIn,
+              top: -25, 
+              left: (_currentIndex * itemWidth) + (itemWidth - 60) / 2, 
+              child: Stack(
+                clipBehavior: Clip.none,
+                alignment: Alignment.center,
+                children: [
+                  Positioned(
+                    left: -22,
+                    top: 25,
+                    child: Container(
+                      width: 25,
+                      height: 25,
                       decoration: BoxDecoration(
-                        color: activeColor, 
-                        shape: BoxShape.circle,
-                        border: Border.all(color: bgColor, width: 6), 
+                        color: Colors.transparent,
+                        borderRadius: const BorderRadius.only(topRight: Radius.circular(20)),
+                        boxShadow: [BoxShadow(color: bgColor, offset: const Offset(2, -10))],
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                  Positioned(
+                    right: -22,
+                    top: 25,
+                    child: Container(
+                      width: 25,
+                      height: 25,
+                      decoration: BoxDecoration(
+                        color: Colors.transparent,
+                        borderRadius: const BorderRadius.only(topLeft: Radius.circular(20)),
+                        boxShadow: [BoxShadow(color: bgColor, offset: const Offset(-2, -10))],
+                      ),
+                    ),
+                  ),
+                  Container(
+                    width: 60,
+                    height: 60,
+                    decoration: BoxDecoration(
+                      color: activeColor, 
+                      shape: BoxShape.circle,
+                      border: Border.all(color: bgColor, width: 6), 
+                    ),
+                  ),
+                ],
               ),
-              Row(
-                children: List.generate(navItems.length, (index) {
-                  final bool isActive = _currentIndex == index;
-                  return GestureDetector(
-                    onTap: () {
-                      setState(() => _currentIndex = index);
-                    },
-                    behavior: HitTestBehavior.opaque,
-                    child: SizedBox(
-                      width: itemWidth,
-                      height: 70,
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          AnimatedPositioned(
-                            duration: const Duration(milliseconds: 400),
-                            curve: Curves.fastOutSlowIn,
-                            top: isActive ? -12 : 22, 
-                            child: Icon(
-                              isActive ? navItems[index]['activeIcon'] : navItems[index]['icon'],
-                              color: isActive ? Colors.white : Colors.grey.shade600,
-                              size: 26,
-                            ),
+            ),
+            Row(
+              children: List.generate(navItems.length, (index) {
+                final bool isActive = _currentIndex == index;
+                return GestureDetector(
+                  onTap: () {
+                    setState(() => _currentIndex = index);
+                  },
+                  behavior: HitTestBehavior.opaque,
+                  child: SizedBox(
+                    width: itemWidth,
+                    height: 70,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        AnimatedPositioned(
+                          duration: const Duration(milliseconds: 400),
+                          curve: Curves.fastOutSlowIn,
+                          top: isActive ? -12 : 22, 
+                          child: Icon(
+                            isActive ? navItems[index]['activeIcon'] : navItems[index]['icon'],
+                            color: isActive ? Colors.white : Colors.grey.shade600,
+                            size: 26,
                           ),
-                          AnimatedPositioned(
+                        ),
+                        AnimatedPositioned(
+                          duration: const Duration(milliseconds: 400),
+                          curve: Curves.fastOutSlowIn,
+                          bottom: isActive ? 12 : -20, 
+                          child: AnimatedOpacity(
                             duration: const Duration(milliseconds: 400),
-                            curve: Curves.fastOutSlowIn,
-                            bottom: isActive ? 12 : -20, 
-                            child: AnimatedOpacity(
-                              duration: const Duration(milliseconds: 400),
-                              opacity: isActive ? 1.0 : 0.0,
-                              child: Text(
-                                navItems[index]['label'],
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.grey.shade800,
-                                ),
+                            opacity: isActive ? 1.0 : 0.0,
+                            child: Text(
+                              navItems[index]['label'],
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.grey.shade800,
                               ),
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  );
-                }),
-              ),
-            ],
-          ),
+                  ),
+                );
+              }),
+            ),
+          ],
         ),
       ),
     );
