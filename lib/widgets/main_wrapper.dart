@@ -20,13 +20,13 @@ class MainWrapper extends StatefulWidget {
 class _MainWrapperState extends State<MainWrapper> {
   int _currentIndex = 0;
 
-  // Sahifalar ro'yxati
-  final List<Widget> _pages = const [
-    HomeScreen(),         // 0 - Asosiy
-    ClientsScreen(),      // 1 - Mijozlar
-    OrdersListScreen(),   // 2 - Buyurtmalar
-    StatsScreen(),        // 3 - Hisobotlar
-    UserProfileScreen(),  // 4 - Profil
+  // Sahifalar ro'yxati (bosh sahifaga tab o'tish callback beriladi)
+  List<Widget> get _pages => [
+    HomeScreen(onNavigateToTab: (index) => setState(() => _currentIndex = index)),
+    ClientsScreen(),
+    OrdersListScreen(),
+    StatsScreen(),
+    UserProfileScreen(),
   ];
 
   // CSS'dagi kabi ranglarni belgilaymiz
