@@ -19,14 +19,13 @@ class _MainWrapperState extends State<MainWrapper> {
   int _currentIndex = 0;
 
   List<Widget> get _pages => [
-    HomeScreen(onNavigateToTab: (index) => setState(() => _currentIndex = index)),
-    ClientsScreen(),
-    OrdersListScreen(),
-    StatsScreen(),
-    UserProfileScreen(),
+    const HomeScreen(), // Agar oldingi kodda onNavigateToTab qo'shgan bo'lsangiz o'shani qoldiring
+    const ClientsScreen(),
+    const OrdersListScreen(),
+    const StatsScreen(),
+    const UserProfileScreen(),
   ];
 
-  // Rasmdagi dizayn: oq bar, tepada egri (dip), tanlangan — oq doira
   static const double _navBarHeight = 72;
   static const double _notchRadius = 28;
   static const double _circleSize = 56;
@@ -68,20 +67,28 @@ class _MainWrapperState extends State<MainWrapper> {
         child: Stack(
           clipBehavior: Clip.none,
           children: [
-            // 1. Oq bar — tepada tanlangan tab atrofida egri (dip)
-            ClipPath(
-              clipper: _NotchBarClipper(
-                notchCenterX: notchCenterX,
-                notchRadius: _notchRadius,
-                barHeight: _navBarHeight,
-              ),
-              child: Container(
-                width: screenWidth,
-                height: _navBarHeight,
-                color: _barWhite,
-                margin: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
-              ),
+            // 1. TUZATILGAN: Oq bar va o'yiq (Notch) endi doira bilan birga animatsiya bo'ladi
+            TweenAnimationBuilder<double>(
+              tween: Tween<double>(end: notchCenterX),
+              duration: const Duration(milliseconds: 350), // Doira animatsiyasi bilan bir xil vaqt
+              curve: Curves.easeInOut, // Bir xil tezlanish
+              builder: (context, animatedCenterX, child) {
+                return ClipPath(
+                  clipper: _NotchBarClipper(
+                    notchCenterX: animatedCenterX,
+                    notchRadius: _notchRadius,
+                    barHeight: _navBarHeight,
+                  ),
+                  child: Container(
+                    width: screenWidth,
+                    height: _navBarHeight,
+                    color: _barWhite,
+                    margin: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
+                  ),
+                );
+              },
             ),
+            
             // 2. Tanlangan element — yuqoriga chiqadigan oq doira
             AnimatedPositioned(
               duration: const Duration(milliseconds: 350),
@@ -96,15 +103,16 @@ class _MainWrapperState extends State<MainWrapper> {
                   color: _barWhite,
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.12),
-                      blurRadius: 10,
+                      color: Colors.black.withOpacity(0.08),
+                      blurRadius: 8,
                       offset: const Offset(0, 4),
                     ),
                   ],
                 ),
               ),
             ),
-            // 3. Ikonkalar va yozuvlar (tanlangan ikonka doira ichida)
+            
+            // 3. Ikonkalar va yozuvlar
             Padding(
               padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
               child: Row(
@@ -119,7 +127,6 @@ class _MainWrapperState extends State<MainWrapper> {
                       child: Stack(
                         alignment: Alignment.center,
                         children: [
-                          // Yozuv — pastda, barcha tablar uchun
                           Positioned(
                             bottom: 10,
                             child: Text(
@@ -131,11 +138,10 @@ class _MainWrapperState extends State<MainWrapper> {
                               ),
                             ),
                           ),
-                          // Ikonka — tanlangan yuqorida (doira ichida), noaktiv pastroq
                           AnimatedPositioned(
                             duration: const Duration(milliseconds: 350),
                             curve: Curves.easeInOut,
-                            top: isActive ? 4 : 14,
+                            top: isActive ? 4 : 16, // Kichik tuzatish
                             child: Icon(
                               isActive ? navItems[index]['activeIcon'] : navItems[index]['icon'],
                               size: 26,
@@ -156,7 +162,7 @@ class _MainWrapperState extends State<MainWrapper> {
   }
 }
 
-/// Oq bar uchun tepada egri (dip) — tanlangan tab ostida kesik
+/// TUZATILGAN: Oq bar uchun silliq suyuq (liquid) kesish (Bezier curve bilan)
 class _NotchBarClipper extends CustomClipper<Path> {
   final double notchCenterX;
   final double notchRadius;
@@ -172,18 +178,34 @@ class _NotchBarClipper extends CustomClipper<Path> {
   Path getClip(Size size) {
     final w = size.width;
     final path = Path();
+    
+    // O'yiq atrofida aylana bemalol sig'ishi uchun biroz joy
+    final double r = notchRadius + 4; 
+
     path.moveTo(0, 0);
-    path.lineTo(notchCenterX - notchRadius, 0);
-    path.arcTo(
-      Rect.fromCircle(center: Offset(notchCenterX, notchRadius), radius: notchRadius),
-      math.pi,
-      -math.pi,
-      false,
+    // O'yiq boshlanishiga qadar to'g'ri chiziq
+    path.lineTo(notchCenterX - r - 15, 0);
+    
+    // Chap tomondagi silliq tushish (S-curve)
+    path.cubicTo(
+      notchCenterX - r + 5, 0,
+      notchCenterX - r, r,
+      notchCenterX, r,
     );
+    
+    // O'ng tomondagi silliq chiqish (S-curve)
+    path.cubicTo(
+      notchCenterX + r, r,
+      notchCenterX + r - 5, 0,
+      notchCenterX + r + 15, 0,
+    );
+    
+    // Oxirigacha to'g'ri chiziq va yopish
     path.lineTo(w, 0);
     path.lineTo(w, barHeight);
     path.lineTo(0, barHeight);
     path.close();
+    
     return path;
   }
 
