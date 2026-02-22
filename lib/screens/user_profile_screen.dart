@@ -3,8 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 // Importlar
 import 'login_screen.dart';
-import 'manage_users_screen.dart';
-import 'admin_task_types_screen.dart';
+import 'admin_panel_screen.dart'; // Faqat Admin Panelni chaqiramiz
 
 class UserProfileScreen extends StatefulWidget {
   const UserProfileScreen({super.key});
@@ -50,7 +49,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   void _logout() async {
     await _supabase.auth.signOut();
     if (mounted) {
-      // Tizimdan chiqilgach barcha sahifalarni yopib Login oynasiga qaytaradi
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (context) => const LoginScreen()),
         (route) => false,
@@ -71,7 +69,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.only(left: 20, right: 20, top: 20, bottom: 120),
               children: [
                 const CircleAvatar(
                   radius: 50,
@@ -105,42 +103,20 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                       ),
                       const Divider(height: 1),
                       
-                      // MANA BIZNING ADMIN TUGMAMIZ (To'g'ri joylashtirilgan)
+                      // FAQAT ADMINLAR UCHUN ADMIN PANEL TUGMASI
                       if (_userRole == 'admin') ...[
                         ListTile(
                           leading: const Icon(Icons.admin_panel_settings, color: Colors.redAccent),
-                          title: const Text("Xodimlarni Boshqarish"),
+                          title: const Text("Admin Panel", style: TextStyle(fontWeight: FontWeight.bold)),
+                          subtitle: const Text("Boshqaruv markaziga kirish"),
                           trailing: const Icon(Icons.chevron_right),
                           onTap: () {
-                            Navigator.push(context, MaterialPageRoute(builder: (_) => const ManageUsersScreen()));
+                            Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminPanelScreen()));
                           },
                         ),
                         const Divider(height: 1),
                       ],
-                                            // MANA BIZNING ADMIN PANEL TUGMALARI
-                      if (_userRole == 'admin') ...[
-                        ListTile(
-                          leading: const Icon(Icons.admin_panel_settings, color: Colors.redAccent),
-                          title: const Text("Xodimlarni Boshqarish"),
-                          trailing: const Icon(Icons.chevron_right),
-                          onTap: () {
-                            Navigator.push(context, MaterialPageRoute(builder: (_) => const ManageUsersScreen()));
-                          },
-                        ),
-                        const Divider(height: 1),
-                        
-                        // YANGI QO'SHILGAN TUGMA
-                        ListTile(
-                          leading: const Icon(Icons.request_quote_rounded, color: Colors.orange),
-                          title: const Text("Lavozim va Ta'riflar"),
-                          trailing: const Icon(Icons.chevron_right),
-                          onTap: () {
-                            Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminTaskTypesScreen()));
-                          },
-                        ),
-                        const Divider(height: 1),
-                      ],
-
+                      
                       ListTile(
                         leading: const Icon(Icons.logout, color: Colors.red),
                         title: const Text("Tizimdan chiqish", style: TextStyle(color: Colors.red)),
