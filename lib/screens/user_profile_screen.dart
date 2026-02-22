@@ -1,6 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'login_screen.dart'; // <--- MANA SHU IMPORT YETISHMAYOTGAN EDI
+// 1. Faylning tepasida import qiling:
+import 'manage_users_screen.dart';
+
+// 2. Tugma yasang (agar profil _userRole == 'admin' bo'lsa ko'rinadi):
+if (_userRole == 'admin') ...[
+  const Divider(),
+  ListTile(
+    leading: const Icon(Icons.admin_panel_settings, color: Colors.redAccent),
+    title: const Text("Xodimlarni Boshqarish"),
+    trailing: const Icon(Icons.chevron_right),
+    onTap: () {
+      Navigator.push(context, MaterialPageRoute(builder: (_) => const ManageUsersScreen()));
+    },
+  ),
+]
 
 class UserProfileScreen extends StatefulWidget {
   final Map<String, dynamic>? user;
