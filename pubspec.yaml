@@ -10,6 +10,16 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  supabase_flutter: ^2.6.0
+  intl: ^0.19.0
+  cupertino_icons: ^1.0.6
+  fl_chart: ^0.66.0
+  flutter_login: ^5.0.0
+  font_awesome_flutter: ^10.7.0
+  
+  # YANGI QO'SHILGAN KUTUBXONA:
+  rolling_bottom_bar: ^0.2.0
+
 
   # 1. Supabase (Baza)
   supabase_flutter: ^2.6.0
