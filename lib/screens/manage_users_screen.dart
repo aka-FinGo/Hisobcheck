@@ -12,29 +12,27 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
   final _supabase = Supabase.instance.client;
   List<Map<String, dynamic>> _users = [];
   bool _isLoading = true;
+  String? _currentUserId; // Hozir tizimda o'tirgan Adminning ID si
 
-  // Asosiy rollar (Bular doim turadi)
   List<String> _availableRoles = ['admin', 'worker', 'installer', 'manager'];
 
   @override
   void initState() {
     super.initState();
-    _fetchUsersAndRoles(); // Ham foydalanuvchilarni, ham rollarni birdaniga yuklaymiz
+    _currentUserId = _supabase.auth.currentUser?.id; // Adminni tanib olamiz
+    _fetchUsersAndRoles();
   }
 
   Future<void> _fetchUsersAndRoles() async {
     setState(() => _isLoading = true);
     try {
-      // 1. Foydalanuvchilarni yuklash
       final usersResponse = await _supabase
           .from('profiles')
           .select('id, full_name, role, phone, created_at')
           .order('created_at', ascending: true);
           
-      // 2. Bazadagi yangi yaratilgan lavozimlarni (rollarni) yuklash
       final rolesResponse = await _supabase.from('task_types').select('target_role');
       
-      // Rollarni takrorlanmas (Set) qilib yig'ib olamiz
       final Set<String> dynamicRoles = {'admin', 'worker', 'installer', 'manager'};
       for (var item in rolesResponse) {
         if (item['target_role'] != null && item['target_role'].toString().trim().isNotEmpty) {
@@ -45,7 +43,7 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
       if (mounted) {
         setState(() {
           _users = List<Map<String, dynamic>>.from(usersResponse);
-          _availableRoles = dynamicRoles.toList(); // Dinamik rollarni ro'yxatga beramiz
+          _availableRoles = dynamicRoles.toList();
         });
       }
     } catch (e) {
@@ -77,7 +75,6 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
   void _showRoleDialog(Map<String, dynamic> user) {
     String selectedRole = user['role'] ?? 'worker';
     
-    // Agar foydalanuvchining hozirgi roli ro'yxatda yo'q bo'lsa, xato bermasligi uchun qo'shib qo'yamiz
     if (!_availableRoles.contains(selectedRole)) {
       _availableRoles.add(selectedRole);
     }
@@ -117,7 +114,7 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
       case 'manager': return Colors.orange;
       case 'installer': return Colors.purple;
       case 'worker': return Colors.green;
-      default: return Colors.blue; // Yangi qo'shilgan boshqa rollar uchun standart ko'k rang
+      default: return Colors.blue;
     }
   }
 
@@ -144,6 +141,9 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
                 final role = user['role'] ?? 'Noma\'lum';
                 final name = user['full_name'] ?? 'Ism kiritilmagan';
                 
+                // SHU YERDA TEKSHIRAMIZ: Bu ro'yxatdagi odam Hozirgi Adminning o'zimi?
+                final bool isMe = user['id'] == _currentUserId;
+                
                 return Card(
                   margin: const EdgeInsets.only(bottom: 12),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
@@ -156,10 +156,17 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
                     ),
                     title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
                     subtitle: Text("Rol: ${role.toUpperCase()}", style: TextStyle(color: _getRoleColor(role), fontWeight: FontWeight.w600)),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.edit_note_rounded, color: Color(0xFF2E5BFF), size: 30),
-                      onPressed: () => _showRoleDialog(user),
-                    ),
+                    trailing: isMe 
+                        // Agar o'zi bo'lsa, tahrirlash tugmasi o'rniga "Qalqon" (Himoya) belgisi chiqadi
+                        ? const Tooltip(
+                            message: "Asosiy Adminni o'zgartirib bo'lmaydi",
+                            child: Icon(Icons.security, color: Colors.redAccent, size: 28),
+                          )
+                        // Agar boshqa ishchi bo'lsa, ruchka chiqadi
+                        : IconButton(
+                            icon: const Icon(Icons.edit_note_rounded, color: Color(0xFF2E5BFF), size: 30),
+                            onPressed: () => _showRoleDialog(user),
+                          ),
                   ),
                 );
               },
