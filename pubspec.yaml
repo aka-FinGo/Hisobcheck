@@ -1,4 +1,4 @@
-name: moliyachi
+name: hisobcheck
 description: "Mebel sexi uchun moliyaviy ERP tizimi"
 publish_to: 'none'
 
@@ -10,28 +10,25 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+
+  # Asosiy baza
   supabase_flutter: ^2.6.0
+
+  # Formatlash (Sana va Summa)
   intl: ^0.19.0
+
+  # Ikonkalar
   cupertino_icons: ^1.0.6
-  fl_chart: ^0.66.0
-  flutter_login: ^5.0.0
   font_awesome_flutter: ^10.7.0
-  
-  # YANGI QO'SHILGAN KUTUBXONA:
-  rolling_bottom_bar: ^0.2.0
 
-
-  # 1. Supabase (Baza)
-  supabase_flutter: ^2.6.0
-
-  # 2. Formatlash (Sana va Summa)
-  intl: ^0.19.0
-
-  # 3. Ikonkalar
-  cupertino_icons: ^1.0.6
-
-  # 4. Grafiklar (Charts) - MANA BU YERGA QO'SHDIK
+  # Grafiklar
   fl_chart: ^0.66.0
+
+  # Login animatsiyasi
+  flutter_login: ^5.0.0
+
+  # Aylanuvchi pastki menyu
+  rolling_bottom_bar: ^0.2.0
 
 dev_dependencies:
   flutter_test:
