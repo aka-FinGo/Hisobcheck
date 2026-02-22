@@ -42,17 +42,22 @@ class _MainWrapperState extends State<MainWrapper> {
   Widget build(BuildContext context) {
     return Scaffold(
       // Sahifalar ro'yxati (Endi IndexedStack emas, PageView ishlatiladi)
-      body: PageView(
-        controller: _controller,
-        physics: const NeverScrollableScrollPhysics(), // Sahifalarni qo'lda surishni o'chirib qo'yamiz (faqat tugma bilan o'tadi)
-        children: const <Widget>[
-          HomeScreen(),         // 0
-          ClientsScreen(),      // 1
-          OrdersListScreen(),   // 2
-          StatsScreen(),        // 3
-          UserProfileScreen(),  // 4
-        ],
+            // Barcha sahifalarni pastdan 100 piksel tepaga surib turadigan global qobiq
+      body: Padding(
+        padding: const EdgeInsets.only(bottom: 100.0), // Menyu balandligiga mos bo'sh joy
+        child: PageView(
+          controller: _controller,
+          physics: const NeverScrollableScrollPhysics(), 
+          children: const <Widget>[
+            HomeScreen(),         // 0
+            ClientsScreen(),      // 1
+            OrdersListScreen(),   // 2
+            StatsScreen(),        // 3
+            UserProfileScreen(),  // 4
+          ],
+        ),
       ),
+
       
       extendBody: true, // Menyu sahifaning ustida chiroyli turishi (suzishi) uchun kerak
       
