@@ -12,14 +12,15 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
   final _supabase = Supabase.instance.client;
   List<Map<String, dynamic>> _users = [];
   bool _isLoading = true;
-  String? _currentUserId; // Hozir tizimda o'tirgan Adminning ID si
+  String? _currentUserId; 
 
-  List<String> _availableRoles = ['admin', 'worker', 'installer', 'manager'];
+  // MANA SHU YER TOZALANDI: Hech qanday hardcode qilingan 'worker' yoki 'manager' yo'q!
+  List<String> _availableRoles = ['admin'];
 
   @override
   void initState() {
     super.initState();
-    _currentUserId = _supabase.auth.currentUser?.id; // Adminni tanib olamiz
+    _currentUserId = _supabase.auth.currentUser?.id; 
     _fetchUsersAndRoles();
   }
 
@@ -33,10 +34,20 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
           
       final rolesResponse = await _supabase.from('task_types').select('target_role');
       
-      final Set<String> dynamicRoles = {'admin', 'worker', 'installer', 'manager'};
+      // Faqat 'admin' qoladi
+      final Set<String> dynamicRoles = {'admin'}; 
+      
+      // 1. Ta'riflar jadvaliga o'zingiz qo'shgan barcha yangi lavozimlarni yig'ib olamiz
       for (var item in rolesResponse) {
         if (item['target_role'] != null && item['target_role'].toString().trim().isNotEmpty) {
           dynamicRoles.add(item['target_role'].toString().trim().toLowerCase());
+        }
+      }
+
+      // 2. Agar bazada hali ham eski 'worker' bo'lib qolib ketgan xodimlar bo'lsa, dastur xato bermasligi uchun ro'yxatga vaqtincha qo'shib turamiz.
+      for (var user in usersResponse) {
+        if (user['role'] != null && user['role'].toString().trim().isNotEmpty) {
+          dynamicRoles.add(user['role'].toString().trim().toLowerCase());
         }
       }
 
@@ -73,7 +84,7 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
   }
 
   void _showRoleDialog(Map<String, dynamic> user) {
-    String selectedRole = user['role'] ?? 'worker';
+    String selectedRole = user['role']?.toString().toLowerCase() ?? 'worker'; // Hali roli yo'qlarga fallback
     
     if (!_availableRoles.contains(selectedRole)) {
       _availableRoles.add(selectedRole);
@@ -111,9 +122,9 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
   Color _getRoleColor(String role) {
     switch (role.toLowerCase()) {
       case 'admin': return Colors.redAccent;
-      case 'manager': return Colors.orange;
-      case 'installer': return Colors.purple;
-      case 'worker': return Colors.green;
+      case 'loyihachi': return Colors.orange;
+      case 'o\'rnatish': return Colors.purple;
+      case 'qadoqlash': return Colors.green;
       default: return Colors.blue;
     }
   }
@@ -141,7 +152,6 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
                 final role = user['role'] ?? 'Noma\'lum';
                 final name = user['full_name'] ?? 'Ism kiritilmagan';
                 
-                // SHU YERDA TEKSHIRAMIZ: Bu ro'yxatdagi odam Hozirgi Adminning o'zimi?
                 final bool isMe = user['id'] == _currentUserId;
                 
                 return Card(
@@ -157,12 +167,10 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
                     title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
                     subtitle: Text("Rol: ${role.toUpperCase()}", style: TextStyle(color: _getRoleColor(role), fontWeight: FontWeight.w600)),
                     trailing: isMe 
-                        // Agar o'zi bo'lsa, tahrirlash tugmasi o'rniga "Qalqon" (Himoya) belgisi chiqadi
                         ? const Tooltip(
                             message: "Asosiy Adminni o'zgartirib bo'lmaydi",
                             child: Icon(Icons.security, color: Colors.redAccent, size: 28),
                           )
-                        // Agar boshqa ishchi bo'lsa, ruchka chiqadi
                         : IconButton(
                             icon: const Icon(Icons.edit_note_rounded, color: Color(0xFF2E5BFF), size: 30),
                             onPressed: () => _showRoleDialog(user),
