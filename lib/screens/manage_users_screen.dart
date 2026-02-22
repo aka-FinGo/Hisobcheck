@@ -13,27 +13,41 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
   List<Map<String, dynamic>> _users = [];
   bool _isLoading = true;
 
-  // Tizimdagi mavjud rollar ro'yxati (Buni o'zingiz ko'paytirishingiz ham mumkin)
-  final List<String> _availableRoles = ['admin', 'worker', 'installer', 'manager'];
+  // Asosiy rollar (Bular doim turadi)
+  List<String> _availableRoles = ['admin', 'worker', 'installer', 'manager'];
 
   @override
   void initState() {
     super.initState();
-    _fetchUsers();
+    _fetchUsersAndRoles(); // Ham foydalanuvchilarni, ham rollarni birdaniga yuklaymiz
   }
 
-  // 1. Foydalanuvchilarni bazadan yuklab olish
-  Future<void> _fetchUsers() async {
+  Future<void> _fetchUsersAndRoles() async {
     setState(() => _isLoading = true);
     try {
-      final response = await _supabase
+      // 1. Foydalanuvchilarni yuklash
+      final usersResponse = await _supabase
           .from('profiles')
           .select('id, full_name, role, phone, created_at')
           .order('created_at', ascending: true);
           
-      setState(() {
-        _users = List<Map<String, dynamic>>.from(response);
-      });
+      // 2. Bazadagi yangi yaratilgan lavozimlarni (rollarni) yuklash
+      final rolesResponse = await _supabase.from('task_types').select('target_role');
+      
+      // Rollarni takrorlanmas (Set) qilib yig'ib olamiz
+      final Set<String> dynamicRoles = {'admin', 'worker', 'installer', 'manager'};
+      for (var item in rolesResponse) {
+        if (item['target_role'] != null && item['target_role'].toString().trim().isNotEmpty) {
+          dynamicRoles.add(item['target_role'].toString().trim().toLowerCase());
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _users = List<Map<String, dynamic>>.from(usersResponse);
+          _availableRoles = dynamicRoles.toList(); // Dinamik rollarni ro'yxatga beramiz
+        });
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e")));
@@ -43,7 +57,6 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
     }
   }
 
-  // 2. Rolni o'zgartirish funksiyasi
   Future<void> _updateUserRole(String userId, String newRole) async {
     try {
       await _supabase.from('profiles').update({'role': newRole}).eq('id', userId);
@@ -52,7 +65,7 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Rol muvaffaqiyatli o'zgartirildi!"), backgroundColor: Colors.green),
         );
-        _fetchUsers(); // Ro'yxatni yangilash
+        _fetchUsersAndRoles(); 
       }
     } catch (e) {
       if (mounted) {
@@ -61,10 +74,10 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
     }
   }
 
-  // 3. Rolni o'zgartirish oynasi (Dialog)
   void _showRoleDialog(Map<String, dynamic> user) {
     String selectedRole = user['role'] ?? 'worker';
-    // Agar bazadagi rol ro'yxatimizda bo'lmasa, uni qo'shib qo'yamiz
+    
+    // Agar foydalanuvchining hozirgi roli ro'yxatda yo'q bo'lsa, xato bermasligi uchun qo'shib qo'yamiz
     if (!_availableRoles.contains(selectedRole)) {
       _availableRoles.add(selectedRole);
     }
@@ -98,13 +111,13 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
     );
   }
 
-  // Rolga qarab rang berish
   Color _getRoleColor(String role) {
-    switch (role) {
+    switch (role.toLowerCase()) {
       case 'admin': return Colors.redAccent;
       case 'manager': return Colors.orange;
       case 'installer': return Colors.purple;
-      default: return Colors.green; // worker
+      case 'worker': return Colors.green;
+      default: return Colors.blue; // Yangi qo'shilgan boshqa rollar uchun standart ko'k rang
     }
   }
 
@@ -118,7 +131,7 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
         elevation: 1,
         iconTheme: const IconThemeData(color: Colors.black),
         actions: [
-          IconButton(icon: const Icon(Icons.refresh, color: Color(0xFF2E5BFF)), onPressed: _fetchUsers),
+          IconButton(icon: const Icon(Icons.refresh, color: Color(0xFF2E5BFF)), onPressed: _fetchUsersAndRoles),
         ],
       ),
       body: _isLoading
