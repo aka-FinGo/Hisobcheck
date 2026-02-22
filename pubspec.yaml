@@ -30,6 +30,9 @@ dependencies:
   # Aylanuvchi pastki menyu
   google_nav_bar: ^5.0.6
 
+  # State Management (Mavzular va oynani boshqarish uchun)
+  provider: ^6.1.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -37,3 +40,7 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  # Rasm va boshqa fayllarni ulash
+  assets:
+    - assets/images/bg.jpg
