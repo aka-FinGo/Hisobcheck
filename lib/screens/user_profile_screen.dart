@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:provider/provider.dart'; // <-- Provider ulandi
 
-// Importlar
 import 'login_screen.dart';
-import 'admin_panel_screen.dart'; // Faqat Admin Panelni chaqiramiz
+import 'admin_panel_screen.dart';
+import '../theme/theme_provider.dart'; // <-- Miyani ulab oldik
 
 class UserProfileScreen extends StatefulWidget {
   const UserProfileScreen({super.key});
@@ -58,12 +59,13 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // ThemeProvider'ni chaqiramiz
+    final themeProvider = Provider.of<ThemeProvider>(context);
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FE),
+      // Orqa fonni avtomat mavzudan oladi
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 1,
-        title: const Text("Profil", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+        title: const Text("Profil"),
         centerTitle: true,
       ),
       body: _isLoading
@@ -71,6 +73,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           : ListView(
               padding: const EdgeInsets.only(left: 20, right: 20, top: 20, bottom: 120),
               children: [
+                // --- PROFIL MA'LUMOTLARI ---
                 const CircleAvatar(
                   radius: 50,
                   backgroundColor: Color(0xFF2E5BFF),
@@ -87,39 +90,78 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                   textAlign: TextAlign.center,
                   style: const TextStyle(fontSize: 16, color: Colors.grey),
                 ),
+                
+                const SizedBox(height: 30),
+
+                // --- MAVZUNI TANLASH (CHIROYLI TUGMALAR) ---
+                const Padding(
+                  padding: EdgeInsets.only(left: 5, bottom: 10),
+                  child: Text(
+                    "Ilova dizayni",
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey),
+                  ),
+                ),
+                Row(
+                  children: [
+                    _buildThemeButton(
+                      context,
+                      provider: themeProvider,
+                      mode: AppThemeMode.light,
+                      title: "Oq",
+                      icon: Icons.light_mode_rounded,
+                      activeColor: Colors.blueAccent,
+                    ),
+                    const SizedBox(width: 10),
+                    _buildThemeButton(
+                      context,
+                      provider: themeProvider,
+                      mode: AppThemeMode.dark,
+                      title: "Qorong'u",
+                      icon: Icons.dark_mode_rounded,
+                      activeColor: Colors.deepPurpleAccent,
+                    ),
+                    const SizedBox(width: 10),
+                    _buildThemeButton(
+                      context,
+                      provider: themeProvider,
+                      mode: AppThemeMode.glass,
+                      title: "Oyna",
+                      icon: Icons.lens_blur_rounded,
+                      activeColor: Colors.tealAccent,
+                    ),
+                  ],
+                ),
+
                 const SizedBox(height: 30),
                 
-                Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(15),
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
-                  ),
+                // --- ASOSIY MENYULAR ---
+                // Eski Container o'rniga "Card" ishlatamiz. U mavzuga (Dark/Glass) qarab o'zi rangini o'zgartiradi!
+                Card(
+                  margin: EdgeInsets.zero,
                   child: Column(
                     children: [
                       ListTile(
-                        leading: const Icon(Icons.phone, color: Color(0xFF2E5BFF)),
+                        leading: const Icon(Icons.phone),
                         title: Text(_userPhone.isEmpty ? "Raqam kiritilmagan" : _userPhone),
                       ),
-                      const Divider(height: 1),
+                      const Divider(height: 1, color: Colors.grey, opacity: 0.2),
                       
-                      // FAQAT ADMINLAR UCHUN ADMIN PANEL TUGMASI
                       if (_userRole == 'admin') ...[
                         ListTile(
                           leading: const Icon(Icons.admin_panel_settings, color: Colors.redAccent),
                           title: const Text("Admin Panel", style: TextStyle(fontWeight: FontWeight.bold)),
                           subtitle: const Text("Boshqaruv markaziga kirish"),
-                          trailing: const Icon(Icons.chevron_right),
+                          trailing: const Icon(Icons.chevron_right, color: Colors.grey),
                           onTap: () {
                             Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminPanelScreen()));
                           },
                         ),
-                        const Divider(height: 1),
+                        const Divider(height: 1, color: Colors.grey, opacity: 0.2),
                       ],
                       
                       ListTile(
-                        leading: const Icon(Icons.logout, color: Colors.red),
-                        title: const Text("Tizimdan chiqish", style: TextStyle(color: Colors.red)),
+                        leading: const Icon(Icons.logout, color: Colors.redAccent),
+                        title: const Text("Tizimdan chiqish", style: TextStyle(color: Colors.redAccent)),
                         onTap: _logout,
                       ),
                     ],
@@ -127,6 +169,58 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                 )
               ],
             ),
+    );
+  }
+
+  // Animatsiyali chiroyli kvadrat tugma yasaydigan maxsus funksiya
+  Widget _buildThemeButton(
+    BuildContext context, {
+    required ThemeProvider provider,
+    required AppThemeMode mode,
+    required String title,
+    required IconData icon,
+    required Color activeColor,
+  }) {
+    final isSelected = provider.currentMode == mode;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => provider.toggleTheme(mode),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          decoration: BoxDecoration(
+            // Tanlangan bo'lsa sal rangli fon, tanlanmasa mavzuga qarab oq yoki yarim shaffof qora
+            color: isSelected 
+                ? activeColor.withOpacity(0.15) 
+                : (isDark ? Colors.white.withOpacity(0.05) : Colors.white),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isSelected ? activeColor : (isDark ? Colors.white24 : Colors.grey.shade300),
+              width: isSelected ? 2 : 1,
+            ),
+          ),
+          child: Column(
+            children: [
+              Icon(
+                icon, 
+                color: isSelected ? activeColor : (isDark ? Colors.white70 : Colors.grey), 
+                size: 28
+              ),
+              const SizedBox(height: 8),
+              Text(
+                title,
+                style: TextStyle(
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                  color: isSelected ? activeColor : (isDark ? Colors.white70 : Colors.grey.shade800),
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
