@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 // Importlar
 import 'login_screen.dart';
 import 'manage_users_screen.dart';
+import 'admin_task_types_screen.dart';
 
 class UserProfileScreen extends StatefulWidget {
   const UserProfileScreen({super.key});
@@ -116,7 +117,30 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                         ),
                         const Divider(height: 1),
                       ],
-                      
+                                            // MANA BIZNING ADMIN PANEL TUGMALARI
+                      if (_userRole == 'admin') ...[
+                        ListTile(
+                          leading: const Icon(Icons.admin_panel_settings, color: Colors.redAccent),
+                          title: const Text("Xodimlarni Boshqarish"),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () {
+                            Navigator.push(context, MaterialPageRoute(builder: (_) => const ManageUsersScreen()));
+                          },
+                        ),
+                        const Divider(height: 1),
+                        
+                        // YANGI QO'SHILGAN TUGMA
+                        ListTile(
+                          leading: const Icon(Icons.request_quote_rounded, color: Colors.orange),
+                          title: const Text("Lavozim va Ta'riflar"),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () {
+                            Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminTaskTypesScreen()));
+                          },
+                        ),
+                        const Divider(height: 1),
+                      ],
+
                       ListTile(
                         leading: const Icon(Icons.logout, color: Colors.red),
                         title: const Text("Tizimdan chiqish", style: TextStyle(color: Colors.red)),
