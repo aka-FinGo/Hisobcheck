@@ -28,7 +28,7 @@ dependencies:
   flutter_login: 5.0.0
 
   # Aylanuvchi pastki menyu
-  rolling_bottom_bar: ^0.2.0
+  google_nav_bar: ^5.0.6
 
 dev_dependencies:
   flutter_test:
