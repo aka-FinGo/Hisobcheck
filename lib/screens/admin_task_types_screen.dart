@@ -10,7 +10,8 @@ class AdminTaskTypesScreen extends StatefulWidget {
 
 class _AdminTaskTypesScreenState extends State<AdminTaskTypesScreen> {
   final _supabase = Supabase.instance.client;
-  List<Map<String, dynamic>> _tasks = [];
+  // Endi ma'lumotlarni lavozim nomiga qarab guruhlaymiz
+  Map<String, List<Map<String, dynamic>>> _groupedTasks = {};
   bool _isLoading = true;
 
   @override
@@ -19,7 +20,6 @@ class _AdminTaskTypesScreenState extends State<AdminTaskTypesScreen> {
     _fetchTasks();
   }
 
-  // Bazadan barcha lavozimlar va ularning ta'riflarini yuklash
   Future<void> _fetchTasks() async {
     setState(() => _isLoading = true);
     try {
@@ -28,9 +28,19 @@ class _AdminTaskTypesScreenState extends State<AdminTaskTypesScreen> {
           .select()
           .order('target_role', ascending: true);
       
+      // Ro'yxatdan kelgan ma'lumotlarni "target_role" bo'yicha guruhlarga ajratamiz
+      final Map<String, List<Map<String, dynamic>>> tempGroup = {};
+      for (var item in response) {
+        final role = (item['target_role'] ?? 'Boshqa').toString().toUpperCase();
+        if (!tempGroup.containsKey(role)) {
+          tempGroup[role] = [];
+        }
+        tempGroup[role]!.add(item);
+      }
+
       if (mounted) {
         setState(() {
-          _tasks = List<Map<String, dynamic>>.from(response);
+          _groupedTasks = tempGroup;
         });
       }
     } catch (e) {
@@ -40,7 +50,6 @@ class _AdminTaskTypesScreenState extends State<AdminTaskTypesScreen> {
     }
   }
 
-  // Yangi qo'shish yoki tahrirlash oynasi (Dialog)
   void _showTaskDialog({Map<String, dynamic>? task}) {
     final isEdit = task != null;
     final nameController = TextEditingController(text: isEdit ? task['name'] : '');
@@ -57,7 +66,7 @@ class _AdminTaskTypesScreenState extends State<AdminTaskTypesScreen> {
             children: [
               TextField(
                 controller: roleController,
-                decoration: const InputDecoration(labelText: "Lavozim (Masalan: arrachi, kraymchi)", border: OutlineInputBorder()),
+                decoration: const InputDecoration(labelText: "Lavozim (Masalan: arrachi)", border: OutlineInputBorder()),
               ),
               const SizedBox(height: 10),
               TextField(
@@ -68,7 +77,7 @@ class _AdminTaskTypesScreenState extends State<AdminTaskTypesScreen> {
               TextField(
                 controller: rateController,
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: "Ta'rif (1 m² yoki 1 dona uchun narx)", border: OutlineInputBorder(), suffixText: "so'm"),
+                decoration: const InputDecoration(labelText: "Ta'rif (so'm)", border: OutlineInputBorder()),
               ),
             ],
           ),
@@ -76,55 +85,49 @@ class _AdminTaskTypesScreenState extends State<AdminTaskTypesScreen> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("BEKOR")),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2E5BFF), foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2E5BFF)),
             onPressed: () async {
               final name = nameController.text.trim();
-              final role = roleController.text.trim();
+              final role = roleController.text.trim().toLowerCase(); // Bazada har doim kichik harfda saqlaymiz
               final rate = double.tryParse(rateController.text) ?? 0;
 
               if (name.isEmpty || role.isEmpty || rate <= 0) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Barcha maydonlarni to'g'ri to'ldiring!")));
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("To'g'ri to'ldiring!")));
                 return;
               }
 
               try {
                 if (isEdit) {
                   await _supabase.from('task_types').update({
-                    'name': name,
-                    'target_role': role,
-                    'default_rate': rate,
+                    'name': name, 'target_role': role, 'default_rate': rate,
                   }).eq('id', task['id']);
                 } else {
                   await _supabase.from('task_types').insert({
-                    'name': name,
-                    'target_role': role,
-                    'default_rate': rate,
+                    'name': name, 'target_role': role, 'default_rate': rate,
                   });
                 }
                 
                 if (mounted) {
                   Navigator.pop(ctx);
                   _fetchTasks();
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Muvaffaqiyatli saqlandi!"), backgroundColor: Colors.green));
                 }
               } catch (e) {
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e")));
               }
             },
-            child: const Text("SAQLASH"),
+            child: const Text("SAQLASH", style: TextStyle(color: Colors.white)),
           )
         ],
       ),
     );
   }
 
-  // Lavozim va tarifni o'chirish
   void _deleteTask(int id) async {
     try {
       await _supabase.from('task_types').delete().eq('id', id);
       _fetchTasks();
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("O'chirishda xatolik: $e")));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xatolik: $e")));
     }
   }
 
@@ -140,45 +143,53 @@ class _AdminTaskTypesScreenState extends State<AdminTaskTypesScreen> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: _tasks.length,
-              itemBuilder: (context, index) {
-                final task = _tasks[index];
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                    leading: const CircleAvatar(
-                      backgroundColor: Color(0xFF2E5BFF),
-                      child: Icon(Icons.work, color: Colors.white),
-                    ),
-                    title: Text(task['name'], style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Column(
+          : _groupedTasks.isEmpty
+              ? const Center(child: Text("Hali ta'riflar qo'shilmagan"))
+              : ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: _groupedTasks.keys.length,
+                  itemBuilder: (context, index) {
+                    // Guruhlangan lavozim nomlarini olamiz (Masalan: ARRACHI, KRAYMCHI)
+                    String roleName = _groupedTasks.keys.elementAt(index);
+                    List<Map<String, dynamic>> tasksInRole = _groupedTasks[roleName]!;
+
+                    return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const SizedBox(height: 5),
-                        Text("Lavozim: ${task['target_role'].toString().toUpperCase()}", style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
-                        Text("Ta'rif: ${task['default_rate']} so'm / m²", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w600)),
+                        // Lavozim sarlavhasi
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 5),
+                          child: Text(
+                            "LAVOZIM: $roleName",
+                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blueGrey),
+                          ),
+                        ),
+                        // Shu lavozimga tegishli barcha ishlar
+                        ...tasksInRole.map((task) => Card(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                          child: ListTile(
+                            title: Text(task['name'], style: const TextStyle(fontWeight: FontWeight.bold)),
+                            subtitle: Text("${task['default_rate']} so'm", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: () => _showTaskDialog(task: task)),
+                                IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => _deleteTask(task['id'])),
+                              ],
+                            ),
+                          ),
+                        )).toList(),
+                        const SizedBox(height: 10), // Guruhlar orasidagi bo'shliq
                       ],
-                    ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: () => _showTaskDialog(task: task)),
-                        IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => _deleteTask(task['id'])),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
+                    );
+                  },
+                ),
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: const Color(0xFF2E5BFF),
         onPressed: () => _showTaskDialog(),
         icon: const Icon(Icons.add, color: Colors.white),
-        label: const Text("Yangi Ta'rif", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        label: const Text("Yangi", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
       ),
     );
   }
