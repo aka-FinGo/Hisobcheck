@@ -13,63 +13,139 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
   List<Map<String, dynamic>> _users = [];
   bool _isLoading = true;
 
+  // Tizimdagi mavjud rollar ro'yxati (Buni o'zingiz ko'paytirishingiz ham mumkin)
+  final List<String> _availableRoles = ['admin', 'worker', 'installer', 'manager'];
+
   @override
   void initState() {
     super.initState();
-    _loadUsers();
+    _fetchUsers();
   }
 
-  Future<void> _loadUsers() async {
+  // 1. Foydalanuvchilarni bazadan yuklab olish
+  Future<void> _fetchUsers() async {
     setState(() => _isLoading = true);
     try {
-      final res = await _supabase.from('profiles').select().order('full_name');
-      if (mounted) {
-        setState(() {
-          _users = List<Map<String, dynamic>>.from(res);
-          _isLoading = false;
-        });
-      }
+      final response = await _supabase
+          .from('profiles')
+          .select('id, full_name, role, phone, created_at')
+          .order('created_at', ascending: true);
+          
+      setState(() {
+        _users = List<Map<String, dynamic>>.from(response);
+      });
     } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e")));
+      }
+    } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  void _updateRole(String userId, String newRole) async {
-    await _supabase.from('profiles').update({'role': newRole}).eq('id', userId);
-    _loadUsers();
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Lavozim o'zgardi: $newRole")));
+  // 2. Rolni o'zgartirish funksiyasi
+  Future<void> _updateUserRole(String userId, String newRole) async {
+    try {
+      await _supabase.from('profiles').update({'role': newRole}).eq('id', userId);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Rol muvaffaqiyatli o'zgartirildi!"), backgroundColor: Colors.green),
+        );
+        _fetchUsers(); // Ro'yxatni yangilash
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xatolik: $e"), backgroundColor: Colors.red));
+      }
+    }
+  }
+
+  // 3. Rolni o'zgartirish oynasi (Dialog)
+  void _showRoleDialog(Map<String, dynamic> user) {
+    String selectedRole = user['role'] ?? 'worker';
+    // Agar bazadagi rol ro'yxatimizda bo'lmasa, uni qo'shib qo'yamiz
+    if (!_availableRoles.contains(selectedRole)) {
+      _availableRoles.add(selectedRole);
+    }
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text("${user['full_name'] ?? 'Foydalanuvchi'} rolini o'zgartirish"),
+        content: DropdownButtonFormField<String>(
+          value: selectedRole,
+          decoration: const InputDecoration(border: OutlineInputBorder(), labelText: "Yangi rol"),
+          items: _availableRoles.map((role) {
+            return DropdownMenuItem(value: role, child: Text(role.toUpperCase()));
+          }).toList(),
+          onChanged: (val) {
+            if (val != null) selectedRole = val;
+          },
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("BEKOR")),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2E5BFF), foregroundColor: Colors.white),
+            onPressed: () {
+              Navigator.pop(ctx);
+              _updateUserRole(user['id'], selectedRole);
+            },
+            child: const Text("SAQLASH"),
+          )
+        ],
+      ),
+    );
+  }
+
+  // Rolga qarab rang berish
+  Color _getRoleColor(String role) {
+    switch (role) {
+      case 'admin': return Colors.redAccent;
+      case 'manager': return Colors.orange;
+      case 'installer': return Colors.purple;
+      default: return Colors.green; // worker
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Xodimlar va Lavozimlar")),
+      backgroundColor: const Color(0xFFF8F9FE),
+      appBar: AppBar(
+        title: const Text("Xodimlarni boshqarish", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.white,
+        elevation: 1,
+        iconTheme: const IconThemeData(color: Colors.black),
+        actions: [
+          IconButton(icon: const Icon(Icons.refresh, color: Color(0xFF2E5BFF)), onPressed: _fetchUsers),
+        ],
+      ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : ListView.builder(
+              padding: const EdgeInsets.all(16),
               itemCount: _users.length,
-              itemBuilder: (ctx, i) {
-                final user = _users[i];
+              itemBuilder: (context, index) {
+                final user = _users[index];
+                final role = user['role'] ?? 'Noma\'lum';
+                final name = user['full_name'] ?? 'Ism kiritilmagan';
+                
                 return Card(
-                  margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  margin: const EdgeInsets.only(bottom: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                  elevation: 2,
                   child: ListTile(
-                    leading: CircleAvatar(child: Text((user['full_name']?[0] ?? "U").toUpperCase())),
-                    title: Text(user['full_name'] ?? "Noma'lum"),
-                    subtitle: Text("Tel: ${user['phone'] ?? '-'}"),
-                    trailing: DropdownButton<String>(
-                      value: ['admin', 'worker', 'designer', 'driver', 'installer'].contains(user['role']) 
-                          ? user['role'] 
-                          : 'worker',
-                      items: const [
-                        DropdownMenuItem(value: 'admin', child: Text("Admin")),
-                        DropdownMenuItem(value: 'worker', child: Text("Ishchi (Umumiy)")),
-                        DropdownMenuItem(value: 'designer', child: Text("Loyihachi")),
-                        DropdownMenuItem(value: 'driver', child: Text("Haydovchi")),
-                        DropdownMenuItem(value: 'installer', child: Text("O'rnatuvchi")),
-                      ],
-                      onChanged: (val) {
-                        if (val != null) _updateRole(user['id'], val);
-                      },
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                    leading: CircleAvatar(
+                      backgroundColor: _getRoleColor(role).withOpacity(0.2),
+                      child: Icon(Icons.person, color: _getRoleColor(role)),
+                    ),
+                    title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: Text("Rol: ${role.toUpperCase()}", style: TextStyle(color: _getRoleColor(role), fontWeight: FontWeight.w600)),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.edit_note_rounded, color: Color(0xFF2E5BFF), size: 30),
+                      onPressed: () => _showRoleDialog(user),
                     ),
                   ),
                 );
