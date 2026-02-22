@@ -1,14 +1,12 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 
-// --- EKRANLAR IMPORTI ---
 import '../screens/home_screen.dart'; 
 import '../screens/clients_screen.dart';
 import '../screens/orders_list_screen.dart';
 import '../screens/stats_screen.dart';
 import '../screens/user_profile_screen.dart';
-
-// --- VIDJETLAR ---
-import 'custom_bottom_nav.dart'; // O'zimiz yasagan menyuni chaqirib oldik
+import 'custom_bottom_nav.dart'; 
 import 'pwa_prompt.dart';
 
 class MainWrapper extends StatefulWidget {
@@ -39,19 +37,41 @@ class _MainWrapperState extends State<MainWrapper> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FE),
-      body: PageView(
-        controller: _controller,
-        physics: const NeverScrollableScrollPhysics(), 
-        children: const [
-          HomeScreen(),         // 0
-          ClientsScreen(),      // 1
-          OrdersListScreen(),   // 2
-          StatsScreen(),        // 3
-          UserProfileScreen(),  // 4
+      backgroundColor: Colors.transparent, // Asosiy fonni yo'qotamiz
+      body: Stack(
+        children: [
+          // 1-QAVAT: Orqa fon rasmi (Siz yuklagan rasm)
+          Positioned.fill(
+            child: Image.asset(
+              'assets/images/bg.jpg',
+              fit: BoxFit.cover,
+            ),
+          ),
+          
+          // 2-QAVAT: Xiralashtirish (Blur) va qoraytirish
+          Positioned.fill(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), // Blur darajasi
+              child: Container(
+                color: Colors.black.withOpacity(0.5), // Yozuvlar yaxshi ko'rinishi uchun yarim shaffof qora
+              ),
+            ),
+          ),
+
+          // 3-QAVAT: Asosiy ilova sahifalari
+          PageView(
+            controller: _controller,
+            physics: const NeverScrollableScrollPhysics(), 
+            children: const [
+              HomeScreen(),         
+              ClientsScreen(),      
+              OrdersListScreen(),   
+              StatsScreen(),        
+              UserProfileScreen(),  
+            ],
+          ),
         ],
       ),
-      // Bitta qator bilan butun boshli menyuni ulab qo'ydik!
       bottomNavigationBar: CustomBottomNav(
         selectedIndex: _currentIndex,
         onTabChange: (index) {
