@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:rolling_bottom_bar/rolling_bottom_bar.dart';
-import 'package:rolling_bottom_bar/rolling_bottom_bar_item.dart';
+import 'package:google_nav_bar/google_nav_bar.dart';
 
 // --- EKRANLAR IMPORTI ---
 import '../screens/home_screen.dart'; 
@@ -20,13 +19,12 @@ class MainWrapper extends StatefulWidget {
 }
 
 class _MainWrapperState extends State<MainWrapper> {
-  // PageView ni boshqarish uchun Controller
-  final _controller = PageController();
+  int _currentIndex = 0;
+  final PageController _controller = PageController();
 
   @override
   void initState() {
     super.initState();
-    // Ilova ochilgach, agar PWA o'rnatilmagan bo'lsa eslatish
     Future.delayed(const Duration(seconds: 3), () {
       if (mounted) checkAndShowPwaPrompt(context);
     });
@@ -41,46 +39,62 @@ class _MainWrapperState extends State<MainWrapper> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // Sahifalar ro'yxati (Endi IndexedStack emas, PageView ishlatiladi)
-            // Barcha sahifalarni pastdan 100 piksel tepaga surib turadigan global qobiq
-      body: Padding(
-        padding: const EdgeInsets.only(bottom: 100.0), // Menyu balandligiga mos bo'sh joy
-        child: PageView(
-          controller: _controller,
-          physics: const NeverScrollableScrollPhysics(), 
-          children: const <Widget>[
-            HomeScreen(),         // 0
-            ClientsScreen(),      // 1
-            OrdersListScreen(),   // 2
-            StatsScreen(),        // 3
-            UserProfileScreen(),  // 4
+      backgroundColor: const Color(0xFFF8F9FE),
+      // Scaffold endi menyu balandligini o'zi hisoblaydi, 
+      // yozuvlar menyu tagida qolib ketmaydi!
+      body: PageView(
+        controller: _controller,
+        physics: const NeverScrollableScrollPhysics(), // Ekranlarni qo'lda surishni bloklash
+        children: const [
+          HomeScreen(),         // 0
+          ClientsScreen(),      // 1
+          OrdersListScreen(),   // 2
+          StatsScreen(),        // 3
+          UserProfileScreen(),  // 4
+        ],
+      ),
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          boxShadow: [
+            BoxShadow(
+              blurRadius: 20,
+              color: Colors.black.withOpacity(.1),
+            )
           ],
         ),
-      ),
-
-      
-      extendBody: true, // Menyu sahifaning ustida chiroyli turishi (suzishi) uchun kerak
-      
-      // Siz xohlagan aylanuvchi Bottom Navigation Bar
-      bottomNavigationBar: RollingBottomBar(
-        controller: _controller,
-        flat: true,
-        useActiveColorByDefault: false,
-        items: const [
-          RollingBottomBarItem(Icons.home_rounded, label: 'Asosiy', activeColor: Color(0xFF2E5BFF)),
-          RollingBottomBarItem(Icons.people_alt_rounded, label: 'Mijozlar', activeColor: Color(0xFF2E5BFF)),
-          RollingBottomBarItem(Icons.list_alt_rounded, label: 'Zakazlar', activeColor: Color(0xFF2E5BFF)),
-          RollingBottomBarItem(Icons.bar_chart_rounded, label: 'Hisobot', activeColor: Color(0xFF2E5BFF)),
-          RollingBottomBarItem(Icons.settings_rounded, label: 'Profil', activeColor: Color(0xFF2E5BFF)),
-        ],
-        enableIconRotation: true, // Ikonkalarning aylanish animatsiyasi
-        onTap: (index) {
-          _controller.animateToPage(
-            index,
-            duration: const Duration(milliseconds: 400),
-            curve: Curves.easeOut,
-          );
-        },
+        child: SafeArea(
+          child: Padding(
+            // Menyuning ikki chekkasidagi bo'shliq
+            padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 8),
+            child: GNav(
+              rippleColor: Colors.grey[300]!,
+              hoverColor: Colors.grey[100]!,
+              gap: 8, // Ikonka va yozuv o'rtasidagi masofa
+              activeColor: const Color(0xFF2E5BFF), // Faol bo'lgandagi ikonka/yozuv rangi (Ko'k)
+              iconSize: 26,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              duration: const Duration(milliseconds: 400),
+              tabBackgroundColor: const Color(0xFF2E5BFF).withOpacity(0.1), // Faol tugma foni (Och ko'k)
+              color: Colors.grey[600]!, // Faol bo'lmagan ikonkalar rangi (Kulrang)
+              tabs: const [
+                GButton(icon: Icons.home_rounded, text: 'Asosiy'),
+                GButton(icon: Icons.people_alt_rounded, text: 'Mijozlar'),
+                GButton(icon: Icons.list_alt_rounded, text: 'Zakazlar'),
+                GButton(icon: Icons.bar_chart_rounded, text: 'Hisobot'),
+                GButton(icon: Icons.person_rounded, text: 'Profil'),
+              ],
+              selectedIndex: _currentIndex,
+              onTabChange: (index) {
+                setState(() {
+                  _currentIndex = index;
+                });
+                // Tugma bosilganda sahifani almashtirish
+                _controller.jumpToPage(index); 
+              },
+            ),
+          ),
+        ),
       ),
     );
   }
