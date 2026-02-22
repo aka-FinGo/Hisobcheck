@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:provider/provider.dart'; // <-- Provider ulandi
+import 'package:provider/provider.dart';
 
 import 'login_screen.dart';
 import 'admin_panel_screen.dart';
-import '../theme/theme_provider.dart'; // <-- Miyani ulab oldik
+import '../theme/theme_provider.dart';
 
 class UserProfileScreen extends StatefulWidget {
   const UserProfileScreen({super.key});
@@ -59,11 +59,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // ThemeProvider'ni chaqiramiz
     final themeProvider = Provider.of<ThemeProvider>(context);
 
     return Scaffold(
-      // Orqa fonni avtomat mavzudan oladi
       appBar: AppBar(
         title: const Text("Profil"),
         centerTitle: true,
@@ -73,7 +71,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           : ListView(
               padding: const EdgeInsets.only(left: 20, right: 20, top: 20, bottom: 120),
               children: [
-                // --- PROFIL MA'LUMOTLARI ---
                 const CircleAvatar(
                   radius: 50,
                   backgroundColor: Color(0xFF2E5BFF),
@@ -93,7 +90,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                 
                 const SizedBox(height: 30),
 
-                // --- MAVZUNI TANLASH (CHIROYLI TUGMALAR) ---
                 const Padding(
                   padding: EdgeInsets.only(left: 5, bottom: 10),
                   child: Text(
@@ -116,7 +112,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                       context,
                       provider: themeProvider,
                       mode: AppThemeMode.dark,
-                      title: "Qorong'u",
+                      title: "Qora",
                       icon: Icons.dark_mode_rounded,
                       activeColor: Colors.deepPurpleAccent,
                     ),
@@ -134,8 +130,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
                 const SizedBox(height: 30),
                 
-                // --- ASOSIY MENYULAR ---
-                // Eski Container o'rniga "Card" ishlatamiz. U mavzuga (Dark/Glass) qarab o'zi rangini o'zgartiradi!
                 Card(
                   margin: EdgeInsets.zero,
                   child: Column(
@@ -144,7 +138,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                         leading: const Icon(Icons.phone),
                         title: Text(_userPhone.isEmpty ? "Raqam kiritilmagan" : _userPhone),
                       ),
-                      const Divider(height: 1, color: Colors.grey, opacity: 0.2),
+                      Divider(height: 1, color: Colors.grey.withOpacity(0.2)),
                       
                       if (_userRole == 'admin') ...[
                         ListTile(
@@ -156,7 +150,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                             Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminPanelScreen()));
                           },
                         ),
-                        const Divider(height: 1, color: Colors.grey, opacity: 0.2),
+                        Divider(height: 1, color: Colors.grey.withOpacity(0.2)),
                       ],
                       
                       ListTile(
@@ -172,7 +166,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     );
   }
 
-  // Animatsiyali chiroyli kvadrat tugma yasaydigan maxsus funksiya
   Widget _buildThemeButton(
     BuildContext context, {
     required ThemeProvider provider,
@@ -191,7 +184,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           duration: const Duration(milliseconds: 300),
           padding: const EdgeInsets.symmetric(vertical: 16),
           decoration: BoxDecoration(
-            // Tanlangan bo'lsa sal rangli fon, tanlanmasa mavzuga qarab oq yoki yarim shaffof qora
             color: isSelected 
                 ? activeColor.withOpacity(0.15) 
                 : (isDark ? Colors.white.withOpacity(0.05) : Colors.white),
