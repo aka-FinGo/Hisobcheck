@@ -13,8 +13,9 @@ class _AdminTaskTypesScreenState extends State<AdminTaskTypesScreen> {
   Map<String, List<Map<String, dynamic>>> _groupedTasks = {};
   bool _isLoading = true;
   
-  // Asosiy va bazadan keladigan barcha lavozimlar yig'indisi
-  List<String> _availableRoles = ['admin', 'worker', 'installer', 'manager', 'designer'];
+  // 1. MANA SHU YER TOZALANDI: Ortiqcha inglizcha rollar yo'q! 
+  // Faqat 'admin' doimiy qoladi, qolganini baza o'zi hal qiladi.
+  List<String> _availableRoles = ['admin']; 
 
   @override
   void initState() {
@@ -31,11 +32,11 @@ class _AdminTaskTypesScreenState extends State<AdminTaskTypesScreen> {
           .order('target_role', ascending: true);
       
       final Map<String, List<Map<String, dynamic>>> tempGroup = {};
-      final Set<String> dynamicRoles = {'admin', 'worker', 'installer', 'manager', 'designer'};
+      final Set<String> dynamicRoles = {'admin'};
 
       for (var item in response) {
         final role = (item['target_role'] ?? 'Boshqa').toString().toLowerCase();
-        dynamicRoles.add(role); // Mavjud rollarni ro'yxatga qo'shamiz
+        dynamicRoles.add(role); // Bazadagi bor rollarni yig'ib olamiz
 
         final displayRole = role.toUpperCase();
         if (!tempGroup.containsKey(displayRole)) {
@@ -47,7 +48,7 @@ class _AdminTaskTypesScreenState extends State<AdminTaskTypesScreen> {
       if (mounted) {
         setState(() {
           _groupedTasks = tempGroup;
-          _availableRoles = dynamicRoles.toList(); // Dropdown uchun ro'yxatni yangilaymiz
+          _availableRoles = dynamicRoles.toList(); 
         });
       }
     } catch (e) {
@@ -62,18 +63,19 @@ class _AdminTaskTypesScreenState extends State<AdminTaskTypesScreen> {
     final nameController = TextEditingController(text: isEdit ? task['name'] : '');
     final rateController = TextEditingController(text: isEdit ? task['default_rate'].toString() : '');
 
-    String selectedRole = isEdit ? task['target_role'].toString().toLowerCase() : 'worker';
+    // Agar eski lavozim bo'lmasa, bo'sh turadi
+    String? selectedRole = isEdit ? task['target_role'].toString().toLowerCase() : null;
     bool isCreatingNewRole = false;
     final newRoleController = TextEditingController();
 
-    // Dialogdagi ro'yxatni shakllantirish
     List<String> dialogRoles = List.from(_availableRoles);
-    if (!dialogRoles.contains(selectedRole)) dialogRoles.add(selectedRole);
+    if (selectedRole != null && !dialogRoles.contains(selectedRole)) {
+      dialogRoles.add(selectedRole);
+    }
     dialogRoles.add('+ Yangi lavozim yaratish');
 
     showDialog(
       context: context,
-      // StatefulBuilder — oynaning ichidagi o'zgarishlarni darhol ekranga chiqarish uchun kerak
       builder: (ctx) => StatefulBuilder(
         builder: (context, setStateDialog) {
           return AlertDialog(
@@ -83,10 +85,10 @@ class _AdminTaskTypesScreenState extends State<AdminTaskTypesScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   
-                  // 1. AQLI RO'YXAT (DROPDOWN)
                   DropdownButtonFormField<String>(
                     value: selectedRole,
-                    decoration: const InputDecoration(labelText: "Lavozimni tanlang", border: OutlineInputBorder()),
+                    hint: const Text("Lavozimni tanlang"),
+                    decoration: const InputDecoration(border: OutlineInputBorder()),
                     items: dialogRoles.map((role) {
                       return DropdownMenuItem(
                         value: role,
@@ -101,19 +103,17 @@ class _AdminTaskTypesScreenState extends State<AdminTaskTypesScreen> {
                     }).toList(),
                     onChanged: (val) {
                       setStateDialog(() {
-                        selectedRole = val!;
-                        // Agar yangi yaratish bosilsa, pastda yozish qutisi ochiladi
+                        selectedRole = val;
                         isCreatingNewRole = selectedRole == '+ Yangi lavozim yaratish';
                       });
                     },
                   ),
                   const SizedBox(height: 10),
 
-                  // 2. YANGI LAVOZIM UCHUN QUTI (Faqat "+ Yangi" tanlanganda chiqadi)
                   if (isCreatingNewRole) ...[
                     TextField(
                       controller: newRoleController,
-                      decoration: const InputDecoration(labelText: "Yangi lavozim nomi (Masalan: Bo'yoqchi)", border: OutlineInputBorder()),
+                      decoration: const InputDecoration(labelText: "Yangi lavozim nomi (Masalan: Arrachi)", border: OutlineInputBorder()),
                     ),
                     const SizedBox(height: 10),
                   ],
@@ -139,8 +139,7 @@ class _AdminTaskTypesScreenState extends State<AdminTaskTypesScreen> {
                   final name = nameController.text.trim();
                   final rate = double.tryParse(rateController.text) ?? 0;
                   
-                  // Qaysi rol tanlanganini aniqlash
-                  String finalRole = selectedRole;
+                  String finalRole = selectedRole ?? '';
                   if (isCreatingNewRole) {
                     finalRole = newRoleController.text.trim().toLowerCase();
                   }
