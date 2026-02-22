@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart'; // <-- Provider ulandi
 
 import '../screens/home_screen.dart'; 
 import '../screens/clients_screen.dart';
@@ -8,6 +9,7 @@ import '../screens/stats_screen.dart';
 import '../screens/user_profile_screen.dart';
 import 'custom_bottom_nav.dart'; 
 import 'pwa_prompt.dart';
+import '../theme/theme_provider.dart'; // <-- Miyani chaqiramiz
 
 class MainWrapper extends StatefulWidget {
   const MainWrapper({super.key});
@@ -36,29 +38,38 @@ class _MainWrapperState extends State<MainWrapper> {
 
   @override
   Widget build(BuildContext context) {
+    // Hozirgi rejimni tekshiramiz
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final isGlass = themeProvider.currentMode == AppThemeMode.glass;
+
     return Scaffold(
-      backgroundColor: Colors.transparent, // Asosiy fonni yo'qotamiz
+      // Faqat Glass rejimida fonni shaffof qilamiz, aks holda mavzuning o'z fonini oladi
+      backgroundColor: isGlass ? Colors.transparent : Theme.of(context).scaffoldBackgroundColor, 
+      
       body: Stack(
         children: [
-          // 1-QAVAT: Orqa fon rasmi (Siz yuklagan rasm)
-          Positioned.fill(
-            child: Image.asset(
-              'assets/images/bg.jpg',
-              fit: BoxFit.cover,
-            ),
-          ),
-          
-          // 2-QAVAT: Xiralashtirish (Blur) va qoraytirish
-          Positioned.fill(
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), // Blur darajasi
-              child: Container(
-                color: Colors.black.withOpacity(0.5), // Yozuvlar yaxshi ko'rinishi uchun yarim shaffof qora
+          // FAQAT GLASS REJIMIDA ORQA FON VA BLUR KO'RINADI
+          if (isGlass) ...[
+            // 1-QAVAT: Orqa fon rasmi (Siz yuklagan rasm)
+            Positioned.fill(
+              child: Image.asset(
+                'assets/images/bg.jpg',
+                fit: BoxFit.cover,
               ),
             ),
-          ),
+            
+            // 2-QAVAT: Xiralashtirish (Blur) va qoraytirish
+            Positioned.fill(
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), 
+                child: Container(
+                  color: Colors.black.withOpacity(0.5), 
+                ),
+              ),
+            ),
+          ],
 
-          // 3-QAVAT: Asosiy ilova sahifalari
+          // 3-QAVAT: Asosiy ilova sahifalari (Bularda hech narsani o'zgartirish shart emas!)
           PageView(
             controller: _controller,
             physics: const NeverScrollableScrollPhysics(), 
