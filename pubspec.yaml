@@ -19,13 +19,13 @@ dependencies:
 
   # Ikonkalar
   cupertino_icons: ^1.0.6
-  font_awesome_flutter: ^10.7.0
+  font_awesome_flutter: 10.7.0
 
   # Grafiklar
   fl_chart: ^0.66.0
 
   # Login animatsiyasi
-  flutter_login: ^5.0.0
+  flutter_login: 5.0.0
 
   # Aylanuvchi pastki menyu
   rolling_bottom_bar: ^0.2.0
