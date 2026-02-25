@@ -155,13 +155,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     HomeHeader(greeting: _greeting, userName: _userName),
                     const SizedBox(height: 25),
                     
-                    // 2. Katta Kassa Kartasi (Balance)
-                    BalanceCard(
-                      isAdmin: _userRole == AppRoles.admin,
-                      earned: _displayEarned,
-                      withdrawn: _displayWithdrawn,
-                    ),
-                    const SizedBox(height: 25),
+                    BalanceCard
                     
                     // 3. Tezkor Tugmalar va Mini Statistika (Grid)
                     HomeActionGrid(
