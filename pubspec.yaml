@@ -24,7 +24,7 @@ dependencies:
   fl_chart: ^0.66.0
 
   # 5. Sozlamalarni saqlash (Login, Tema)
-  shared_preferences: ^2.3.2
+  shared_preferences: ^2.2.3
 
   # 6. Tema boshqaruvi (ThemeProvider) ← YANGI QO'SHILDI
   provider: ^6.1.2
