@@ -108,7 +108,7 @@ class _HomeScreenState extends State<HomeScreen> {
         }
         for (var w in withdrawals) totalPaid += (w['amount'] ?? 0).toDouble();
 
-        final workers = await _supabase.from('profiles').select('id').is_('is_super_admin', false);
+        final workers = await _supabase.from('profiles').select('id').eq('is_super_admin', false);
         final allWorks = await _supabase.from('work_logs').select('total_sum').eq('is_approved', true);
         double totalWorksSum = 0;
         for (var w in allWorks) totalWorksSum += (w['total_sum'] ?? 0).toDouble();
