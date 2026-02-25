@@ -192,6 +192,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     // (Bu yerni ham ruxsatlarga bog'lab yuboramiz)
                     HomeActionGrid(
                       isAdmin: _isSuperAdmin || _userRoleType == 'aup',
+                      // Yig'ilgan ruxsatlar tekshiriladi: Superadminmi yoki can_manage_users huquqi bormi?
+                      canManageUsers: _isSuperAdmin || hasPermission('can_manage_users'),
                       totalOrders: _totalOrders,
                       activeOrders: _activeOrders,
                       onWithdrawTap: _showWithdrawDialog,
