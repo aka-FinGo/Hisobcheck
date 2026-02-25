@@ -37,53 +37,42 @@ Future<void> main() async {
   );
 }
 
+// ... (importlar o'zgarishsiz qoladi)
+
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // ThemeProvider dan mavzuni kuzatamiz
     final themeProvider = context.watch<ThemeProvider>();
-
-    // Foydalanuvchi tizimga kirganligini aniqlash
-    bool isLoggedIn = false;
-    try {
-      final session = Supabase.instance.client.auth.currentSession;
-      isLoggedIn = session != null;
-    } catch (_) {
-      isLoggedIn = false;
-    }
-
-    // Glass mavzu uchun MaterialApp transparency ni sozlash
     final isGlass = themeProvider.currentMode == AppThemeMode.glass;
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Aristokrat Mebel',
-
-      // ── Aktiv mavzu (light / dark / glass) ──
       theme: themeProvider.themeData,
-
-      // Glass mavzuda scaffold transparent bo'lishi uchun
-      builder: isGlass
-          ? (context, child) => Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      Color(0xFF1A237E),
-                      Color(0xFF4A148C),
-                      Color(0xFF006064),
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                ),
-                child: child,
-              )
-          : null,
-
-      // Agar kirgan bo'lsa → MainWrapper, bo'lmasa → LoginScreen
-      home: isLoggedIn ? const MainWrapper() : const LoginScreen(),
+      builder: isGlass ? (context, child) => Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color(0xFF1A237E), Color(0xFF4A148C), Color(0xFF006064)],
+            begin: Alignment.topLeft, end: Alignment.bottomRight,
+          ),
+        ),
+        child: child,
+      ) : null,
+      
+      // AVTOMATIK LOGIN/LOGOUT MONITORING
+      home: StreamBuilder<AuthState>(
+        stream: Supabase.instance.client.auth.onAuthStateChange,
+        builder: (context, snapshot) {
+          final session = snapshot.data?.session;
+          if (session != null) {
+            return const MainWrapper();
+          } else {
+            return const LoginScreen();
+          }
+        },
+      ),
     );
   }
 }
