@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart'; // Theme uchun
-import '../providers/theme_provider.dart'; // Sizda bor deb hisoblaymiz
+import '../lib/theme/theme_provider.dart'; // Sizda bor deb hisoblaymiz
 
 class UserProfileScreen extends StatefulWidget {
   final String? userId; 
