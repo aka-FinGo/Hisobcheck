@@ -21,20 +21,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
           flutter-version: '3.19.0'
           cache: true
-      
+
       - name: Install Dependencies
         run: |
           flutter create --project-name hisobcheck --platforms web .
           flutter pub add supabase_flutter
           flutter pub add intl
           flutter pub add shared_preferences
-      
+          flutter pub add fl_chart
+          flutter pub add provider
+
       - name: Build Web
         run: |
           flutter build web --release \
@@ -42,10 +44,10 @@ jobs:
             --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
             --dart-define=SUPABASE_KEY=${{ secrets.SUPABASE_KEY }} \
             --base-href "/${{ github.event.repository.name }}/"
-      
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: build/web
-          
+
       - id: deployment
         uses: actions/deploy-pages@v4
