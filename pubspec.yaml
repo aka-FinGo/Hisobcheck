@@ -31,7 +31,7 @@ dependencies:
   provider: ^6.1.2
 
   # 7. Login UI paketi
-  flutter_login: ^4.4.1
+  flutter_login: ^5.1.0
 
   # 8. Pastki navigatsiya
   google_nav_bar: ^5.0.6
