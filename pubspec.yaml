@@ -11,6 +11,8 @@ dependencies:
   flutter:
     sdk: flutter
 
+  # MANA SHU QATORNI QO'SHING:
+  flutter_flip_card: any
   # 1. Supabase (Baza)
   supabase_flutter: ^2.6.0
 
