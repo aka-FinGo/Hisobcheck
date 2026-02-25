@@ -36,7 +36,7 @@ jobs:
           flutter pub add shared_preferences
           flutter pub add fl_chart
           flutter pub add provider
-          flutter pub add flutter_login
+          flutter pub add 'flutter_login:^5.1.0'
           flutter pub add font_awesome_flutter
           flutter pub add google_nav_bar
 
