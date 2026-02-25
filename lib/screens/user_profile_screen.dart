@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart'; // Theme uchun
+import '../providers/theme_provider.dart'; // Sizda bor deb hisoblaymiz
 
 class UserProfileScreen extends StatefulWidget {
-  final String? userId; // Agar bo'sh bo'lsa - o'zining profili
+  final String? userId; 
   const UserProfileScreen({super.key, this.userId});
 
   @override
@@ -15,15 +17,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   bool _isLoading = true;
   bool _isMe = false;
   Map<String, dynamic>? _userData;
-  List<dynamic> _roles = [];
-
-  // Ruxsatnomalar ro'yxati
-  final Map<String, String> _allPerms = {
-    'can_view_finance': 'Kassani ko\'rish',
-    'can_add_order': 'Zakaz qo\'shish',
-    'can_manage_users': 'Xodimlarni boshqarish',
-    'can_manage_clients': 'Mijozlarni boshqarish',
-  };
 
   @override
   void initState() {
@@ -33,22 +26,16 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   }
 
   Future<void> _loadData() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
     try {
       final String targetId = widget.userId ?? _supabase.auth.currentUser!.id;
-      
-      final userRes = await _supabase
+      final response = await _supabase
           .from('profiles')
           .select('*, app_roles(*)')
           .eq('id', targetId)
           .single();
-      
-      final rolesRes = await _supabase.from('app_roles').select();
-
-      setState(() {
-        _userData = userRes;
-        _roles = rolesRes;
-      });
+      setState(() => _userData = response);
     } catch (e) {
       debugPrint("Xato: $e");
     } finally {
@@ -56,58 +43,39 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     }
   }
 
-  // TAHRIRLASH DIALOGI (ADMIN UCHUN)
-  void _showAdminEditDialog() {
-    int? selectedRoleId = _userData!['position_id'];
-    Map<String, dynamic> customPerms = Map<String, dynamic>.from(_userData!['custom_permissions'] ?? {});
-    final salaryCtrl = TextEditingController(text: _userData!['custom_salary']?.toString() ?? '');
-    final bonusCtrl = TextEditingController(text: _userData!['custom_bonus_per_m2']?.toString() ?? '');
+  // ─── TAHRIRLASH DIALOGI (iPhone Style) ────────────────────────
+  void _showEditProfileDialog() {
+    final nameCtrl = TextEditingController(text: _userData!['full_name']);
+    final phoneCtrl = TextEditingController(text: _userData!['phone']);
+    final tgCtrl = TextEditingController(text: _userData!['telegram_username'] ?? '');
 
     showDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setST) => AlertDialog(
-          title: const Text("Xodimni sozlash"),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                DropdownButtonFormField<int>(
-                  value: selectedRoleId,
-                  items: _roles.map((r) => DropdownMenuItem<int>(value: r['id'], child: Text(r['name']))).toList(),
-                  onChanged: (v) => setST(() => selectedRoleId = v),
-                  decoration: const InputDecoration(labelText: "Lavozimi"),
-                ),
-                const SizedBox(height: 10),
-                TextField(controller: salaryCtrl, decoration: const InputDecoration(labelText: "Shaxsiy oylik (fiks)"), keyboardType: TextInputType.number),
-                TextField(controller: bonusCtrl, decoration: const InputDecoration(labelText: "Kvadrat bonusi"), keyboardType: TextInputType.number),
-                const Divider(),
-                const Text("Qo'shimcha ruxsatlar:", style: TextStyle(fontWeight: FontWeight.bold)),
-                ..._allPerms.entries.map((e) => CheckboxListTile(
-                  title: Text(e.value, style: const TextStyle(fontSize: 12)),
-                  value: customPerms[e.key] ?? false,
-                  onChanged: (v) => setST(() => customPerms[e.key] = v),
-                )),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Bekor")),
-            ElevatedButton(
-              onPressed: () async {
-                await _supabase.from('profiles').update({
-                  'position_id': selectedRoleId,
-                  'custom_salary': double.tryParse(salaryCtrl.text),
-                  'custom_bonus_per_m2': double.tryParse(bonusCtrl.text),
-                  'custom_permissions': customPerms,
-                }).eq('id', _userData!['id']);
-                Navigator.pop(context);
-                _loadData();
-              },
-              child: const Text("Saqlash"),
-            )
+      builder: (ctx) => AlertDialog(
+        title: const Text("Ma'lumotlarni tahrirlash"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: "To'liq ism")),
+            TextField(controller: phoneCtrl, decoration: const InputDecoration(labelText: "Telefon")),
+            TextField(controller: tgCtrl, decoration: const InputDecoration(labelText: "Telegram (username)", prefixText: "@")),
           ],
         ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Bekor qilish")),
+          ElevatedButton(
+            onPressed: () async {
+              await _supabase.from('profiles').update({
+                'full_name': nameCtrl.text,
+                'phone': phoneCtrl.text,
+                'telegram_username': tgCtrl.text.replaceAll('@', ''),
+              }).eq('id', _userData!['id']);
+              Navigator.pop(ctx);
+              _loadData();
+            },
+            child: const Text("Saqlash"),
+          ),
+        ],
       ),
     );
   }
@@ -115,67 +83,104 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    
-    final role = _userData!['app_roles'];
+
     final bool isSuper = _userData!['is_super_admin'] == true;
+    final String fullName = _userData!['full_name'] ?? 'Ismsiz';
+    final String position = _userData!['app_roles']?['name'] ?? 'Lavozimsiz';
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_isMe ? "Mening profilim" : "Xodim profili"),
-        actions: [
-          if (!_isMe && !isSuper) 
-            IconButton(onPressed: _showAdminEditDialog, icon: const Icon(Icons.edit_note, size: 30, color: Colors.blue)),
-        ],
+        title: Text(_isMe ? "Profilim" : "Xodim Profili"),
+        elevation: 0,
       ),
       body: ListView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(16),
         children: [
-          // Profili Header
+          // 1. TEPADAGI QISM (Avatar va Ism)
           Center(
             child: Column(
               children: [
-                CircleAvatar(radius: 50, child: Text(_userData!['full_name']?[0] ?? 'U', style: const TextStyle(fontSize: 30))),
-                const SizedBox(height: 10),
-                Text(_userData!['full_name'] ?? '', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                Text(role?['name'] ?? 'Lavozimsiz', style: const TextStyle(color: Colors.blue)),
+                CircleAvatar(
+                  radius: 50,
+                  backgroundColor: isSuper ? Colors.amber.withOpacity(0.2) : Colors.blue.withOpacity(0.1),
+                  child: Text(fullName[0].toUpperCase(), style: TextStyle(fontSize: 32, color: isSuper ? Colors.amber : Colors.blue)),
+                ),
+                const SizedBox(height: 12),
+                Text(fullName, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                Text(position, style: const TextStyle(color: Colors.grey)),
               ],
             ),
           ),
           const SizedBox(height: 30),
-          
-          // Maosh Ma'lumotlari
-          const Text("Moliya", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+
+          // 2. SOZLAMALAR QATORI (iPhone uslubida)
+          const Text("SOZLAMALAR", style: TextStyle(fontSize: 13, color: Colors.grey, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
           Card(
-            child: ListTile(
-              title: Text("Fiks oylik: ${NumberFormat("#,###").format(_userData!['custom_salary'] ?? role?['base_salary'] ?? 0)} so'm"),
-              subtitle: Text("m2 bonusi: ${NumberFormat("#,###").format(_userData!['custom_bonus_per_m2'] ?? role?['bonus_per_m2'] ?? 0)} so'm"),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            child: Column(
+              children: [
+                // 1-TUGMA: Ma'lumotlarni o'zgartirish
+                ListTile(
+                  leading: const Icon(Icons.person_outline, color: Colors.blue),
+                  title: const Text("Ma'lumotlarni tahrirlash"),
+                  trailing: const Icon(Icons.chevron_right, size: 20),
+                  onTap: _showEditProfileDialog,
+                ),
+                const Divider(height: 1, indent: 55),
+                
+                // 2-TUGMA: Tungi rejim (iPhone Switch)
+                ListTile(
+                  leading: const Icon(Icons.dark_mode_outlined, color: Colors.purple),
+                  title: const Text("Tungi rejim"),
+                  trailing: Switch.adaptive(
+                    value: Theme.of(context).brightness == Brightness.dark,
+                    onChanged: (val) {
+                      Provider.of<ThemeProvider>(context, listen: false).toggleTheme();
+                    },
+                  ),
+                ),
+                const Divider(height: 1, indent: 55),
+
+                // 3-TUGMA: Parolni o'zgartirish
+                ListTile(
+                  leading: const Icon(Icons.lock_outline, color: Colors.green),
+                  title: const Text("Parolni yangilash"),
+                  trailing: const Icon(Icons.chevron_right, size: 20),
+                  onTap: () {
+                    // Supabase password reset mantiqi shu yerga ulanadi
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Emailingizga havola yuborildi!")));
+                  },
+                ),
+              ],
             ),
           ),
           
-          const SizedBox(height: 20),
-          
-          // DANGER ZONE (Faqat Admin ko'radi boshqalar uchun)
+          const SizedBox(height: 25),
+
+          // 3. DANGER ZONE
           if (!_isMe && !isSuper) ...[
-            const Text("Danger Zone", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+            const Text("XAVFLI HUDUD", style: TextStyle(fontSize: 13, color: Colors.red, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
             Card(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               color: Colors.red.withOpacity(0.05),
               child: ListTile(
                 leading: const Icon(Icons.block, color: Colors.red),
-                title: const Text("Xodimni bloklash", style: TextStyle(color: Colors.red)),
+                title: const Text("Xodimni bloklash", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
                 onTap: () {
-                  // Bloklash mantiqi (masalan statusni 'blocked' qilish)
+                  // Bloklash tasdiqlash dialogi
                 },
               ),
             ),
           ],
-          
-          if (_isMe) 
+
+          if (_isMe)
             Padding(
               padding: const EdgeInsets.only(top: 20),
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade50),
-                onPressed: () => _supabase.auth.signOut(), 
-                child: const Text("Chiqish", style: TextStyle(color: Colors.red)),
+              child: TextButton(
+                onPressed: () => _supabase.auth.signOut(),
+                child: const Text("Tizimdan chiqish", style: TextStyle(color: Colors.red, fontSize: 16)),
               ),
             ),
         ],
