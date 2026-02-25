@@ -1,10 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:provider/provider.dart';
-
-import 'login_screen.dart';
-import 'admin_panel_screen.dart';
-import '../theme/theme_provider.dart';
+import 'package:intl/intl.dart';
 
 class UserProfileScreen extends StatefulWidget {
   const UserProfileScreen({super.key});
@@ -15,203 +11,256 @@ class UserProfileScreen extends StatefulWidget {
 
 class _UserProfileScreenState extends State<UserProfileScreen> {
   final _supabase = Supabase.instance.client;
-  String _userName = '';
-  String _userRole = 'worker';
-  String _userPhone = '';
   bool _isLoading = true;
+  
+  Map<String, dynamic>? _profileData;
 
   @override
   void initState() {
     super.initState();
-    _loadProfile();
+    _fetchMyProfile();
   }
 
-  Future<void> _loadProfile() async {
+  Future<void> _fetchMyProfile() async {
     setState(() => _isLoading = true);
     try {
       final user = _supabase.auth.currentUser;
-      if (user != null) {
-        final data = await _supabase.from('profiles').select().eq('id', user.id).single();
-        if (mounted) {
-          setState(() {
-            _userName = data['full_name'] ?? 'Ism kiritilmagan';
-            _userRole = data['role'] ?? 'worker';
-            _userPhone = data['phone'] ?? 'Raqam kiritilmagan';
-          });
-        }
+      if (user == null) return;
+
+      // O'zimizning profilni va unga ulangan lavozimni tortib kelamiz
+      final response = await _supabase
+          .from('profiles')
+          .select('*, app_roles(name, role_type, base_salary, bonus_per_m2)')
+          .eq('id', user.id)
+          .single();
+
+      if (mounted) {
+        setState(() {
+          _profileData = response;
+          _isLoading = false;
+        });
       }
     } catch (e) {
-      debugPrint("Profile load error: $e");
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Xato: $e')));
+      setState(() => _isLoading = false);
     }
   }
 
-  void _logout() async {
+  String _formatMoney(dynamic amount) {
+    if (amount == null || amount == 0) return "0 so'm";
+    return "${NumberFormat("#,###").format(amount).replaceAll(',', ' ')} so'm";
+  }
+
+  Future<void> _logout() async {
     await _supabase.auth.signOut();
-    if (mounted) {
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (context) => const LoginScreen()),
-        (route) => false,
-      );
-    }
+    // Tizimdan chiqqandan so'ng avtomat Login ekraniga otib yuboradi (main.dart dagi stream orqali)
   }
 
   @override
   Widget build(BuildContext context) {
-    final themeProvider = Provider.of<ThemeProvider>(context);
+    if (_isLoading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    if (_profileData == null) {
+      return const Scaffold(body: Center(child: Text("Ma'lumot topilmadi!")));
+    }
+
+    final String fullName = _profileData!['full_name'] ?? 'Ismsiz foydalanuvchi';
+    final String phone = _profileData!['phone'] ?? '+998 -- --- -- --';
+    final bool isSuperAdmin = _profileData!['is_super_admin'] == true;
+    
+    // Lavozim va Maosh ma'lumotlari
+    final roleData = _profileData!['app_roles'];
+    final String positionName = isSuperAdmin ? 'Korxona Rahbari' : (roleData != null ? roleData['name'] : 'Lavozim belgilanmagan');
+    final bool isAup = roleData != null && roleData['role_type'] == 'aup';
+    
+    // Oylikni hisoblash (Shaxsiy ustun tursa o'shani, yo'qsa standartni oladi)
+    double myBaseSalary = 0;
+    double myBonusPerM2 = 0;
+    
+    if (isAup) {
+      myBaseSalary = _profileData!['custom_salary'] != null 
+          ? (_profileData!['custom_salary'] as num).toDouble() 
+          : (roleData['base_salary'] as num).toDouble();
+          
+      myBonusPerM2 = _profileData!['custom_bonus_per_m2'] != null 
+          ? (_profileData!['custom_bonus_per_m2'] as num).toDouble() 
+          : (roleData['bonus_per_m2'] as num).toDouble();
+    }
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Profil"),
-        centerTitle: true,
+        title: const Text("Mening Profilim"),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.only(left: 20, right: 20, top: 20, bottom: 120),
-              children: [
-                const CircleAvatar(
-                  radius: 50,
-                  backgroundColor: Color(0xFF2E5BFF),
-                  child: Icon(Icons.person, size: 50, color: Colors.white),
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  _userName,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                ),
-                Text(
-                  "Rol: ${_userRole.toUpperCase()}",
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 16, color: Colors.grey),
-                ),
-                
-                const SizedBox(height: 30),
-
-                const Padding(
-                  padding: EdgeInsets.only(left: 5, bottom: 10),
-                  child: Text(
-                    "Ilova dizayni",
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey),
-                  ),
-                ),
-                Row(
-                  children: [
-                    _buildThemeButton(
-                      context,
-                      provider: themeProvider,
-                      mode: AppThemeMode.light,
-                      title: "Oq",
-                      icon: Icons.light_mode_rounded,
-                      activeColor: Colors.blueAccent,
-                    ),
-                    const SizedBox(width: 10),
-                    _buildThemeButton(
-                      context,
-                      provider: themeProvider,
-                      mode: AppThemeMode.dark,
-                      title: "Qora",
-                      icon: Icons.dark_mode_rounded,
-                      activeColor: Colors.deepPurpleAccent,
-                    ),
-                    const SizedBox(width: 10),
-                    _buildThemeButton(
-                      context,
-                      provider: themeProvider,
-                      mode: AppThemeMode.glass,
-                      title: "Oyna",
-                      icon: Icons.lens_blur_rounded,
-                      activeColor: Colors.tealAccent,
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 30),
-                
-                Card(
-                  margin: EdgeInsets.zero,
-                  child: Column(
-                    children: [
-                      ListTile(
-                        leading: const Icon(Icons.phone),
-                        title: Text(_userPhone.isEmpty ? "Raqam kiritilmagan" : _userPhone),
+      body: RefreshIndicator(
+        onRefresh: _fetchMyProfile,
+        child: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            // 1. ASOSIY SHAXSIY MA'LUMOTLAR (Avatar va Ism)
+            Center(
+              child: Column(
+                children: [
+                  CircleAvatar(
+                    radius: 50,
+                    backgroundColor: isSuperAdmin ? Colors.amber.withOpacity(0.2) : const Color(0xFF2E5BFF).withOpacity(0.15),
+                    child: Text(
+                      fullName.isNotEmpty ? fullName[0].toUpperCase() : 'U',
+                      style: TextStyle(
+                        fontSize: 40, 
+                        fontWeight: FontWeight.bold, 
+                        color: isSuperAdmin ? Colors.amber.shade700 : const Color(0xFF2E5BFF)
                       ),
-                      Divider(height: 1, color: Colors.grey.withOpacity(0.2)),
-                      
-                      if (_userRole == 'admin') ...[
-                        ListTile(
-                          leading: const Icon(Icons.admin_panel_settings, color: Colors.redAccent),
-                          title: const Text("Admin Panel", style: TextStyle(fontWeight: FontWeight.bold)),
-                          subtitle: const Text("Boshqaruv markaziga kirish"),
-                          trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-                          onTap: () {
-                            Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminPanelScreen()));
-                          },
+                    ),
+                  ),
+                  const SizedBox(height: 15),
+                  Text(fullName, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 5),
+                  Text(phone, style: const TextStyle(fontSize: 16, color: Colors.grey, letterSpacing: 1.2)),
+                  const SizedBox(height: 15),
+                  
+                  // Lavozim Belgisi (Badge)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: isSuperAdmin 
+                          ? Colors.amber.withOpacity(0.2) 
+                          : (isAup ? Colors.purple.withOpacity(0.1) : Colors.orange.withOpacity(0.1)),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: isSuperAdmin 
+                          ? Colors.amber 
+                          : (isAup ? Colors.purple.withOpacity(0.5) : Colors.orange.withOpacity(0.5))
+                      )
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          isSuperAdmin ? Icons.star_rounded : (isAup ? Icons.admin_panel_settings : Icons.engineering),
+                          size: 18,
+                          color: isSuperAdmin ? Colors.amber.shade700 : (isAup ? Colors.purple : Colors.orange),
                         ),
-                        Divider(height: 1, color: Colors.grey.withOpacity(0.2)),
+                        const SizedBox(width: 8),
+                        Text(
+                          positionName.toUpperCase(),
+                          style: TextStyle(
+                            fontSize: 12, 
+                            fontWeight: FontWeight.bold,
+                            color: isSuperAdmin ? Colors.amber.shade700 : (isAup ? Colors.purple : Colors.orange),
+                          ),
+                        ),
                       ],
-                      
-                      ListTile(
-                        leading: const Icon(Icons.logout, color: Colors.redAccent),
-                        title: const Text("Tizimdan chiqish", style: TextStyle(color: Colors.redAccent)),
-                        onTap: _logout,
-                      ),
-                    ],
+                    ),
                   ),
-                )
-              ],
+                ],
+              ),
             ),
+            
+            const SizedBox(height: 35),
+
+            // 2. MENING SHARTLARIM VA MAOSHIM
+            const Text("Mening Shartlarim", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 15),
+            
+            Card(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: isSuperAdmin 
+                  ? const Row(
+                      children: [
+                        Icon(Icons.diamond_rounded, color: Colors.amber, size: 30),
+                        SizedBox(width: 15),
+                        Expanded(child: Text("Siz tizim asoschisiz. Barcha moliyaviy oqimlar sizning nazoratingizda.", style: TextStyle(fontSize: 14))),
+                      ],
+                    )
+                  : (isAup
+                    ? Column(
+                        children: [
+                          _buildSalaryRow("Fiks oylik maosh:", _formatMoney(myBaseSalary)),
+                          const Divider(height: 25),
+                          _buildSalaryRow("Zakazdan ulush (1m² uchun):", _formatMoney(myBonusPerM2)),
+                          const SizedBox(height: 10),
+                          const Text("Oy yakunida umumiy yopilgan zakazlar kvadratiga qarab ustama qo'shib hisoblanadi.", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                        ],
+                      )
+                    : const Row(
+                        children: [
+                          Icon(Icons.calculate_rounded, color: Colors.orange, size: 30),
+                          SizedBox(width: 15),
+                          Expanded(child: Text("Sizning maoshingiz Ishbay (Tariflar) tizimi asosida, bajargan ishlaringiz soni va hajmiga qarab hisoblanadi.", style: TextStyle(fontSize: 14))),
+                        ],
+                      )
+                  ),
+              ),
+            ),
+
+            const SizedBox(height: 35),
+
+            // 3. SOZLAMALAR VA XAVFSIZLIK
+            const Text("Sozlamalar", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 15),
+            
+            Card(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+              child: Column(
+                children: [
+                  // Agar kelajakda parolni o'zgartirish ulasangiz shu yerda bo'ladi
+                  // ListTile(
+                  //   leading: const Icon(Icons.lock_outline_rounded, color: Colors.grey),
+                  //   title: const Text("Parolni o'zgartirish"),
+                  //   trailing: const Icon(Icons.chevron_right_rounded, color: Colors.grey),
+                  //   onTap: () {},
+                  // ),
+                  // const Divider(height: 1, indent: 50),
+                  
+                  ListTile(
+                    leading: const Icon(Icons.logout_rounded, color: Colors.redAccent),
+                    title: const Text("Tizimdan chiqish", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+                    onTap: () => _showLogoutDialog(),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
-  Widget _buildThemeButton(
-    BuildContext context, {
-    required ThemeProvider provider,
-    required AppThemeMode mode,
-    required String title,
-    required IconData icon,
-    required Color activeColor,
-  }) {
-    final isSelected = provider.currentMode == mode;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+  Widget _buildSalaryRow(String label, String value) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: const TextStyle(fontSize: 14, color: Colors.grey)),
+        Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.green)),
+      ],
+    );
+  }
 
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => provider.toggleTheme(mode),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 300),
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          decoration: BoxDecoration(
-            color: isSelected 
-                ? activeColor.withOpacity(0.15) 
-                : (isDark ? Colors.white.withOpacity(0.05) : Colors.white),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: isSelected ? activeColor : (isDark ? Colors.white24 : Colors.grey.shade300),
-              width: isSelected ? 2 : 1,
-            ),
+  void _showLogoutDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Theme.of(context).cardTheme.color,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text("Tizimdan chiqish"),
+        content: const Text("Haqiqatan ham hisobingizdan chiqmoqchimisiz?"),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Bekor qilish", style: TextStyle(color: Colors.grey))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
+            onPressed: () {
+              Navigator.pop(ctx);
+              _logout();
+            },
+            child: const Text("Chiqish"),
           ),
-          child: Column(
-            children: [
-              Icon(
-                icon, 
-                color: isSelected ? activeColor : (isDark ? Colors.white70 : Colors.grey), 
-                size: 28
-              ),
-              const SizedBox(height: 8),
-              Text(
-                title,
-                style: TextStyle(
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                  color: isSelected ? activeColor : (isDark ? Colors.white70 : Colors.grey.shade800),
-                  fontSize: 13,
-                ),
-              ),
-            ],
-          ),
-        ),
+        ],
       ),
     );
   }
