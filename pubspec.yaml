@@ -11,26 +11,22 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # Asosiy baza
+  # 1. Supabase (Baza)
   supabase_flutter: ^2.6.0
 
-  # Formatlash (Sana va Summa)
+  # 2. Formatlash (Sana va Summa)
   intl: ^0.19.0
 
-  # Ikonkalar
+  # 3. Ikonkalar
   cupertino_icons: ^1.0.6
-  font_awesome_flutter: 10.7.0
 
-  # Grafiklar
+  # 4. Grafiklar (Charts)
   fl_chart: ^0.66.0
 
-  # Login animatsiyasi
-  flutter_login: 5.0.0
+  # 5. Sozlamalarni saqlash (Login, Tema)
+  shared_preferences: ^2.3.2
 
-  # Aylanuvchi pastki menyu
-  google_nav_bar: ^5.0.6
-
-  # State Management (Mavzular va oynani boshqarish uchun)
+  # 6. Tema boshqaruvi (ThemeProvider) ← YANGI QO'SHILDI
   provider: ^6.1.2
 
 dev_dependencies:
@@ -40,7 +36,3 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-
-  # Rasm va boshqa fayllarni ulash
-  assets:
-    - assets/images/bg.jpg
