@@ -1,117 +1,261 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_login/flutter_login.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-
-// Asosiy sahifaga o'tish uchun
+import 'package:shared_preferences/shared_preferences.dart';
 import '../widgets/main_wrapper.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
-
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _supabase = Supabase.instance.client;
+  // --- [ 1. BOSHQARUVCHILAR ] ---
+  final _email = TextEditingController();
+  final _pass = TextEditingController();
+  final _name = TextEditingController();
 
-  Duration get loginTime => const Duration(milliseconds: 1500);
+  bool _isLoading = false;
+  bool _isLogin = true;
+  bool _obscurePassword = true;
+  bool _rememberMe = false;
 
-  // --- 1. LOGIN (KIRISH) ---
-  Future<String?> _authUser(LoginData data) async {
-    try {
-      await _supabase.auth.signInWithPassword(
-        email: data.name,
-        password: data.password,
-      );
-      return null;
-    } on AuthException catch (e) {
-      return 'Xato: ${e.message}'; 
-    } catch (e) {
-      return 'Tizimda xatolik yuz berdi';
-    }
-  }
-
-  // --- 2. SIGNUP (RO'YXATDAN O'TISH) ---
-  Future<String?> _signupUser(SignupData data) async {
-    try {
-      // Yangi qo'shilgan "Ism" maydonidan ma'lumotni ajratib olamiz
-      final String fullName = data.additionalSignupData?['full_name'] ?? 'Yangi foydalanuvchi';
-
-      // Supabase'ga Email, Parol va Ismni yuboramiz
-      await _supabase.auth.signUp(
-        email: data.name!,
-        password: data.password!,
-        data: {'full_name': fullName}, // Bu ma'lumot Supabase metadata'siga saqlanadi
-      );
-      return null;
-    } on AuthException catch (e) {
-      return 'Xato: ${e.message}';
-    } catch (e) {
-      return 'Tizimda xatolik yuz berdi';
-    }
-  }
-
-  // --- 3. PAROLNI TIKLASH ---
-  Future<String?> _recoverPassword(String name) async {
-    try {
-      await _supabase.auth.resetPasswordForEmail(name);
-      return null;
-    } on AuthException catch (e) {
-      return 'Xato: ${e.message}';
-    } catch (e) {
-      return 'Tizimda xatolik yuz berdi';
-    }
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedCredentials();
   }
 
   @override
-  Widget build(BuildContext context) {
-    return FlutterLogin(
-      title: 'ARISTOKRAT', 
-      
-      theme: LoginTheme(
-        primaryColor: const Color(0xFF2E5BFF), 
-        accentColor: const Color(0xFF29fd53),  
-        buttonTheme: const LoginButtonTheme(
-          backgroundColor: Color(0xFF29fd53),
-        ),
-      ),
+  void dispose() {
+    _email.dispose();
+    _pass.dispose();
+    _name.dispose();
+    super.dispose();
+  }
 
-      onLogin: _authUser,
-      onSignup: _signupUser,
-      onRecoverPassword: _recoverPassword,
+  // --- [ 2. ESLAB QOLISH VA YUKLASH ] ---
+  Future<void> _loadSavedCredentials() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() {
+        _email.text = prefs.getString('saved_email') ?? '';
+        _pass.text = prefs.getString('saved_pass') ?? '';
+        _rememberMe = prefs.getBool('remember_me') ?? false;
+      });
+    }
+  }
 
-      // --- RO'YXATDAN O'TISH UCHUN QO'SHIMCHA MAYDONLAR ---
-      additionalSignupFields: [
-        const UserFormField(
-          keyName: 'full_name', // Ma'lumotni ushlab olish uchun kalit so'z
-          displayName: 'Ism va Familiya', // Ekranda ko'rinadigan yozuv
-          icon: Icon(Icons.person),
-        ),
-      ],
+  Future<void> _saveCredentials() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (_rememberMe) {
+      await prefs.setString('saved_email', _email.text.trim());
+      await prefs.setString('saved_pass', _pass.text.trim());
+      await prefs.setBool('remember_me', true);
+    } else {
+      await prefs.remove('saved_email');
+      await prefs.remove('saved_pass');
+      await prefs.setBool('remember_me', false);
+    }
+  }
 
-      // Ilova inglizcha bo'lmasligi uchun yozuvlarni o'zbekchaga o'g'iramiz
-      messages: LoginMessages(
-        userHint: 'Email yoki Login',
-        passwordHint: 'Parol',
-        confirmPasswordHint: 'Parolni tasdiqlang',
-        loginButton: 'KIRISH',
-        signupButton: "RO'YXATDAN O'TISH",
-        forgotPasswordButton: 'Parolni unutdingizmi?',
-        recoverPasswordButton: 'TIKLASH',
-        goBackButton: 'ORQAGA',
-        confirmPasswordError: 'Parollar mos kelmadi!',
-      ),
+  // --- [ 3. ASOSIY AUTH FUNKSIYASI ] ---
+  Future<void> _auth() async {
+    if (_email.text.isEmpty || _pass.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Email va parolni kiriting!")),
+      );
+      return;
+    }
+    setState(() => _isLoading = true);
 
-      // --- ANIMATSIYA TUGACH, ASOSIY SAHIFAGA O'TISH ---
-      onSubmitAnimationCompleted: () {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (context) => const MainWrapper(),
-          ),
+    try {
+      if (_isLogin) {
+        await Supabase.instance.client.auth.signInWithPassword(
+          email: _email.text.trim(),
+          password: _pass.text.trim(),
         );
-      },
+      } else {
+        await Supabase.instance.client.auth.signUp(
+          email: _email.text.trim(),
+          password: _pass.text.trim(),
+          data: {'full_name': _name.text.trim()},
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Ro'yxatdan o'tdingiz!")),
+          );
+          setState(() => _isLogin = true);
+        }
+      }
+
+      await _saveCredentials();
+
+      if (mounted && _isLogin) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const MainWrapper()),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Xatolik: $e"), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // --- [ 4. UI QISMI ] ---
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 400),
+            child: Column(
+              children: [
+                const SizedBox(height: 40),
+
+                // LOGO
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.house_siding_rounded,
+                    size: 60,
+                    color: Colors.blue.shade900,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  "ARISTOKRAT MEBEL",
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.5,
+                    color: Colors.blue.shade900,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _isLogin ? "Hisobingizga kiring" : "Yangi hisob yaratish",
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+                ),
+                const SizedBox(height: 36),
+
+                // ISM (faqat ro'yxatdan o'tishda)
+                if (!_isLogin) ...[
+                  TextField(
+                    controller: _name,
+                    decoration: const InputDecoration(
+                      labelText: "To'liq ismingiz",
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.person_outline),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+
+                // EMAIL
+                TextField(
+                  controller: _email,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: const InputDecoration(
+                    labelText: "Email",
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.email_outlined),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // PAROL
+                TextField(
+                  controller: _pass,
+                  obscureText: _obscurePassword,
+                  decoration: InputDecoration(
+                    labelText: "Parol",
+                    border: const OutlineInputBorder(),
+                    prefixIcon: const Icon(Icons.lock_outline),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscurePassword
+                            ? Icons.visibility_off
+                            : Icons.visibility,
+                      ),
+                      onPressed: () => setState(
+                          () => _obscurePassword = !_obscurePassword),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                // ESLAB QOLISH
+                Row(
+                  children: [
+                    Checkbox(
+                      value: _rememberMe,
+                      onChanged: (v) =>
+                          setState(() => _rememberMe = v ?? false),
+                      activeColor: Colors.blue.shade900,
+                    ),
+                    const Text("Eslab qolish"),
+                  ],
+                ),
+                const SizedBox(height: 20),
+
+                // ASOSIY TUGMA
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: _isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : ElevatedButton(
+                          onPressed: _auth,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blue.shade900,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: Text(
+                            _isLogin ? "KIRISH" : "RO'YXATDAN O'TISH",
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 1,
+                            ),
+                          ),
+                        ),
+                ),
+                const SizedBox(height: 16),
+
+                // REJIM ALMASHTIRISH
+                TextButton(
+                  onPressed: () => setState(() => _isLogin = !_isLogin),
+                  child: Text(
+                    _isLogin
+                        ? "Hisobingiz yo'qmi? Ro'yxatdan o'ting"
+                        : "Hisobingiz bormi? Kirish",
+                    style: TextStyle(color: Colors.blue.shade700),
+                  ),
+                ),
+
+                const SizedBox(height: 40),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
