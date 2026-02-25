@@ -17,6 +17,15 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   bool _isLoading = true;
   bool _isMe = false;
   Map<String, dynamic>? _userData;
+  List<dynamic> _roles = [];
+
+  // Siz aytgan ruxsatnomalar ro'yxati (Admin uchun)
+  final Map<String, String> _allPerms = {
+    'can_view_finance': 'Kassani ko\'rish',
+    'can_add_order': 'Zakaz qo\'shish',
+    'can_manage_users': 'Xodimlarni boshqarish',
+    'can_manage_clients': 'Mijozlarni boshqarish',
+  };
 
   @override
   void initState() {
@@ -25,17 +34,25 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     _loadData();
   }
 
+  // ─── MA'LUMOTLARNI YUKLASH (Profil + Rollar) ──────────────────
   Future<void> _loadData() async {
     if (!mounted) return;
     setState(() => _isLoading = true);
     try {
       final String targetId = widget.userId ?? _supabase.auth.currentUser!.id;
-      final response = await _supabase
+      
+      final userRes = await _supabase
           .from('profiles')
           .select('*, app_roles(*)')
           .eq('id', targetId)
           .single();
-      setState(() => _userData = response);
+      
+      final rolesRes = await _supabase.from('app_roles').select();
+
+      setState(() {
+        _userData = userRes;
+        _roles = rolesRes;
+      });
     } catch (e) {
       debugPrint("Xato: $e");
     } finally {
@@ -43,116 +60,133 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     }
   }
 
+  // ─── TAHRIRLASH DIALOGI (ADMIN UCHUN) ─────────────────────────
+  void _showAdminEditDialog() {
+    int? selectedRoleId = _userData!['position_id'];
+    Map<String, dynamic> customPerms = Map<String, dynamic>.from(_userData!['custom_permissions'] ?? {});
+    final salaryCtrl = TextEditingController(text: _userData!['custom_salary']?.toString() ?? '');
+    final bonusCtrl = TextEditingController(text: _userData!['custom_bonus_per_m2']?.toString() ?? '');
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setST) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text("Xodimni sozlash"),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<int>(
+                  value: selectedRoleId,
+                  items: _roles.map((r) => DropdownMenuItem<int>(value: r['id'], child: Text(r['name']))).toList(),
+                  onChanged: (v) => setST(() => selectedRoleId = v),
+                  decoration: const InputDecoration(labelText: "Lavozimi", border: OutlineInputBorder()),
+                ),
+                const SizedBox(height: 15),
+                TextField(controller: salaryCtrl, decoration: const InputDecoration(labelText: "Shaxsiy oylik (fiks)", border: OutlineInputBorder()), keyboardType: TextInputType.number),
+                const SizedBox(height: 10),
+                TextField(controller: bonusCtrl, decoration: const InputDecoration(labelText: "Kvadrat bonusi", border: OutlineInputBorder()), keyboardType: TextInputType.number),
+                const Divider(height: 30),
+                const Text("Qo'shimcha ruxsatlar:", style: TextStyle(fontWeight: FontWeight.bold)),
+                ..._allPerms.entries.map((e) => CheckboxListTile(
+                  title: Text(e.value, style: const TextStyle(fontSize: 13)),
+                  value: customPerms[e.key] ?? false,
+                  onChanged: (v) => setST(() => customPerms[e.key] = v),
+                )),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Bekor")),
+            ElevatedButton(
+              onPressed: () async {
+                await _supabase.from('profiles').update({
+                  'position_id': selectedRoleId,
+                  'custom_salary': double.tryParse(salaryCtrl.text),
+                  'custom_bonus_per_m2': double.tryParse(bonusCtrl.text),
+                  'custom_permissions': customPerms,
+                }).eq('id', _userData!['id']);
+                Navigator.pop(context);
+                _loadData();
+              },
+              child: const Text("Saqlash"),
+            )
+          ],
+        ),
+      ),
+    );
+  }
+  // ─── DAVOMI: BUILD VA INTERFEYS ──────────────────────────────
   String _formatMoney(dynamic amount) {
     if (amount == null || amount == 0) return "0 so'm";
     return "${NumberFormat("#,###").format(amount).replaceAll(',', ' ')} so'm";
   }
 
-  // 1. TAHRIRLASH DIALOGI
-  void _showEditProfileDialog() {
-    final nameCtrl = TextEditingController(text: _userData!['full_name']);
-    final phoneCtrl = TextEditingController(text: _userData!['phone']);
-    final tgCtrl = TextEditingController(text: _userData!['telegram_username'] ?? '');
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text("Ma'lumotlarni tahrirlash"),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: "To'liq ism")),
-              TextField(controller: phoneCtrl, decoration: const InputDecoration(labelText: "Telefon"), keyboardType: TextInputType.phone),
-              TextField(controller: tgCtrl, decoration: const InputDecoration(labelText: "Telegram", prefixText: "@")),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Bekor")),
-          ElevatedButton(
-            onPressed: () async {
-              await _supabase.from('profiles').update({
-                'full_name': nameCtrl.text,
-                'phone': phoneCtrl.text,
-                'telegram_username': tgCtrl.text.replaceAll('@', ''),
-              }).eq('id', _userData!['id']);
-              Navigator.pop(ctx);
-              _loadData();
-            },
-            child: const Text("Saqlash"),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     if (_isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
-
+    
     final themeProvider = Provider.of<ThemeProvider>(context);
+    final role = _userData!['app_roles'];
     final bool isSuper = _userData!['is_super_admin'] == true;
     final String fullName = _userData!['full_name'] ?? 'Ismsiz';
-    final roleData = _userData!['app_roles'];
-    final bool isAup = roleData != null && roleData['role_type'] == 'aup';
+    final bool isAup = role != null && role['role_type'] == 'aup';
 
     // Moliya hisob-kitobi
-    double myBaseSalary = 0;
-    double myBonusPerM2 = 0;
-    if (isAup) {
-      myBaseSalary = (_userData!['custom_salary'] ?? roleData['base_salary'] ?? 0).toDouble();
-      myBonusPerM2 = (_userData!['custom_bonus_per_m2'] ?? roleData['bonus_per_m2'] ?? 0).toDouble();
-    }
+    double myBaseSalary = (_userData!['custom_salary'] ?? role?['base_salary'] ?? 0).toDouble();
+    double myBonusPerM2 = (_userData!['custom_bonus_per_m2'] ?? role?['bonus_per_m2'] ?? 0).toDouble();
 
     return Scaffold(
-      appBar: AppBar(title: Text(_isMe ? "Profilim" : "Xodim Profili"), centerTitle: true, elevation: 0),
+      appBar: AppBar(
+        title: Text(_isMe ? "Mening profilim" : "Xodim profili"),
+        actions: [
+          if (!_isMe && !isSuper) 
+            IconButton(onPressed: _showAdminEditDialog, icon: const Icon(Icons.edit_note, size: 30, color: Colors.blue)),
+        ],
+      ),
       body: ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
         children: [
-          // --- HEADER ---
+          // 1. Header
           Center(
             child: Column(
               children: [
-                CircleAvatar(
-                  radius: 45,
-                  backgroundColor: isSuper ? Colors.amber.withOpacity(0.2) : const Color(0xFF2E5BFF).withOpacity(0.1),
-                  child: Text(fullName[0].toUpperCase(), style: TextStyle(fontSize: 30, color: isSuper ? Colors.amber : const Color(0xFF2E5BFF), fontWeight: FontWeight.bold)),
-                ),
+                CircleAvatar(radius: 50, child: Text(fullName[0].toUpperCase(), style: const TextStyle(fontSize: 32))),
                 const SizedBox(height: 12),
-                Text(fullName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                Text(roleData?['name'] ?? 'Lavozimsiz', style: const TextStyle(color: Colors.grey)),
+                Text(fullName, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                Text(role?['name'] ?? 'Lavozimsiz', style: const TextStyle(color: Colors.grey)),
               ],
             ),
           ),
-          const SizedBox(height: 25),
+          const SizedBox(height: 30),
 
-          // --- MOLIYA VA SHARTLAR ---
-          _buildSectionTitle("MOLIYA VA SHARTLAR"),
+          // 2. MOLIYA VA SHARTLAR (Siz aytgan qismlar)
+          const Text("MOLIYA VA SHARTLAR", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
+          const SizedBox(height: 8),
           Card(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: isSuper 
-                ? const Row(children: [Icon(Icons.diamond, color: Colors.amber), SizedBox(width: 10), Text("Korxona Rahbari (Superadmin)")])
+                ? const Row(children: [Icon(Icons.diamond, color: Colors.amber), SizedBox(width: 10), Text("Tizim asoschisi")])
                 : (isAup 
                     ? Column(
                         children: [
-                          _buildInfoRow("Asosiy oylik:", _formatMoney(myBaseSalary), Colors.green),
-                          const Divider(),
-                          _buildInfoRow("Kvadrat bonusi:", "${_formatMoney(myBonusPerM2)} / m²", Colors.blue),
+                          _buildSalaryRow("Fiks oylik:", _formatMoney(myBaseSalary)),
+                          const Divider(height: 25),
+                          _buildSalaryRow("Bonus (m² uchun):", _formatMoney(myBonusPerM2)),
                         ],
                       )
-                    : const Row(children: [Icon(Icons.engineering, color: Colors.orange), SizedBox(width: 10), Text("Ishbay (Tarif bo'yicha) haq oladi")])),
+                    : const Row(children: [Icon(Icons.engineering, color: Colors.orange), SizedBox(width: 10), Text("Ishbay (Tarif bo'yicha) hisoblanadi")])),
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 30),
 
-          // --- ILOVA DIZAYNI (Theme Buttons) ---
+          // 3. ILOVA DIZAYNI (Theme Buttons)
           if (_isMe) ...[
-            _buildSectionTitle("ILOVA DIZAYNI"),
-            const SizedBox(height: 8),
+            const Text("ILOVA DIZAYNI", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
+            const SizedBox(height: 10),
             Row(
               children: [
                 _buildThemeBtn(themeProvider, AppThemeMode.light, "Oq", Icons.light_mode_rounded, Colors.blueAccent),
@@ -162,72 +196,27 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                 _buildThemeBtn(themeProvider, AppThemeMode.glass, "Oyna", Icons.lens_blur_rounded, Colors.tealAccent),
               ],
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 30),
           ],
 
-          // --- SOZLAMALAR ---
-          _buildSectionTitle("SOZLAMALAR"),
-          Card(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-            child: Column(
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.person_outline, color: Colors.blue),
-                  title: const Text("Ma'lumotlarni tahrirlash"),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: _showEditProfileDialog,
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(Icons.lock_reset, color: Colors.orange),
-                  title: const Text("Parolni yangilash"),
-                  onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Emailingizga havola yuborildi!"))),
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(Icons.logout, color: Colors.redAccent),
-                  title: const Text("Tizimdan chiqish", style: TextStyle(color: Colors.redAccent)),
-                  onTap: () async {
-                    await _supabase.auth.signOut();
-                    if (mounted) Navigator.pushReplacementNamed(context, '/login');
-                  },
-                ),
-              ],
+          // 4. CHIQISH
+          if (_isMe)
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade50, foregroundColor: Colors.red, padding: const EdgeInsets.all(15)),
+              onPressed: () => _supabase.auth.signOut(), 
+              child: const Text("Tizimdan chiqish"),
             ),
-          ),
-
-          // --- DANGER ZONE (Admin boshqa xodimni ko'rganda) ---
-          if (!_isMe && !isSuper) ...[
-            const SizedBox(height: 20),
-            _buildSectionTitle("DANGER ZONE"),
-            Card(
-              color: Colors.red.withOpacity(0.05),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: const BorderSide(color: Colors.redAccent)),
-              child: ListTile(
-                leading: const Icon(Icons.block, color: Colors.redAccent),
-                title: const Text("Xodimni bloklash", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
-                onTap: () => _confirmAction("Bloklash"),
-              ),
-            ),
-          ],
         ],
       ),
     );
   }
 
-  Widget _buildSectionTitle(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 4, bottom: 8),
-      child: Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
-    );
-  }
-
-  Widget _buildInfoRow(String label, String value, Color color) {
+  Widget _buildSalaryRow(String label, String value) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(label, style: const TextStyle(color: Colors.grey)),
-        Text(value, style: TextStyle(fontWeight: FontWeight.bold, color: color)),
+        Text(value, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
       ],
     );
   }
@@ -238,34 +227,20 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       child: GestureDetector(
         onTap: () => provider.toggleTheme(mode),
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12),
+          padding: const EdgeInsets.symmetric(vertical: 16),
           decoration: BoxDecoration(
             color: isSelected ? color.withOpacity(0.1) : Colors.transparent,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(16),
             border: Border.all(color: isSelected ? color : Colors.grey.withOpacity(0.3)),
           ),
           child: Column(
             children: [
               Icon(icon, color: isSelected ? color : Colors.grey),
-              const SizedBox(height: 4),
+              const SizedBox(height: 5),
               Text(title, style: TextStyle(fontSize: 12, color: isSelected ? color : Colors.grey, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  void _confirmAction(String title) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(title),
-        content: Text("Haqiqatan ham ushbu amalni bajarmoqchimisiz?"),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Yo'q")),
-          ElevatedButton(onPressed: () => Navigator.pop(ctx), child: const Text("Ha")),
-        ],
       ),
     );
   }
