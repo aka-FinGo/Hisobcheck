@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-import '../theme/theme_provider.dart';  // Yo'l to'g'ri ekanligiga ishonch hosil qiling
+import '../theme/theme_provider.dart';
 
 class UserProfileScreen extends StatefulWidget {
   final String? userId; 
@@ -21,7 +21,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   @override
   void initState() {
     super.initState();
-    // Agar userId null bo'lsa yoki joriy userga teng bo'lsa - demak bu "Mening profilim"
     _isMe = widget.userId == null || widget.userId == _supabase.auth.currentUser!.id;
     _loadData();
   }
@@ -49,7 +48,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     return "${NumberFormat("#,###").format(amount).replaceAll(',', ' ')} so'm";
   }
 
-  // ─── TAHRIRLASH DIALOGI (iPhone Style) ────────────────────────
+  // 1. TAHRIRLASH DIALOGI
   void _showEditProfileDialog() {
     final nameCtrl = TextEditingController(text: _userData!['full_name']);
     final phoneCtrl = TextEditingController(text: _userData!['phone']);
@@ -60,13 +59,15 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text("Ma'lumotlarni tahrirlash"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: "To'liq ism")),
-            TextField(controller: phoneCtrl, decoration: const InputDecoration(labelText: "Telefon"), keyboardType: TextInputType.phone),
-            TextField(controller: tgCtrl, decoration: const InputDecoration(labelText: "Telegram username", prefixText: "@")),
-          ],
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: "To'liq ism")),
+              TextField(controller: phoneCtrl, decoration: const InputDecoration(labelText: "Telefon"), keyboardType: TextInputType.phone),
+              TextField(controller: tgCtrl, decoration: const InputDecoration(labelText: "Telegram", prefixText: "@")),
+            ],
+          ),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Bekor")),
@@ -91,13 +92,13 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   Widget build(BuildContext context) {
     if (_isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
+    final themeProvider = Provider.of<ThemeProvider>(context);
     final bool isSuper = _userData!['is_super_admin'] == true;
     final String fullName = _userData!['full_name'] ?? 'Ismsiz';
     final roleData = _userData!['app_roles'];
-    final String position = roleData != null ? roleData['name'] : 'Lavozimsiz';
     final bool isAup = roleData != null && roleData['role_type'] == 'aup';
 
-    // Oylikni hisoblash (Shaxsiy ustun tursa o'shani, yo'qsa standartni oladi)
+    // Moliya hisob-kitobi
     double myBaseSalary = 0;
     double myBonusPerM2 = 0;
     if (isAup) {
@@ -106,128 +107,151 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(_isMe ? "Profilim" : "Xodim Profili"),
-        elevation: 0,
-      ),
+      appBar: AppBar(title: Text(_isMe ? "Profilim" : "Xodim Profili"), centerTitle: true, elevation: 0),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
         children: [
-          // 1. HEADER (Avatar va Ism)
+          // --- HEADER ---
           Center(
             child: Column(
               children: [
                 CircleAvatar(
-                  radius: 50,
-                  backgroundColor: isSuper ? Colors.amber.withOpacity(0.2) : Colors.blue.withOpacity(0.1),
-                  child: Text(fullName[0].toUpperCase(), style: TextStyle(fontSize: 32, color: isSuper ? Colors.amber : Colors.blue)),
+                  radius: 45,
+                  backgroundColor: isSuper ? Colors.amber.withOpacity(0.2) : const Color(0xFF2E5BFF).withOpacity(0.1),
+                  child: Text(fullName[0].toUpperCase(), style: TextStyle(fontSize: 30, color: isSuper ? Colors.amber : const Color(0xFF2E5BFF), fontWeight: FontWeight.bold)),
                 ),
                 const SizedBox(height: 12),
-                Text(fullName, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                Text(position, style: const TextStyle(color: Colors.grey)),
+                Text(fullName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                Text(roleData?['name'] ?? 'Lavozimsiz', style: const TextStyle(color: Colors.grey)),
               ],
-            ),
-          ),
-          const SizedBox(height: 30),
-
-          // 2. MOLIYAVIY SHARTLAR (Eski funksionallik qaytarildi)
-          const Text("MOLIYA VA SHARTLAR", style: TextStyle(fontSize: 13, color: Colors.grey, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          Card(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: isSuper 
-                ? const Row(children: [Icon(Icons.diamond, color: Colors.amber), SizedBox(width: 10), Text("Tizim asoschisi")])
-                : (isAup 
-                    ? Column(
-                        children: [
-                          _buildSalaryRow("Fiks oylik:", _formatMoney(myBaseSalary)),
-                          const Divider(),
-                          _buildSalaryRow("Bonus (m² uchun):", _formatMoney(myBonusPerM2)),
-                        ],
-                      )
-                    : const Text("Ishbay (Tarif bo'yicha) hisoblanadi")),
             ),
           ),
           const SizedBox(height: 25),
 
-          // 3. SOZLAMALAR (iPhone Style)
-          const Text("SOZLAMALAR", style: TextStyle(fontSize: 13, color: Colors.grey, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
+          // --- MOLIYA VA SHARTLAR ---
+          _buildSectionTitle("MOLIYA VA SHARTLAR"),
           Card(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: isSuper 
+                ? const Row(children: [Icon(Icons.diamond, color: Colors.amber), SizedBox(width: 10), Text("Korxona Rahbari (Superadmin)")])
+                : (isAup 
+                    ? Column(
+                        children: [
+                          _buildInfoRow("Asosiy oylik:", _formatMoney(myBaseSalary), Colors.green),
+                          const Divider(),
+                          _buildInfoRow("Kvadrat bonusi:", "${_formatMoney(myBonusPerM2)} / m²", Colors.blue),
+                        ],
+                      )
+                    : const Row(children: [Icon(Icons.engineering, color: Colors.orange), SizedBox(width: 10), Text("Ishbay (Tarif bo'yicha) haq oladi")])),
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // --- ILOVA DIZAYNI (Theme Buttons) ---
+          if (_isMe) ...[
+            _buildSectionTitle("ILOVA DIZAYNI"),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                _buildThemeBtn(themeProvider, AppThemeMode.light, "Oq", Icons.light_mode_rounded, Colors.blueAccent),
+                const SizedBox(width: 10),
+                _buildThemeBtn(themeProvider, AppThemeMode.dark, "Qora", Icons.dark_mode_rounded, Colors.deepPurpleAccent),
+                const SizedBox(width: 10),
+                _buildThemeBtn(themeProvider, AppThemeMode.glass, "Oyna", Icons.lens_blur_rounded, Colors.tealAccent),
+              ],
+            ),
+            const SizedBox(height: 20),
+          ],
+
+          // --- SOZLAMALAR ---
+          _buildSectionTitle("SOZLAMALAR"),
+          Card(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
             child: Column(
               children: [
                 ListTile(
                   leading: const Icon(Icons.person_outline, color: Colors.blue),
                   title: const Text("Ma'lumotlarni tahrirlash"),
-                  trailing: const Icon(Icons.chevron_right, size: 20),
+                  trailing: const Icon(Icons.chevron_right),
                   onTap: _showEditProfileDialog,
                 ),
-                if (_isMe) ...[
-                  const Divider(height: 1, indent: 55),
-                  ListTile(
-                    leading: const Icon(Icons.dark_mode_outlined, color: Colors.purple),
-                    title: const Text("Tungi rejim"),
-                    trailing: Switch.adaptive(
-                      value: Theme.of(context).brightness == Brightness.dark,
-                      onChanged: (val) {
-                        Provider.of<ThemeProvider>(context, listen: false).toggleTheme();
-                      },
-                    ),
-                  ),
-                ],
-                const Divider(height: 1, indent: 55),
+                const Divider(height: 1),
                 ListTile(
-                  leading: const Icon(Icons.lock_outline, color: Colors.green),
+                  leading: const Icon(Icons.lock_reset, color: Colors.orange),
                   title: const Text("Parolni yangilash"),
-                  trailing: const Icon(Icons.chevron_right, size: 20),
-                  onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Emailga havola yuborildi!"))),
+                  onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Emailingizga havola yuborildi!"))),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.logout, color: Colors.redAccent),
+                  title: const Text("Tizimdan chiqish", style: TextStyle(color: Colors.redAccent)),
+                  onTap: () async {
+                    await _supabase.auth.signOut();
+                    if (mounted) Navigator.pushReplacementNamed(context, '/login');
+                  },
                 ),
               ],
             ),
           ),
-          
-          const SizedBox(height: 25),
 
-          // 4. DANGER ZONE (Faqat Admin boshqa xodim uchun ko'radi)
+          // --- DANGER ZONE (Admin boshqa xodimni ko'rganda) ---
           if (!_isMe && !isSuper) ...[
-            const Text("XAVFLI HUDUD", style: TextStyle(fontSize: 13, color: Colors.red, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
+            const SizedBox(height: 20),
+            _buildSectionTitle("DANGER ZONE"),
             Card(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               color: Colors.red.withOpacity(0.05),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: const BorderSide(color: Colors.redAccent)),
               child: ListTile(
-                leading: const Icon(Icons.block, color: Colors.red),
-                title: const Text("Xodimni bloklash", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                leading: const Icon(Icons.block, color: Colors.redAccent),
+                title: const Text("Xodimni bloklash", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
                 onTap: () => _confirmAction("Bloklash"),
               ),
             ),
           ],
-
-          if (_isMe)
-            Padding(
-              padding: const EdgeInsets.only(top: 20),
-              child: TextButton(
-                onPressed: () => _supabase.auth.signOut(),
-                child: const Text("Tizimdan chiqish", style: TextStyle(color: Colors.red, fontSize: 16)),
-              ),
-            ),
         ],
       ),
     );
   }
 
-  Widget _buildSalaryRow(String label, String value) {
+  Widget _buildSectionTitle(String title) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: const TextStyle(color: Colors.grey)),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
-        ],
+      padding: const EdgeInsets.only(left: 4, bottom: 8),
+      child: Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+    );
+  }
+
+  Widget _buildInfoRow(String label, String value, Color color) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: const TextStyle(color: Colors.grey)),
+        Text(value, style: TextStyle(fontWeight: FontWeight.bold, color: color)),
+      ],
+    );
+  }
+
+  Widget _buildThemeBtn(ThemeProvider provider, AppThemeMode mode, String title, IconData icon, Color color) {
+    final isSelected = provider.currentMode == mode;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => provider.toggleTheme(mode),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: isSelected ? color.withOpacity(0.1) : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: isSelected ? color : Colors.grey.withOpacity(0.3)),
+          ),
+          child: Column(
+            children: [
+              Icon(icon, color: isSelected ? color : Colors.grey),
+              const SizedBox(height: 4),
+              Text(title, style: TextStyle(fontSize: 12, color: isSelected ? color : Colors.grey, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
+            ],
+          ),
+        ),
       ),
     );
   }
