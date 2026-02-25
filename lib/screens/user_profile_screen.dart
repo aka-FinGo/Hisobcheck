@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-import '../theme/theme_provider.dart'; // Yo'l to'g'ri ekanligiga ishonch hosil qiling
+import '../theme/theme_provider.dart';  // Yo'l to'g'ri ekanligiga ishonch hosil qiling
 
 class UserProfileScreen extends StatefulWidget {
   final String? userId; 
