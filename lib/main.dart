@@ -1,19 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:provider/provider.dart'; // <-- Provider ulandi
+import 'package:provider/provider.dart';
 
 import 'screens/login_screen.dart';
-import 'widgets/main_wrapper.dart'; 
-import 'theme/theme_provider.dart'; // <-- Miyani ulab oldik
+import 'widgets/main_wrapper.dart';
+import 'theme/theme_provider.dart';
+import 'theme/app_themes.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Supabase kalitlari (GitHub Secrets dan o'qiladi)
+  // ── Supabase kalitlari (GitHub Secrets orqali uzatiladi) ──
   const String supabaseUrl = String.fromEnvironment('SUPABASE_URL');
   const String supabaseKey = String.fromEnvironment('SUPABASE_KEY');
 
-  // Supabase'ni ishga tushirish
   if (supabaseUrl.isNotEmpty && supabaseKey.isNotEmpty) {
     try {
       await Supabase.initialize(
@@ -25,10 +25,13 @@ Future<void> main() async {
     }
   }
 
+  // ── ThemeProvider ni yuklash (SharedPreferences dan) ──
+  final themeProvider = ThemeProvider();
+  await themeProvider.loadTheme();
+
   runApp(
-    // Butun ilovani ThemeProvider bilan o'raymiz!
-    ChangeNotifierProvider(
-      create: (_) => ThemeProvider()..loadTheme(),
+    ChangeNotifierProvider<ThemeProvider>.value(
+      value: themeProvider,
       child: const MyApp(),
     ),
   );
@@ -39,6 +42,9 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // ThemeProvider dan mavzuni kuzatamiz
+    final themeProvider = context.watch<ThemeProvider>();
+
     // Foydalanuvchi tizimga kirganligini aniqlash
     bool isLoggedIn = false;
     try {
@@ -48,16 +54,35 @@ class MyApp extends StatelessWidget {
       isLoggedIn = false;
     }
 
-    // ThemeProvider orqali hozirgi mavzuni olamiz
-    final themeProvider = Provider.of<ThemeProvider>(context);
+    // Glass mavzu uchun MaterialApp transparency ni sozlash
+    final isGlass = themeProvider.currentMode == AppThemeMode.glass;
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Aristokrat Mebel',
-      
-      // DIQQAT: Dizayn to'g'ridan-to'g'ri markazdan olinmoqda!
-      theme: themeProvider.themeData, 
-      
+
+      // ── Aktiv mavzu (light / dark / glass) ──
+      theme: themeProvider.themeData,
+
+      // Glass mavzuda scaffold transparent bo'lishi uchun
+      builder: isGlass
+          ? (context, child) => Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Color(0xFF1A237E),
+                      Color(0xFF4A148C),
+                      Color(0xFF006064),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+                child: child,
+              )
+          : null,
+
+      // Agar kirgan bo'lsa → MainWrapper, bo'lmasa → LoginScreen
       home: isLoggedIn ? const MainWrapper() : const LoginScreen(),
     );
   }
