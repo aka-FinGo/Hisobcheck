@@ -30,8 +30,8 @@ dependencies:
   # 6. Tema boshqaruvi (ThemeProvider)
   provider: ^6.1.2
 
-  # 7. Login UI paketi
-  flutter_login: ^5.1.0
+  # 7. Login UI paketi — 6.0.0 Flutter 3.27 bilan mos
+  flutter_login: ^6.0.0
 
   # 8. Pastki navigatsiya
   google_nav_bar: ^5.0.6
