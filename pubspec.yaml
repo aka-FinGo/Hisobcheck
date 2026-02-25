@@ -19,7 +19,6 @@ dependencies:
 
   # 3. Ikonkalar
   cupertino_icons: ^1.0.6
-  font_awesome_flutter: ^10.7.0
 
   # 4. Grafiklar (Charts)
   fl_chart: ^0.66.0
@@ -30,10 +29,7 @@ dependencies:
   # 6. Tema boshqaruvi (ThemeProvider)
   provider: ^6.1.2
 
-  # 7. Login UI paketi — 6.0.0 Flutter 3.27 bilan mos
-  flutter_login: ^6.0.0
-
-  # 8. Pastki navigatsiya
+  # 7. Pastki navigatsiya
   google_nav_bar: ^5.0.6
 
 dev_dependencies:
