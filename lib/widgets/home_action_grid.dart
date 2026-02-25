@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import '../screens/clients_screen.dart';
 import '../screens/stats_screen.dart';
 import '../screens/manage_users_screen.dart';
-
+import '../screens/manage_roles_screen.dart'; // YANGI SAHIFA IMPORT QILINDI
+import '../screens/admin_panel_screen.dart';
 class HomeActionGrid extends StatelessWidget {
   final bool isAdmin;
+  final bool canManageUsers; // Shu ruxsat qo'shildi!
   final int totalOrders;
   final int activeOrders;
   final VoidCallback onWithdrawTap;
@@ -12,6 +14,7 @@ class HomeActionGrid extends StatelessWidget {
   const HomeActionGrid({
     super.key,
     required this.isAdmin,
+    required this.canManageUsers,
     required this.totalOrders,
     required this.activeOrders,
     required this.onWithdrawTap,
@@ -45,10 +48,23 @@ class HomeActionGrid extends StatelessWidget {
           childAspectRatio: 1.1,
           children: [
             _buildActionCard(context, title: "Mijozlar", icon: Icons.people_outline_rounded, color: Colors.orange, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ClientsScreen()))),
+            
             if (isAdmin) ...[
               _buildActionCard(context, title: "Hisobotlar", icon: Icons.insert_chart_outlined_rounded, color: const Color(0xFF6C3FE8), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StatsScreen()))),
-              _buildActionCard(context, title: "Xodimlar", icon: Icons.manage_accounts_outlined, color: Colors.teal, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ManageUsersScreen()))),
-            ] else ...[
+            ],
+            
+            // XODIMLAR VA LAVOZIMLAR O'RNIGA BITTA ADMIN PANEL TUGMASI:
+            if (canManageUsers) ...[
+              _buildActionCard(
+                context, 
+                title: "Admin Panel", 
+                icon: Icons.admin_panel_settings_rounded, 
+                color: Colors.redAccent, 
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminPanelScreen()))
+              ),
+            ],
+            
+            if (!isAdmin) ...[
               _buildActionCard(context, title: "Avans so'rash", icon: Icons.money_rounded, color: Colors.green, onTap: onWithdrawTap),
             ],
           ],
