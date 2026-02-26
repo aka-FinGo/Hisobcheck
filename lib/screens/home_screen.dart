@@ -8,9 +8,42 @@ import '../widgets/balance_card.dart';
 import '../widgets/home_action_grid.dart';
 
 class OrderStatus {
+  // Status kalitlari (Bazada xuddi shunday saqlanadi)
   static const pending = 'pending';
+  static const material = 'material';
+  static const assembly = 'assembly';
+  static const delivery = 'delivery';
   static const completed = 'completed';
   static const canceled = 'canceled';
+
+  // UI da ko'rsatiladigan chiroyli nomlari (Tarjimalar)
+  static String getText(String? status) {
+    switch (status) {
+      case pending: return 'Kutilmoqda';
+      case material: return 'Kesish/Material';
+      case assembly: return "Yig'ish";
+      case delivery: return "O'rnatish";
+      case completed: return 'Yakunlandi';
+      case canceled: return 'Bekor qilindi';
+      default: return 'Noma\'lum';
+    }
+  }
+
+  // Status ranglari
+  static Color getColor(String? status) {
+    switch (status) {
+      case pending: return Colors.orange;
+      case material: return Colors.purple;
+      case assembly: return Colors.blue;
+      case delivery: return Colors.teal;
+      case completed: return Colors.green;
+      case canceled: return Colors.red;
+      default: return Colors.grey;
+    }
+  }
+  
+  // Aktiv (hali yopilmagan) zakazlarni tekshirish uchun yordamchi ro'yxat
+  static const activeStatuses = [pending, material, assembly, delivery];
 }
 
 class HomeScreen extends StatefulWidget {
