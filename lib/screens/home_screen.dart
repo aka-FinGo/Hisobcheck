@@ -225,6 +225,36 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(height: 25),
                     
+                    // ==========================================================
+                    // MANA SHU QISM YETISHMAYAPTI: ISH TOPSHIRISH TUGMASI
+                    // ==========================================================
+                    if (hasPermission('can_add_work_log')) ...[
+                      SizedBox(
+                        width: double.infinity,
+                        height: 55,
+                        child: ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF2E5BFF),
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                            elevation: 3,
+                          ),
+                          icon: const Icon(Icons.add_task_rounded, size: 26),
+                          label: const Text("Bajargan ishni topshirish", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                          onPressed: () {
+                            // Sahifaga o'tish va qaytganda ma'lumotlarni yangilash
+                            Navigator.push(
+                              context, 
+                              MaterialPageRoute(builder: (_) => const AddWorkLogScreen())
+                            ).then((value) {
+                              _loadAllData();
+                            });
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 25),
+                    ],
+                    
                     // 3. Tezkor Tugmalar 
                     // (Bu yerni ham ruxsatlarga bog'lab yuboramiz)
                     HomeActionGrid(
