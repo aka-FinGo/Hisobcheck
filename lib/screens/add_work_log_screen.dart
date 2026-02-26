@@ -258,7 +258,7 @@ class _AdminApprovalsScreenState extends State<AdminApprovalsScreen> with Single
       itemCount: _withdrawals.length,
       itemBuilder: (context, index) {
         final avans = _withdrawals[index];
-        final workerName = avans['worker']?['full_name'] ?? 'Noma\\'lum xodim';
+        final workerName = avans['worker']?['full_name'] ?? "Noma'lum xodim";
 
         return Card(
           margin: const EdgeInsets.only(bottom: 12),
