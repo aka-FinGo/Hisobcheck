@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:intl/intl.dart';
-
 import '../widgets/home_header.dart';
 import '../widgets/balance_card.dart';
 import '../widgets/home_action_grid.dart';
@@ -31,7 +29,7 @@ class _HomeScreenState extends State<HomeScreen> {
   int _totalOrders = 0;
   int _activeOrders = 0;
   
-  // Bildirishnomalar (Badges)
+  // Bildirishnomalar
   int _pendingApprovals = 0;
   int _totalClientsCount = 0;
   int _newClientsCount = 0;
@@ -52,13 +50,11 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadAllData() async {
     if (!mounted) return;
     setState(() => _isLoading = true);
-    
     try {
       final user = _supabase.auth.currentUser;
       if (user == null) return;
 
       final profile = await _supabase.from('profiles').select('*, app_roles(*)').eq('id', user.id).single();
-
       _userName = profile['full_name'] ?? 'Foydalanuvchi';
       _isSuperAdmin = profile['is_super_admin'] ?? false;
       
@@ -67,66 +63,44 @@ class _HomeScreenState extends State<HomeScreen> {
         _rolePermissions = profile['app_roles']['permissions'] ?? {};
       }
 
-      // MA'LUMOTLARNI HISOB-KITOB QILISH (Admin/Worker uchun alohida)
       if (hasPermission('can_view_finance') || _isSuperAdmin) {
         final orders = await _supabase.from('orders').select('total_price, status');
         final clients = await _supabase.from('clients').select('id, created_at');
-        final pendingW = await _supabase.from('work_logs').select('id').eq('is_approved', false);
-        final pendingA = await _supabase.from('withdrawals').select('id').eq('status', 'pending');
+        final pWorks = await _supabase.from('work_logs').select('id').eq('is_approved', false);
+        final pAvans = await _supabase.from('withdrawals').select('id').eq('status', 'pending');
 
         int active = orders.where((o) => ['pending','material','assembly','delivery'].contains(o['status'])).length;
         final dayAgo = DateTime.now().subtract(const Duration(days: 1));
         int recent = clients.where((c) => DateTime.parse(c['created_at']).isAfter(dayAgo)).length;
 
         setState(() {
-          _totalOrders = orders.length;
-          _activeOrders = active;
-          _pendingApprovals = pendingW.length + pendingA.length;
-          _totalClientsCount = clients.length;
-          _newClientsCount = recent;
+          _totalOrders = orders.length; _activeOrders = active;
+          _pendingApprovals = pWorks.length + pAvans.length;
+          _totalClientsCount = clients.length; _newClientsCount = recent;
         });
       }
     } catch (e) { debugPrint("Xato: $e"); }
     finally { if (mounted) setState(() => _isLoading = false); }
   }
-// AVANS SO'RASH FUNKSIYASI (Logic shu yerda qoladi)
+// Avans Dialogi (Logic)
   void _showWithdrawDialog() {
     final amountCtrl = TextEditingController();
-    final descCtrl = TextEditingController();
-    bool isSubmitting = false;
-
     showDialog(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-          title: const Text("Avans so'rash"),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(controller: amountCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Summa")),
-              const SizedBox(height: 10),
-              TextField(controller: descCtrl, decoration: const InputDecoration(labelText: "Izoh")),
-            ],
+      builder: (ctx) => AlertDialog(
+        title: const Text("Avans so'rash"),
+        content: TextField(controller: amountCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Summa")),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Bekor")),
+          ElevatedButton(
+            onPressed: () async {
+              await _supabase.from('withdrawals').insert({'worker_id': _supabase.auth.currentUser!.id, 'amount': double.tryParse(amountCtrl.text) ?? 0, 'status': 'pending'});
+              Navigator.pop(ctx);
+              _loadAllData();
+            },
+            child: const Text("Yuborish"),
           ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Bekor")),
-            ElevatedButton(
-              onPressed: isSubmitting ? null : () async {
-                setDialogState(() => isSubmitting = true);
-                await _supabase.from('withdrawals').insert({
-                  'worker_id': _supabase.auth.currentUser!.id,
-                  'amount': double.tryParse(amountCtrl.text) ?? 0,
-                  'description': descCtrl.text,
-                  'status': 'pending'
-                });
-                Navigator.pop(ctx);
-                _loadAllData(); // MUHIM: Bazaga yozgach raqamlarni yangilash
-              },
-              child: const Text("Yuborish"),
-            ),
-          ],
-        ),
+        ],
       ),
     );
   }
@@ -140,8 +114,11 @@ class _HomeScreenState extends State<HomeScreen> {
           child: ListView(
             padding: const EdgeInsets.all(20),
             children: [
+              // 1. HEADER (Mavzu pulti shu yerda)
               HomeHeader(greeting: "Salom", userName: _userName),
               const SizedBox(height: 25),
+
+              // 2. BALANS
               BalanceCard(
                 role: (_isSuperAdmin || hasPermission('can_view_finance')) ? 'admin' : 'worker',
                 mainBalance: _displayEarned - _displayWithdrawn,
@@ -149,16 +126,30 @@ class _HomeScreenState extends State<HomeScreen> {
                 secondaryBalance: _secondaryBalance, statsCount: 0,
               ),
               const SizedBox(height: 25),
-              // TEZKOR TUGMALAR (Tugma u yerda, lekin pult shu yerda)
+
+              // 3. ISH TOPSHIRISH TUGMASI (MANA SHU!)
+              if (hasPermission('can_add_work_log'))
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 25),
+                  child: SizedBox(
+                    width: double.infinity, height: 55,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2E5BFF), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
+                      icon: const Icon(Icons.add_task), label: const Text("Bajargan ishni topshirish", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                      onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AddWorkLogScreen())).then((_) => _loadAllData()),
+                    ),
+                  ),
+                ),
+
+              // 4. ACTION GRID
               HomeActionGrid(
                 isAdmin: _isSuperAdmin || _userRoleType == 'aup',
                 canManageUsers: _isSuperAdmin || hasPermission('can_manage_users'),
                 totalOrders: _totalOrders, activeOrders: _activeOrders,
                 pendingApprovalsCount: _pendingApprovals,
-                totalClientsCount: _totalClientsCount,
-                newClientsCount: _newClientsCount,
+                totalClientsCount: _totalClientsCount, newClientsCount: _newClientsCount,
                 showWithdrawOption: _userRoleType == 'worker',
-                onWithdrawTap: _showWithdrawDialog, // MIYADAGI FUNKSIYANI BERDIK
+                onWithdrawTap: _showWithdrawDialog,
                 onClientsTap: () => Navigator.pushNamed(context, '/clients').then((_) => _loadAllData()),
               ),
             ],
