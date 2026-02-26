@@ -21,107 +21,6 @@ class _AddWorkLogScreenState extends State<AddWorkLogScreen> {
   
   // Form boshqaruvi
   int? _selectedOrderId;
-  String? _selectedTaskType; // 'my_role' yoki task_types jadvalidagi ID
-  
-  // Kiritish maydonlari
-  final _amountCtrl = TextEditingController();
-  final _descCtrl = TextEditingController();
-
-  // Hisoblangan ma'lumotlar
-  double _currentRate = 0;
-  String _currentUnit = 'dona';
-  String _taskNameForLog = '';
-  String? _targetStatusForAutoMove;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadInitialData();
-  }
-
-  Future<void> _loadInitialData() async {
-    setState(() => _isLoading = true);
-    try {
-      final userId = _supabase.auth.currentUser!.id;
-
-      // 1. Mening profilim va Lavozimim (Stavka, Birlik)
-      final profileRes = await _supabase
-          .from('profiles')
-          .select('*, app_roles(*)')
-          .eq('id', userId)
-          .single();
-          
-      // 2. Aktiv zakazlar (Kutilmoqda, Kesish, Yig'ish, O'rnatish)
-      final ordersRes = await _supabase
-          .from('orders')
-          .select('id, order_number, client_name, project_name')
-          .inFilter('status', ['pending', 'material', 'assembly', 'delivery'])
-          .order('created_at', ascending: false);
-
-      // 3. Umumiy Tariflar (Boshqa ishlar uchun)
-      final tasksRes = await _supabase.from('task_types').select().order('name');
-
-      setState(() {
-        _myProfile = profileRes;
-        _activeOrders = ordersRes;
-        _taskTypes = tasksRes;
-        
-        // Avtomatik ravishda o'z lavozimini tanlab qo'yish
-        _selectedTaskType = 'my_role';
-        _updateRateAndUnit();
-      });
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Yuklashda xato: $e')));
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  // Tanlangan ish turiga qarab narx va o'lchovni yangilash
-  void _updateRateAndUnit() {
-    if (_selectedTaskType == 'my_role') {
-      final role = _myProfile?['app_roles'];
-      _currentRate = (_myProfile?['custom_rate_per_unit'] ?? role?['rate_per_unit'] ?? 0).toDouble();
-      _currentUnit = _myProfile?['custom_unit_type'] ?? role?['unit_type'] ?? 'dona';
-      _taskNameForLog = role?['name'] ?? 'Asosiy vazifa';
-      _targetStatusForAutoMove = role?['target_status'];
-    } else {
-      // Tariflardan (task_types) qidirish
-      final selectedTask = _taskTypes.firstWhere((t) => t['id'].toString() == _selectedTaskType, orElse: () => null);
-      if (selectedTask != null) {
-        _currentRate = (selectedTask['price_per_unit'] ?? 0).toDouble();
-        _currentUnit = selectedTask['unit'] ?? 'dona';
-        _taskNameForLog = selectedTask['name'];
-        _targetStatusForAutoMove = selectedTask['target_status'];
-      }
-    }
-    // Miqdor o'zgarganda UI ni yangilash uchun
-    setState(() {});
-  }
-
-import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:intl/intl.dart';
-
-class AddWorkLogScreen extends StatefulWidget {
-  const AddWorkLogScreen({super.key});
-
-  @override
-  State<AddWorkLogScreen> createState() => _AddWorkLogScreenState();
-}
-
-class _AddWorkLogScreenState extends State<AddWorkLogScreen> {
-  final _supabase = Supabase.instance.client;
-  bool _isLoading = true;
-  bool _isSubmitting = false;
-
-  // Ma'lumotlar
-  List<dynamic> _activeOrders = [];
-  List<dynamic> _taskTypes = [];
-  Map<String, dynamic>? _myProfile;
-  
-  // Form boshqaruvi
-  int? _selectedOrderId;
   String? _selectedTaskType; 
   
   // Kiritish maydonlari
@@ -219,14 +118,14 @@ class _AddWorkLogScreenState extends State<AddWorkLogScreen> {
         'worker_id': _supabase.auth.currentUser!.id,
         'order_id': _selectedOrderId,
         'task_type': _taskNameForLog,
-        'area_m2': amount, // Bu maydonni bazada keyinroq 'quantity' deb o'zgartirgan ma'qul, hozircha ishlayveradi
+        'area_m2': amount, 
         'rate': _currentRate,
         'total_sum': _calculatedTotal,
         'description': _descCtrl.text.trim(),
-        'is_approved': false, // Rahbar tasdiqlashi kerak
+        'is_approved': false, 
       });
 
-      // 2. AVTOMATIZATSIYA (Agar bu ish bajarilganda zakaz statusi o'zgarishi kerak bo'lsa)
+      // 2. AVTOMATIZATSIYA
       if (_targetStatusForAutoMove != null) {
         await _supabase.from('orders').update({
           'status': _targetStatusForAutoMove
@@ -255,7 +154,6 @@ class _AddWorkLogScreenState extends State<AddWorkLogScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 1. ZAKAZ TANLASH
                 const Text("Qaysi zakaz?", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<int>(
@@ -269,7 +167,6 @@ class _AddWorkLogScreenState extends State<AddWorkLogScreen> {
                 ),
                 const SizedBox(height: 25),
 
-                // 2. ISH TURINI TANLASH
                 const Text("Nima ish qildingiz?", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
@@ -280,7 +177,7 @@ class _AddWorkLogScreenState extends State<AddWorkLogScreen> {
                       value: 'my_role', 
                       child: Text("O'z vazifam (${_myProfile?['app_roles']?['name'] ?? 'Asosiy'})", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue))
                     ),
-                    const DropdownMenuItem(value: '', enabled: false, child: Divider()), // Ajratuvchi chiziq
+                    const DropdownMenuItem(value: '', enabled: false, child: Divider()), 
                     ..._taskTypes.map((t) => DropdownMenuItem(
                       value: t['id'].toString(), 
                       child: Text(t['name'])
@@ -295,7 +192,6 @@ class _AddWorkLogScreenState extends State<AddWorkLogScreen> {
                 ),
                 const SizedBox(height: 25),
 
-                // 3. MIQDOR KIRITISH VA KALKULYATOR
                 const Text("Miqdor", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 const SizedBox(height: 8),
                 Row(
@@ -308,9 +204,9 @@ class _AddWorkLogScreenState extends State<AddWorkLogScreen> {
                         decoration: InputDecoration(
                           border: const OutlineInputBorder(),
                           hintText: "0.0",
-                          suffixText: _currentUnit, // dona, m2, m
+                          suffixText: _currentUnit,
                         ),
-                        onChanged: (val) => setState(() {}), // Yozgan sari pulni hisoblab turadi
+                        onChanged: (val) => setState(() {}),
                       ),
                     ),
                     const SizedBox(width: 15),
@@ -332,7 +228,6 @@ class _AddWorkLogScreenState extends State<AddWorkLogScreen> {
                 ),
                 const SizedBox(height: 25),
 
-                // 4. QO'SHIMCHA IZOH
                 const Text("Izoh (ixtiyoriy)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 const SizedBox(height: 8),
                 TextField(
@@ -342,7 +237,6 @@ class _AddWorkLogScreenState extends State<AddWorkLogScreen> {
                 ),
                 const SizedBox(height: 40),
 
-                // 5. YUBORISH TUGMASI
                 SizedBox(
                   width: double.infinity,
                   height: 50,
