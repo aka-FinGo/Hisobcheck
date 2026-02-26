@@ -158,13 +158,13 @@ void _showWithdrawDialog() {
               
               // BALANS CARD (Ma'lumotlar endi bazadan aniq hisoblandi)
               BalanceCard(
-                role: (_isSuperAdmin || hasPermission('can_view_finance')) ? 'admin' : 'worker',
-                mainBalance: _secondaryBalance, // Hamyondagi sof pul
-                income: _displayEarned, // Jami daromad/ish haqi
-                expense: _displayWithdrawn, // Chiqim/Avans
-                secondaryBalance: _secondaryBalance,
-                statsCount: _totalOrders,
-              ),
+  role: _userRoleType, // 'admin', 'aup' yoki 'worker'
+  companyBalance: _totalCompanyCash, // Jami zakaz puli - Jami to'langan avanslar
+  totalWorkerDebt: _unpaidEarnings,  // Ishchilar ishlagan lekin hali olmagan puli
+  personalEarnings: _myEarnings,     // O'zimning ishimdan kelgan pul
+  personalAdvances: _myAdvances,     // O'zim olgan avanslarim
+  statsCount: _totalOrders,
+),
               const SizedBox(height: 25),
 
               if (hasPermission('can_add_work_log'))
