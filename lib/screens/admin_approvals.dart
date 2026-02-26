@@ -20,20 +20,21 @@ class _AdminApprovalsScreenState extends State<AdminApprovalsScreen> with Single
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _loadAllPending();
+    _loadAllPending(); // Endi nomi to'g'ri
   }
 
-  Future<void> _loadAllAllPending() async {
+  // METOD NOMI TO'G'RILANDI: _loadAllPending
+  Future<void> _loadAllPending() async {
     setState(() => _isLoading = true);
     try {
-      // 1. TASDIQLANMAGAN ISHLAR (worker nomi va order raqami bilan)
+      // 1. Tasdiqlanmagan ishlar
       final logsRes = await _supabase
           .from('work_logs')
           .select('*, profiles!work_logs_worker_id_fkey(full_name), orders(order_number, project_name)')
           .eq('is_approved', false)
           .order('created_at', ascending: true);
 
-      // 2. KUTILAYOTGAN AVANSLAR (worker nomi bilan)
+      // 2. Kutilayotgan avanslar
       final avansRes = await _supabase
           .from('withdrawals')
           .select('*, profiles!withdrawals_worker_id_fkey(full_name)')
@@ -53,7 +54,7 @@ class _AdminApprovalsScreenState extends State<AdminApprovalsScreen> with Single
     }
   }
 
-  // --- ISHLARNI TASDIQLASH/RAD ETISH ---
+  // ISHLARNI BOSHQARISH
   Future<void> _handleWork(int id, bool approve) async {
     try {
       if (approve) {
@@ -65,11 +66,11 @@ class _AdminApprovalsScreenState extends State<AdminApprovalsScreen> with Single
       } else {
         await _supabase.from('work_logs').delete().eq('id', id);
       }
-      _loadAllAllPending();
+      _loadAllPending(); // Yangilash
     } catch (e) { _msg("Xato: $e"); }
   }
 
-  // --- AVANSLARNI TASDIQLASH/RAD ETISH ---
+  // AVANSLARNI BOSHQARISH
   Future<void> _handleAvans(int id, bool approve) async {
     try {
       if (approve) {
@@ -77,7 +78,7 @@ class _AdminApprovalsScreenState extends State<AdminApprovalsScreen> with Single
       } else {
         await _supabase.from('withdrawals').update({'status': 'rejected'}).eq('id', id);
       }
-      _loadAllAllPending();
+      _loadAllPending(); // Yangilash
     } catch (e) { _msg("Xato: $e"); }
   }
 
