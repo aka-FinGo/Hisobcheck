@@ -4,19 +4,19 @@ import '../screens/stats_screen.dart';
 import '../screens/manage_users_screen.dart';
 import '../screens/manage_roles_screen.dart'; 
 import '../screens/admin_approvals.dart';
-import '../screens/orders_list_screen.dart'; // Zakazlar ro'yxati uchun
+import '../screens/orders_list_screen.dart'; // O'zizdagi fayllar
 
 class HomeActionGrid extends StatelessWidget {
   final bool isAdmin;
   final bool canManageUsers; 
   final int totalOrders;
   final int activeOrders;
-  final int pendingApprovalsCount;
-  final int totalClientsCount;     // Jami mijozlar
+  final int pendingApprovalsCount; // Endi bu raqam HomeScreen'dan keladi (doim 5 emas!)
+  final int totalClientsCount;
   final int newClientsCount;       // Yangi (+1) mijozlar
   final bool showWithdrawOption;
   final VoidCallback onWithdrawTap;
-  final VoidCallback onClientsTap; // Mijozlarga o'tganda badgeni o'chirish uchun
+  final VoidCallback onClientsTap; // Bosilganda badgeni o'chirish uchun
 
   const HomeActionGrid({
     super.key,
@@ -24,9 +24,9 @@ class HomeActionGrid extends StatelessWidget {
     required this.canManageUsers,
     required this.totalOrders,
     required this.activeOrders,
-    this.pendingApprovalsCount = 0,
-    this.totalClientsCount = 0,
-    this.newClientsCount = 0,
+    required this.pendingApprovalsCount,
+    required this.totalClientsCount,
+    required this.newClientsCount,
     required this.showWithdrawOption,
     required this.onWithdrawTap,
     required this.onClientsTap,
@@ -42,23 +42,25 @@ class HomeActionGrid extends StatelessWidget {
         if (isAdmin) ...[
           Row(
             children: [
+              // JAMI ZAKAZ - Bosilganda OrdersListScreen ga o'tadi
               Expanded(
                 child: _MiniStatTile(
                   title: "Jami zakaz", 
                   value: "$totalOrders", 
                   icon: Icons.assignment_outlined, 
                   color: theme.colorScheme.primary,
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersListScreen(filter: 'all'))),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersListScreen())),
                 )
               ),
               const SizedBox(width: 15),
+              // JARAYONDA - Bosilganda OrdersListScreen ga o'tadi
               Expanded(
                 child: _MiniStatTile(
                   title: "Jarayonda", 
                   value: "$activeOrders", 
                   icon: Icons.hourglass_empty, 
                   color: Colors.orange,
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersListScreen(filter: 'active'))),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersListScreen())),
                 )
               ),
             ],
@@ -82,7 +84,8 @@ class HomeActionGrid extends StatelessWidget {
                 title: "Tasdiqlashlar", 
                 icon: Icons.fact_check_outlined, 
                 color: Colors.redAccent, 
-                badgeValue: pendingApprovalsCount > 0 ? pendingApprovalsCount.toString() : null,
+                // Agar kutilayotganlar bo'lsa raqam chiqadi, bo'lmasa badge ko'rinmaydi
+                badgeValue: pendingApprovalsCount > 0 ? "$pendingApprovalsCount" : null,
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminApprovalsScreen()))
               ),
 
@@ -92,18 +95,17 @@ class HomeActionGrid extends StatelessWidget {
                 icon: Icons.people_alt, 
                 color: Colors.blue, 
                 subTitle: "$totalClientsCount ta",
-                badgeValue: newClientsCount > 0 ? "+$newClientsCount" : null, // Yangi mijozlar badge'i
+                // Yangi mijozlar bo'lsa (+1) chiqadi
+                badgeValue: newClientsCount > 0 ? "+$newClientsCount" : null,
                 onTap: onClientsTap,
               ),
             
-            if (isAdmin) 
-              _ActionCard(title: "Statistika", icon: Icons.bar_chart, color: Colors.purple, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StatsScreen()))),
+            _ActionCard(title: "Statistika", icon: Icons.bar_chart, color: Colors.purple, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StatsScreen()))),
             
-            if (canManageUsers) 
+            if (canManageUsers) ...[
               _ActionCard(title: "Hodimlar", icon: Icons.manage_accounts, color: Colors.orange, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ManageUsersScreen()))),
-            
-            if (canManageUsers) 
               _ActionCard(title: "Lavozimlar", icon: Icons.badge, color: Colors.teal, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ManageRolesScreen()))),
+            ],
           ],
         ),
         
@@ -115,7 +117,7 @@ class HomeActionGrid extends StatelessWidget {
     );
   }
 }
-// ─── ACTION CARD (THEME ADAPTIVE) ───────────────────────────────
+// ─── ACTION CARD (OQ, QORA, OYNA MAVZULARI UCHUN) ───────────────
 class _ActionCard extends StatelessWidget {
   final String title;
   final String? subTitle;
@@ -124,19 +126,12 @@ class _ActionCard extends StatelessWidget {
   final VoidCallback onTap;
   final String? badgeValue;
 
-  const _ActionCard({
-    required this.title, 
-    this.subTitle, 
-    required this.icon, 
-    required this.color, 
-    required this.onTap, 
-    this.badgeValue
-  });
+  const _ActionCard({required this.title, this.subTitle, required this.icon, required this.color, required this.onTap, this.badgeValue});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final isGlass = theme.scaffoldBackgroundColor == Colors.transparent; // "Oyna" mavzusini aniqlash
 
     return InkWell(
       onTap: onTap,
@@ -147,15 +142,13 @@ class _ActionCard extends StatelessWidget {
           Container(
             width: double.infinity,
             decoration: BoxDecoration(
-              color: theme.cardColor, // Mavzuga qarab o'zgaradi
+              // Mavzuga qarab rang: Oq, Qora yoki 0.15 shaffof oyna
+              color: theme.cardTheme.color ?? theme.cardColor, 
               borderRadius: BorderRadius.circular(15),
-              border: isDark ? Border.all(color: Colors.white10) : null,
-              boxShadow: [
-                BoxShadow(
-                  color: isDark ? Colors.black26 : Colors.grey.withOpacity(0.1),
-                  blurRadius: 8,
-                  offset: const Offset(0, 4)
-                )
+              // "Oyna" mavzusida ingichka oq chiziq (iPhone style)
+              border: isGlass ? Border.all(color: Colors.white.withOpacity(0.2), width: 1) : null,
+              boxShadow: isGlass ? [] : [
+                BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))
               ],
             ),
             child: Column(
@@ -163,7 +156,7 @@ class _ActionCard extends StatelessWidget {
               children: [
                 CircleAvatar(
                   radius: 26, 
-                  backgroundColor: color.withOpacity(isDark ? 0.2 : 0.1), 
+                  backgroundColor: color.withOpacity(isGlass ? 0.2 : 0.1), 
                   child: Icon(icon, size: 28, color: color)
                 ),
                 const SizedBox(height: 10),
@@ -174,21 +167,18 @@ class _ActionCard extends StatelessWidget {
             ),
           ),
           
+          // QIZIL BILDIRISHNOMA (BADGE)
           if (badgeValue != null)
             Positioned(
-              top: -5,
-              right: -5,
+              top: -5, right: -5,
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.red,
+                  color: Colors.red, 
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: theme.scaffoldBackgroundColor, width: 2),
+                  border: Border.all(color: theme.scaffoldBackgroundColor == Colors.transparent ? Colors.white : theme.scaffoldBackgroundColor, width: 2)
                 ),
-                child: Text(
-                  badgeValue!,
-                  style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                ),
+                child: Text(badgeValue!, style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
               ),
             ),
         ],
@@ -197,20 +187,15 @@ class _ActionCard extends StatelessWidget {
   }
 }
 
-// ─── MINI STAT TILE (THEME ADAPTIVE) ─────────────────────────────
+// ─── MINI STAT TILE (BOSILADIGAN) ─────────────────────────────
 class _MiniStatTile extends StatelessWidget {
-  final String title;
-  final String value;
-  final IconData icon;
-  final Color color;
-  final VoidCallback onTap;
-
+  final String title; final String value; final IconData icon; final Color color; final VoidCallback onTap;
   const _MiniStatTile({required this.title, required this.value, required this.icon, required this.color, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final isGlass = theme.scaffoldBackgroundColor == Colors.transparent;
 
     return InkWell(
       onTap: onTap,
@@ -218,24 +203,23 @@ class _MiniStatTile extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: theme.cardColor,
+          color: theme.cardTheme.color ?? theme.cardColor,
           borderRadius: BorderRadius.circular(12),
-          border: isDark ? Border.all(color: Colors.white10) : null,
-          boxShadow: [BoxShadow(color: isDark ? Colors.black12 : Colors.grey.withOpacity(0.05), blurRadius: 4)],
+          border: isGlass ? Border.all(color: Colors.white.withOpacity(0.2)) : null,
         ),
         child: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
-              child: Icon(icon, color: color, size: 20),
+              padding: const EdgeInsets.all(8), 
+              decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle), 
+              child: Icon(icon, color: color, size: 20)
             ),
             const SizedBox(width: 10),
             Flexible(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: theme.textTheme.bodySmall?.copyWith(fontSize: 10), maxLines: 1),
+                  Text(title, style: theme.textTheme.bodySmall?.copyWith(fontSize: 10), maxLines: 1, overflow: TextOverflow.ellipsis),
                   Text(value, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, fontSize: 14)),
                 ],
               ),
