@@ -15,105 +15,125 @@ class _HomeScreenState extends State<HomeScreen> {
   final _supabase = Supabase.instance.client;
   bool _isLoading = true;
 
-  String _userName = '';
-  String _userRoleType = 'worker';
+  // Profil va Role (Schema bo'yicha position_id orqali)
   bool _isSuperAdmin = false;
+  String _userName = '';
+  String _uRoleType = 'worker'; 
+  Map<String, dynamic> _cPerms = {}; // Custom Permissions
 
-  // Moliyaviy ko'rsatkichlar
-  double _compCash = 0; double _workDebt = 0;
-  double _myEarn = 0; double _myAdv = 0;
-  int _totalOrders = 0; int _activeOrders = 0;
-  int _pendApps = 0; int _totalClients = 0;
+  // Global Moliya (Superadmin uchun)
+  double _compCash = 0;   // Jami tushum - Jami chiqim
+  double _wDebt = 0;      // Ishchilardan jami qarz
+  double _myEarn = 0;     // Shaxsiy maosh (WorkLogs)
+  double _myPaid = 0;     // Shaxsiy avanslar (Withdrawals)
+  
+  int _tOrders = 0; int _aOrders = 0;
+  int _pApps = 0;
 
   @override
   void initState() {
     super.initState();
-    _loadAllData();
+    _loadData();
   }
 
-  Future<void> _loadAllData() async {
+  // RUHSATLARNI TEKSHIRISH (Schema bo'yicha custom_permissions va is_super_admin)
+  bool hasPerm(String p) {
+    if (_isSuperAdmin) return true;
+    return _cPerms[p] == true;
+  }
+
+  Future<void> _loadData() async {
     if (!mounted) return;
     setState(() => _isLoading = true);
     try {
       final user = _supabase.auth.currentUser;
-      final profile = await _supabase.from('profiles').select('*, app_roles(*)').eq('id', user!.id).single();
+      // profiles va app_roles jadvallarini JOIN qilib olish
+      final prof = await _supabase.from('profiles').select('*, app_roles(*)').eq('id', user!.id).single();
       
-      _userName = profile['full_name'] ?? 'Foydalanuvchi';
-      _isSuperAdmin = profile['is_super_admin'] ?? false;
-      _userRoleType = profile['app_roles']?['role_type'] ?? 'worker';
+      _userName = prof['full_name'] ?? 'Admin';
+      _isSuperAdmin = prof['is_super_admin'] ?? false;
+      _cPerms = prof['custom_permissions'] ?? {};
+      _uRoleType = prof['app_roles']?['role_type'] ?? 'worker';
 
-      // 1. Korxona moliya (Admin uchun)
-      final orders = await _supabase.from('orders').select('total_price, status');
-      final withdrawals = await _supabase.from('withdrawals').select('amount, status');
-      final workLogs = await _supabase.from('work_logs').select('total_sum, is_approved');
+      // 1. KORXONA KASSASI: orders.total_price - withdrawals.amount(approved)
+      final oRes = await _supabase.from('orders').select('total_price, status');
+      final wRes = await _supabase.from('withdrawals').select('amount, status').eq('status', 'approved');
+      final lRes = await _supabase.from('work_logs').select('total_sum, is_approved');
 
-      double rev = 0; for (var o in orders) rev += (o['total_price'] ?? 0).toDouble();
-      double paid = 0; for (var w in withdrawals) if (w['status'] == 'approved') paid += (w['amount'] ?? 0).toDouble();
-      double totalEarned = 0; for (var l in workLogs) if (l['is_approved']) totalEarned += (l['total_sum'] ?? 0).toDouble();
+      double rev = 0; for (var o in oRes) rev += (o['total_price'] ?? 0).toDouble();
+      double paid = 0; for (var w in wRes) paid += (w['amount'] ?? 0).toDouble();
+      double earned = 0; for (var l in lRes) if (l['is_approved']) earned += (l['total_sum'] ?? 0).toDouble();
 
-      // 2. Shaxsiy moliya
+      // 2. SHAXSIY MOLIYA (Mening ishlarim va avanslarim)
       final myL = await _supabase.from('work_logs').select('total_sum').eq('worker_id', user.id).eq('is_approved', true);
       final myW = await _supabase.from('withdrawals').select('amount').eq('worker_id', user.id).eq('status', 'approved');
       
       double myE = 0; for (var ml in myL) myE += (ml['total_sum'] ?? 0).toDouble();
-      double myA = 0; for (var mw in myW) myA += (mw['amount'] ?? 0).toDouble();
+      double myP = 0; for (var mw in myW) myP += (mw['amount'] ?? 0).toDouble();
 
       setState(() {
         _compCash = rev - paid;
-        _workDebt = totalEarned - paid;
-        _myEarn = myE; _myAdv = myA;
-        _totalOrders = orders.length;
-        _activeOrders = orders.where((o) => ['pending','material','assembly','delivery'].contains(o['status'])).length;
-        _pendApps = (workLogs.where((l) => !l['is_approved']).length) + (withdrawals.where((w) => w['status'] == 'pending').length);
+        _wDebt = earned - paid;
+        _myEarn = myE; _myPaid = myP;
+        _tOrders = oRes.length;
+        _aOrders = oRes.where((o) => ['pending','material','assembly','delivery'].contains(o['status'])).length;
+        _pApps = (lRes.where((l) => !l['is_approved']).length) + (wRes.where((w) => w['status'] == 'pending').length);
       });
     } catch (e) { debugPrint("Xato: $e"); }
     finally { if (mounted) setState(() => _isLoading = false); }
   }
-bool _hasPerm(String p) => _isSuperAdmin || (true); // Soddalashtirilgan ruxsat
-
-  @override
+@override
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
         child: _isLoading ? const Center(child: CircularProgressIndicator()) : RefreshIndicator(
-          onRefresh: _loadAllData,
+          onRefresh: _loadData,
           child: ListView(
             padding: const EdgeInsets.all(20),
             children: [
-              HomeHeader(greeting: "Xush kelibsiz", userName: _userName),
+              HomeHeader(greeting: "Assalomu alaykum", userName: _userName),
               const SizedBox(height: 25),
               
-              // BALANSCARD - Endi hamma narsa alohida uzatildi!
+              // BALANSCARD (Kassa, Qarz va Shaxsiy hisob bittada)
               BalanceCard(
-                role: _userRoleType,
-                companyBalance: _compCash,
-                totalWorkerDebt: _workDebt,
-                personalEarnings: _myEarn,
-                personalAdvances: _myAdv,
-                statsCount: _totalOrders,
+                role: _uRoleType,
+                companyCash: _compCash,
+                workerDebt: _wDebt,
+                personalEarned: _myEarn,
+                personalPaid: _myPaid,
+                statsCount: _tOrders,
               ),
-              const SizedBox(height: 25),
+              const SizedBox(height: 30),
 
-              // ISH TOPSHIRISH TUGMASI (Mana qaytib keldi!)
-              SizedBox(
-                width: double.infinity, height: 55,
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2E5BFF), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
-                  icon: const Icon(Icons.add_task), label: const Text("BAJARILGAN ISHNI TOPSHIRISH", style: TextStyle(fontWeight: FontWeight.bold)),
-                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AddWorkLogScreen())).then((_) => _loadAllData()),
+              // ISH TOPSHIRISH TUGMASI (Endi ruxsat bo'lsa srazu chiqadi!)
+              if (hasPerm('can_add_work_log'))
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 30),
+                  child: SizedBox(
+                    width: double.infinity, height: 60,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF2E5BFF), 
+                        foregroundColor: Colors.white, 
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                        elevation: 6,
+                      ),
+                      icon: const Icon(Icons.add_task_rounded, size: 28),
+                      label: const Text("ISH TOPSHIRISH", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                      onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AddWorkLogScreen())).then((_) => _loadData()),
+                    ),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 25),
 
+              // TEZKOR TUGMALAR (Admin uchun hamma narsa ochiq)
               HomeActionGrid(
-                isAdmin: _userRoleType == 'aup',
-                canManageUsers: _isSuperAdmin,
-                totalOrders: _totalOrders, activeOrders: _activeOrders,
-                pendingApprovalsCount: _pendApps,
-                totalClientsCount: 0, newClientsCount: 0,
-                showWithdrawOption: _userRoleType == 'worker',
-                onWithdrawTap: () {}, // Oldingi dialog chaqiriladi
-                onClientsTap: () => Navigator.pushNamed(context, '/clients').then((_) => _loadAllData()),
+                isAdmin: _isSuperAdmin || _uRoleType == 'aup',
+                canManageUsers: _isSuperAdmin || hasPerm('can_manage_users'),
+                totalOrders: _tOrders, 
+                activeOrders: _aOrders,
+                pendingApprovalsCount: _pApps,
+                onWithdrawTap: () {}, // Oldingi dialog mantiqi ulanadi
+                onClientsTap: () => Navigator.pushNamed(context, '/clients').then((_) => _loadData()),
               ),
             ],
           ),
