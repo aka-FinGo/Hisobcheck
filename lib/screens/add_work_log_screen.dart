@@ -16,7 +16,7 @@ class _AddWorkLogScreenState extends State<AddWorkLogScreen> {
 
   // Ma'lumotlar
   List<dynamic> _activeOrders = [];
-  List<dynamic> _taskTypes = [];
+  List<dynamic> _taskTypes = []; // Bu endi app_roles dan keladi!
   Map<String, dynamic>? _myProfile;
   
   // Form boshqaruvi
@@ -44,19 +44,25 @@ class _AddWorkLogScreenState extends State<AddWorkLogScreen> {
     try {
       final userId = _supabase.auth.currentUser!.id;
 
+      // 1. Mening profilim va Lavozimim
       final profileRes = await _supabase
           .from('profiles')
           .select('*, app_roles(*)')
           .eq('id', userId)
           .single();
           
+      // 2. Aktiv zakazlar (DIQQAT: clients jadvalidan ismini tortib olamiz!)
       final ordersRes = await _supabase
           .from('orders')
-          .select('id, order_number, client_name, project_name')
+          .select('id, order_number, project_name, client_name, clients(full_name)')
           .inFilter('status', ['pending', 'material', 'assembly', 'delivery'])
           .order('created_at', ascending: false);
 
-      final tasksRes = await _supabase.from('task_types').select().order('name');
+      // 3. Tariflar (DIQQAT: Endi task_types emas, app_roles ni tortamiz!)
+      final tasksRes = await _supabase
+          .from('app_roles')
+          .select()
+          .order('name');
 
       setState(() {
         _myProfile = profileRes;
@@ -81,10 +87,11 @@ class _AddWorkLogScreenState extends State<AddWorkLogScreen> {
       _taskNameForLog = role?['name'] ?? 'Asosiy vazifa';
       _targetStatusForAutoMove = role?['target_status'];
     } else {
+      // Boshqa lavozim/tarif tanlansa (app_roles dagi ma'lumotlardan olamiz)
       final selectedTask = _taskTypes.firstWhere((t) => t['id'].toString() == _selectedTaskType, orElse: () => null);
       if (selectedTask != null) {
-        _currentRate = (selectedTask['price_per_unit'] ?? 0).toDouble();
-        _currentUnit = selectedTask['unit'] ?? 'dona';
+        _currentRate = (selectedTask['rate_per_unit'] ?? 0).toDouble();
+        _currentUnit = selectedTask['unit_type'] ?? 'dona';
         _taskNameForLog = selectedTask['name'];
         _targetStatusForAutoMove = selectedTask['target_status'];
       }
@@ -92,7 +99,6 @@ class _AddWorkLogScreenState extends State<AddWorkLogScreen> {
     setState(() {});
   }
 
-  // Jami summani hisoblash
   double get _calculatedTotal {
     final amount = double.tryParse(_amountCtrl.text) ?? 0;
     return amount * _currentRate;
@@ -113,7 +119,6 @@ class _AddWorkLogScreenState extends State<AddWorkLogScreen> {
     setState(() => _isSubmitting = true);
 
     try {
-      // 1. Work Log (Ish hisoboti) ga yozamiz
       await _supabase.from('work_logs').insert({
         'worker_id': _supabase.auth.currentUser!.id,
         'order_id': _selectedOrderId,
@@ -125,7 +130,7 @@ class _AddWorkLogScreenState extends State<AddWorkLogScreen> {
         'is_approved': false, 
       });
 
-      // 2. AVTOMATIZATSIYA
+      // AVTOMATIZATSIYA
       if (_targetStatusForAutoMove != null) {
         await _supabase.from('orders').update({
           'status': _targetStatusForAutoMove
@@ -159,10 +164,15 @@ class _AddWorkLogScreenState extends State<AddWorkLogScreen> {
                 DropdownButtonFormField<int>(
                   value: _selectedOrderId,
                   decoration: const InputDecoration(border: OutlineInputBorder(), hintText: "Zakazni tanlang..."),
-                  items: _activeOrders.map((o) => DropdownMenuItem<int>(
-                    value: o['id'], 
-                    child: Text("${o['order_number']} - ${o['client_name']}")
-                  )).toList(),
+                  items: _activeOrders.map((o) {
+                    // Mijoz ismini clients jadvalidan yoki o'zidan qidiramiz
+                    final clientName = o['clients']?['full_name'] ?? o['client_name'] ?? 'Noma\'lum mijoz';
+                    final projectName = o['project_name'] ?? 'Loyiha';
+                    return DropdownMenuItem<int>(
+                      value: o['id'], 
+                      child: Text("${o['order_number']} - $clientName ($projectName)")
+                    );
+                  }).toList(),
                   onChanged: (val) => setState(() => _selectedOrderId = val),
                 ),
                 const SizedBox(height: 25),
@@ -178,9 +188,10 @@ class _AddWorkLogScreenState extends State<AddWorkLogScreen> {
                       child: Text("O'z vazifam (${_myProfile?['app_roles']?['name'] ?? 'Asosiy'})", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue))
                     ),
                     const DropdownMenuItem(value: '', enabled: false, child: Divider()), 
+                    // Boshqa hamma lavozimlar (tariflarni) chiqaramiz
                     ..._taskTypes.map((t) => DropdownMenuItem(
                       value: t['id'].toString(), 
-                      child: Text(t['name'])
+                      child: Text(t['name'] ?? 'Nomsiz ish')
                     )).toList(),
                   ],
                   onChanged: (val) {
