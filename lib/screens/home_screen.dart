@@ -131,6 +131,9 @@ class _HomeScreenState extends State<HomeScreen> {
         // RAHBARIYAT YOKI KASSIR UCHUN
         final orders = await _supabase.from('orders').select('total_price, status');
         final withdrawals = await _supabase.from('withdrawals').select('amount').eq('status', 'approved');
+// Adminlar uchun
+        final pendingWorks = await _supabase.from('work_logs').select('id').eq('is_approved', false);
+        final pendingWithdrawals = await _supabase.from('withdrawals').select('id').eq('status', 'pending');
             
         double totalIncome = 0;
         double totalPaid = 0;
