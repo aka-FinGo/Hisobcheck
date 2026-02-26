@@ -158,7 +158,7 @@ class _AddWorkLogScreenState extends State<AddWorkLogScreen> {
                   value: _selectedOrderId,
                   decoration: const InputDecoration(border: OutlineInputBorder(), hintText: "Zakazni tanlang..."),
                   items: _activeOrders.map((o) {
-                    final clientName = o['clients']?['full_name'] ?? o['client_name'] ?? 'Noma\\'lum mijoz';
+                    final clientName = o['clients']?['full_name'] ?? o['client_name'] ?? "Noma'lum mijoz";
                     final projectName = o['project_name'] ?? 'Loyiha';
                     return DropdownMenuItem<int>(
                       value: o['id'], 
