@@ -73,6 +73,7 @@ class _HomeScreenState extends State<HomeScreen> {
   int _statsCount = 0;
   int _totalOrders = 0;
   int _activeOrders = 0;
+  int _pendingApprovals = 0;
 
   @override
   void initState() {
