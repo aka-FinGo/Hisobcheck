@@ -3,33 +3,35 @@ import 'package:intl/intl.dart';
 import 'package:flutter_flip_card/flutter_flip_card.dart';
 
 class BalanceCard extends StatelessWidget {
-  final String role; // 'boss', 'admin', yoki 'worker'
+  final String role; // 'admin', 'aup', 'worker'
   
-  // Asosiy ma'lumotlar
-  final double mainBalance; 
-  final double income; 
-  final double expense; 
+  // --- KORHONA MA'LUMOTLARI (Admin/AUP uchun) ---
+  final double companyBalance; 
+  final double totalWorkerDebt; // Ishchilarga berilishi kerak bo'lgan jami qarz
   
-  // Orqa tomon (Back) uchun qo'shimcha ma'lumotlar
-  final double? secondaryBalance; // Boshliq uchun qarzdorlik, worker uchun olingan summa
-  final int? statsCount; // Worker uchun qilingan ishlar soni, boss uchun ishchilar soni
+  // --- SHAXSIY MA'LUMOTLAR (Hamma uchun) ---
+  final double personalEarnings; // Ishlab topgan maoshi
+  final double personalAdvances; // Olgan avanslari
+  final int? statsCount;
 
   const BalanceCard({
     super.key,
     required this.role,
-    required this.mainBalance,
-    required this.income,
-    required this.expense,
-    this.secondaryBalance,
+    required this.companyBalance,
+    required this.totalWorkerDebt,
+    required this.personalEarnings,
+    required this.personalAdvances,
     this.statsCount,
   });
 
-  String _formatMoney(double amount) =>
-      "${NumberFormat("#,###").format(amount).replaceAll(',', ' ')} so'm";
+  String _formatMoney(double amount) {
+    // Minus qiymatni musbat qilib ko'rsatish (yozuvda "Qarz" deymiz)
+    final absAmount = amount.abs();
+    return "${NumberFormat("#,###").format(absAmount).replaceAll(',', ' ')} so'm";
+  }
 
   @override
   Widget build(BuildContext context) {
-    // GestureFlipCard barmog'i bilan bosganda aylanadi
     return GestureFlipCard(
       animationDuration: const Duration(milliseconds: 600),
       axis: FlipAxis.horizontal,
@@ -38,190 +40,108 @@ class BalanceCard extends StatelessWidget {
     );
   }
 
-  // ─── KARTANING OLD TOMONI (FRONT) ─────────────────────────────
+  // OLD TOMON: Admin uchun Korhona, Worker uchun Shaxsiy balans
   Widget _buildFrontSide(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      height: 220, // Karta balandligi
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        gradient: const LinearGradient(
-          colors: [Color(0xFF1A2980), Color(0xFF26D0CE)], // Premium Aristokrat gradient
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        boxShadow: [
-          BoxShadow(color: const Color(0xFF2E5BFF).withOpacity(0.4), blurRadius: 20, offset: const Offset(0, 8))
-        ],
-      ),
+    final theme = Theme.of(context);
+    final isAUP = role == 'admin' || role == 'aup';
+    
+    // Mantiq: Admin bo'lsa korhona kassasi, ishchi bo'lsa o'z puli
+    final double mainValue = isAUP ? companyBalance : (personalEarnings - personalAdvances);
+    final String label = isAUP 
+        ? "KORXONA KASSASI" 
+        : (mainValue < 0 ? "SIZNING QARZINGIZ" : "MAVJUD BALANSINGIZ");
+
+    return _baseCard(
+      context,
+      gradient: isAUP 
+        ? const LinearGradient(colors: [Color(0xFF1E3C72), Color(0xFF2A5298)]) 
+        : (mainValue < 0 
+            ? const LinearGradient(colors: [Color(0xFFD31027), Color(0xFFEA384D)]) // Qarz bo'lsa qizil
+            : const LinearGradient(colors: [Color(0xFF00B4DB), Color(0xFF0083B0)])),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Tepa qism: Turi va Chip
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                role == 'worker' ? "HODIM KARTASI" : "KORXONA KASSASI",
-                style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 12, letterSpacing: 2, fontWeight: FontWeight.bold),
-              ),
-              const Icon(Icons.memory, color: Colors.amberAccent, size: 32), // Chip ikonasi
+              Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+              const Icon(Icons.account_balance_wallet_outlined, color: Colors.white54),
             ],
           ),
-          
-          // O'rta qism: Asosiy Balans
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                role == 'worker' ? "Mavjud Balansingiz" : "Umumiy Kassa (Sof foyda)",
-                style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 14),
-              ),
-              const SizedBox(height: 5),
-              Text(
-                _formatMoney(mainBalance),
-                style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.bold),
-              ),
-            ],
-          ),
-
-          // Pastki qism: Daromad va Xarajat
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _buildMiniStat(
-                label: role == 'worker' ? "Umumiy ishlangan" : "Daromad",
-                value: _formatMoney(income),
-                color: Colors.greenAccent,
-              ),
-              _buildMiniStat(
-                label: role == 'worker' ? "Olingan (Avans)" : "Xarajatlar",
-                value: _formatMoney(expense),
-                color: Colors.redAccent.shade100,
-                crossAxisAlignment: CrossAxisAlignment.end,
-              ),
-            ],
-          ),
+          const SizedBox(height: 15),
+          Text(_formatMoney(mainValue), style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+          const Spacer(),
+          if (isAUP) ...[
+            _miniStat("Ishchilarga qarz:", _formatMoney(totalWorkerDebt), Colors.orangeAccent),
+          ] else ...[
+            _miniStat("Jami ish haqi:", _formatMoney(personalEarnings), Colors.white),
+          ],
         ],
       ),
     );
   }
-
-  // ─── KARTANING ORQA TOMONI (BACK) ─────────────────────────────
+// ORQA TOMON: Admin o'zining shaxsiy maoshini ko'radi
   Widget _buildBackSide(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      height: 220,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        gradient: const LinearGradient(
-          colors: [Color(0xFF2B32B2), Color(0xFF1488CC)], // Orqasi sal to'qroq ko'k
-          begin: Alignment.topRight,
-          end: Alignment.bottomLeft,
-        ),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 5))
-        ],
-      ),
+    final theme = Theme.of(context);
+    final isAUP = role == 'admin' || role == 'aup';
+    
+    // Shaxsiy balans hisobi
+    final double myBalance = personalEarnings - personalAdvances;
+    final String backLabel = isAUP ? "SHAXSIY HISOBINGIZ" : "STATISTIKA";
+
+    return _baseCard(
+      context,
+      gradient: const LinearGradient(colors: [Color(0xFF232526), Color(0xFF414345)]),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SizedBox(height: 25),
-          // Magnit tasma (Qora chiziq)
-          Container(
-            width: double.infinity,
-            height: 45,
-            color: Colors.black87,
+          Text(backLabel, style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 10),
+          Text(_formatMoney(myBalance), style: const TextStyle(color: Colors.amberAccent, fontSize: 24, fontWeight: FontWeight.bold)),
+          const Divider(color: Colors.white10, height: 25),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _miniStat("Olingan avans:", _formatMoney(personalAdvances), Colors.redAccent),
+              if (statsCount != null)
+                _miniStat(isAUP ? "Buyurtmalar:" : "Ishlar soni:", "$statsCount ta", Colors.blueAccent, align: CrossAxisAlignment.end),
+            ],
           ),
-          const SizedBox(height: 20),
-          
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // CVV maydoniga o'xshash statistika joyi
-                Expanded(
-                  flex: 3,
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _getBackTitle1(),
-                          style: const TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          _formatMoney(secondaryBalance ?? 0),
-                          style: const TextStyle(color: Colors.black, fontSize: 16, fontWeight: FontWeight.bold),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 15),
-                // Qo'shimcha statistika (Ishchilar soni yoki reyting)
-                Expanded(
-                  flex: 2,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        _getBackTitle2(),
-                        style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 12),
-                      ),
-                      const SizedBox(height: 5),
-                      Text(
-                        "${statsCount ?? 0}",
-                        style: const TextStyle(color: Colors.amberAccent, fontSize: 24, fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 10),
-                      const Text("ARISTOKRAT", style: TextStyle(color: Colors.white24, fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 2)),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
+          const Spacer(),
+          const Text("ARISTOKRAT MEBEL", style: TextStyle(color: Colors.white12, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 5)),
         ],
       ),
     );
   }
 
-  // Rolga qarab orqa tarafdagi yozuvlarni tanlash
-  String _getBackTitle1() {
-    switch (role) {
-      case 'boss': return "ISHCHILARGA QARZDORLIK";
-      case 'admin': return "SHAXSIY MAOSHINGIZ";
-      case 'worker': return "KUTILAYOTGAN TO'LOV";
-      default: return "QO'SHIMCHA MA'LUMOT";
-    }
+  // --- ASOSIY DIZAYN QOLIBI (3-Theme qo'llab quvvatlaydi) ---
+  Widget _baseCard(BuildContext context, {required Gradient gradient, required Widget child}) {
+    final theme = Theme.of(context);
+    final isGlass = theme.scaffoldBackgroundColor == Colors.transparent;
+
+    return Container(
+      height: 200,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(25),
+        gradient: isGlass ? null : gradient,
+        color: isGlass ? theme.cardTheme.color : null,
+        border: isGlass ? Border.all(color: Colors.white.withOpacity(0.2)) : null,
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 15, offset: const Offset(0, 8)),
+        ],
+      ),
+      padding: const EdgeInsets.all(25),
+      child: child,
+    );
   }
 
-  String _getBackTitle2() {
-    switch (role) {
-      case 'boss': return "Faol ishchilar";
-      case 'admin': return "Bajarilgan ishlar";
-      case 'worker': return "Joriy oylik reyting";
-      default: return "Statistika";
-    }
-  }
-
-  Widget _buildMiniStat({required String label, required String value, required Color color, CrossAxisAlignment crossAxisAlignment = CrossAxisAlignment.start}) {
+  Widget _miniStat(String label, String value, Color color, {CrossAxisAlignment align = CrossAxisAlignment.start}) {
     return Column(
-      crossAxisAlignment: crossAxisAlignment,
+      crossAxisAlignment: align,
       children: [
-        Text(label, style: TextStyle(color: color.withOpacity(0.9), fontSize: 11)),
-        const SizedBox(height: 4),
-        Text(value, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+        Text(label, style: const TextStyle(color: Colors.white54, fontSize: 10)),
+        Text(value, style: TextStyle(color: color, fontSize: 14, fontWeight: FontWeight.bold)),
       ],
     );
   }
