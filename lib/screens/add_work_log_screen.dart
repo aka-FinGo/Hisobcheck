@@ -2,309 +2,257 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 
-class AdminApprovalsScreen extends StatefulWidget {
-  const AdminApprovalsScreen({super.key});
+class AddWorkLogScreen extends StatefulWidget {
+  const AddWorkLogScreen({super.key});
 
   @override
-  State<AdminApprovalsScreen> createState() => _AdminApprovalsScreenState();
+  State<AddWorkLogScreen> createState() => _AddWorkLogScreenState();
 }
 
-// Tab tizimi ishlashi uchun SingleTickerProviderStateMixin qo'shiladi
-class _AdminApprovalsScreenState extends State<AdminApprovalsScreen> with SingleTickerProviderStateMixin {
+class _AddWorkLogScreenState extends State<AddWorkLogScreen> {
   final _supabase = Supabase.instance.client;
   bool _isLoading = true;
-  
-  List<dynamic> _workLogs = [];
-  List<dynamic> _withdrawals = [];
+  bool _isSubmitting = false;
 
-  late TabController _tabController;
+  List<dynamic> _activeOrders = [];
+  List<dynamic> _taskTypes = [];
+  Map<String, dynamic>? _myProfile;
+  
+  int? _selectedOrderId;
+  String? _selectedTaskType; 
+  
+  final _amountCtrl = TextEditingController();
+  final _descCtrl = TextEditingController();
+
+  double _currentRate = 0;
+  String _currentUnit = 'dona';
+  String _taskNameForLog = '';
+  String? _targetStatusForAutoMove;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-    _loadAllPending();
+    _loadInitialData();
   }
 
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _loadAllPending() async {
+  Future<void> _loadInitialData() async {
     setState(() => _isLoading = true);
     try {
-      // 1. Tasdiqlanmagan ISHLAR (worker va order degan laqab bilan tortamiz xato bermasligi uchun)
-      final logsRes = await _supabase
-          .from('work_logs')
-          .select('*, worker:profiles!work_logs_worker_id_fkey(full_name), order:orders(order_number, project_name)')
-          .eq('is_approved', false)
-          .order('created_at', ascending: true);
+      final userId = _supabase.auth.currentUser!.id;
 
-      // 2. Kutilayotgan AVANSLAR
-      final avansRes = await _supabase
-          .from('withdrawals')
-          .select('*, worker:profiles(full_name)')
-          .eq('status', 'pending')
-          .order('created_at', ascending: true);
+      final profileRes = await _supabase
+          .from('profiles')
+          .select('*, app_roles(*)')
+          .eq('id', userId)
+          .single();
+          
+      final ordersRes = await _supabase
+          .from('orders')
+          .select('id, order_number, project_name, client_name, clients(full_name)')
+          .inFilter('status', ['pending', 'material', 'assembly', 'delivery'])
+          .order('created_at', ascending: false);
 
-      if (mounted) {
-        setState(() {
-          _workLogs = logsRes;
-          _withdrawals = avansRes;
-        });
-      }
+      final tasksRes = await _supabase.from('app_roles').select().order('name');
+
+      setState(() {
+        _myProfile = profileRes;
+        _activeOrders = ordersRes;
+        _taskTypes = tasksRes;
+        
+        _selectedTaskType = 'my_role';
+        _updateRateAndUnit();
+      });
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Yuklashda xato: $e")));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Yuklashda xato: $e')));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  // ==================== ISHLARNI BOSHQARISH ====================
-  Future<void> _approveLog(int id) async {
-    try {
-      final myId = _supabase.auth.currentUser!.id;
-      await _supabase.from('work_logs').update({
-        'is_approved': true,
-        'approved_by': myId,
-        'approved_at': DateTime.now().toIso8601String()
-      }).eq('id', id);
-      
-      _loadAllPending();
-      if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ish tasdiqlandi va hisobga o'tdi!"), backgroundColor: Colors.green));
-    } catch(e) {
-      if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e"), backgroundColor: Colors.red));
-    }
-  }
-
-  Future<void> _rejectLog(int id) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: const Text("Rad etish"),
-        content: const Text("Ushbu ish xato kiritilganmi? Uni butunlay o'chirib tashlaysizmi?"),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text("Bekor")),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(c, true), 
-            child: const Text("Ha, o'chirish", style: TextStyle(color: Colors.white))
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      try {
-        await _supabase.from('work_logs').delete().eq('id', id);
-        _loadAllPending();
-      } catch(e) {
-        if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e"), backgroundColor: Colors.red));
+  void _updateRateAndUnit() {
+    if (_selectedTaskType == 'my_role') {
+      final role = _myProfile?['app_roles'];
+      _currentRate = (_myProfile?['custom_rate_per_unit'] ?? role?['rate_per_unit'] ?? 0).toDouble();
+      _currentUnit = _myProfile?['custom_unit_type'] ?? role?['unit_type'] ?? 'dona';
+      _taskNameForLog = role?['name'] ?? 'Asosiy vazifa';
+      _targetStatusForAutoMove = role?['target_status'];
+    } else {
+      final selectedTask = _taskTypes.firstWhere((t) => t['id'].toString() == _selectedTaskType, orElse: () => null);
+      if (selectedTask != null) {
+        _currentRate = (selectedTask['rate_per_unit'] ?? 0).toDouble();
+        _currentUnit = selectedTask['unit_type'] ?? 'dona';
+        _taskNameForLog = selectedTask['name'];
+        _targetStatusForAutoMove = selectedTask['target_status'];
       }
     }
+    setState(() {});
   }
 
-  // ==================== AVANSLARNI BOSHQARISH ====================
-  Future<void> _approveAvans(int id) async {
+  double get _calculatedTotal {
+    final amount = double.tryParse(_amountCtrl.text) ?? 0;
+    return amount * _currentRate;
+  }
+
+  Future<void> _submitWorkLog() async {
+    if (_selectedOrderId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Iltimos, zakazni tanlang!"), backgroundColor: Colors.red));
+      return;
+    }
+
+    final amount = double.tryParse(_amountCtrl.text) ?? 0;
+    if (amount <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Miqdorni to'g'ri kiriting!"), backgroundColor: Colors.red));
+      return;
+    }
+
+    setState(() => _isSubmitting = true);
+
     try {
-      await _supabase.from('withdrawals').update({'status': 'approved'}).eq('id', id);
-      _loadAllPending();
-      if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Avans tasdiqlandi!"), backgroundColor: Colors.green));
-    } catch(e) {
-      if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e"), backgroundColor: Colors.red));
-    }
-  }
+      // total_sum ni o'chirgandik (baza o'zi hisoblaydi)
+      await _supabase.from('work_logs').insert({
+        'worker_id': _supabase.auth.currentUser!.id,
+        'order_id': _selectedOrderId,
+        'task_type': _taskNameForLog,
+        'area_m2': amount, 
+        'rate': _currentRate,
+        'description': _descCtrl.text.trim(),
+        'is_approved': false, 
+      });
 
-  Future<void> _rejectAvans(int id) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: const Text("Rad etish"),
-        content: const Text("Avans so'rovini bekor qilasizmi?"),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text("Yo'q")),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(c, true), 
-            child: const Text("Ha, bekor qilish", style: TextStyle(color: Colors.white))
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      try {
-        await _supabase.from('withdrawals').delete().eq('id', id);
-        _loadAllPending();
-      } catch(e) {
-        if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e"), backgroundColor: Colors.red));
+      if (_targetStatusForAutoMove != null) {
+        await _supabase.from('orders').update({
+          'status': _targetStatusForAutoMove
+        }).eq('id', _selectedOrderId!);
       }
+
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ish muvaffaqiyatli topshirildi! Rahbar tasdig'i kutilmoqda."), backgroundColor: Colors.green));
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Xato: $e'), backgroundColor: Colors.red));
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
     }
   }
 
-  // ==================== UI QISMI ====================
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Rahbar Tasdig'i", style: TextStyle(fontWeight: FontWeight.bold)),
-        elevation: 0,
-        bottom: TabBar(
-          controller: _tabController,
-          labelColor: Colors.blue,
-          unselectedLabelColor: Colors.grey,
-          indicatorColor: Colors.blue,
-          indicatorWeight: 3,
-          tabs: [
-            Tab(text: "Ishlar (${_workLogs.length})", icon: const Icon(Icons.assignment_turned_in)),
-            Tab(text: "Avanslar (${_withdrawals.length})", icon: const Icon(Icons.money_off)),
-          ],
-        ),
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : TabBarView(
-              controller: _tabController,
-              children: [
-                _buildWorkLogsTab(),
-                _buildWithdrawalsTab(),
-              ],
-            ),
-    );
-  }
-
-  // 1-TAB: ISHLAR
-  Widget _buildWorkLogsTab() {
-    if (_workLogs.isEmpty) {
-      return const Center(child: Text("Tasdiqlash uchun ishlar yo'q", style: TextStyle(color: Colors.grey, fontSize: 16)));
-    }
-    return ListView.builder(
-      padding: const EdgeInsets.all(12),
-      itemCount: _workLogs.length,
-      itemBuilder: (context, index) {
-        final log = _workLogs[index];
-        final workerName = log['worker']?['full_name'] ?? "Noma'lum xodim";
-        final orderNum = log['order']?['order_number'] ?? "Noma'lum zakaz";
-        final projectName = log['order']?['project_name'] ?? '';
-
-        return Card(
-          margin: const EdgeInsets.only(bottom: 12),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: Colors.orange.shade200, width: 1)),
-          child: Padding(
-            padding: const EdgeInsets.all(12.0),
+      appBar: AppBar(title: const Text("Ish topshirish"), elevation: 0),
+      body: _isLoading 
+        ? const Center(child: CircularProgressIndicator())
+        : SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(workerName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blue)),
-                    Text(orderNum, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.orange)),
-                  ],
+                const Text("Qaysi zakaz?", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<int>(
+                  value: _selectedOrderId,
+                  decoration: const InputDecoration(border: OutlineInputBorder(), hintText: "Zakazni tanlang..."),
+                  items: _activeOrders.map((o) {
+                    // TUTUQ BELGISI MUAMMOSI HAL QILINGAN: "Noma'lum"
+                    final clientName = o['clients']?['full_name'] ?? o['client_name'] ?? "Noma'lum mijoz";
+                    final projectName = o['project_name'] ?? 'Loyiha';
+                    return DropdownMenuItem<int>(
+                      value: o['id'], 
+                      child: Text("${o['order_number']} - $clientName ($projectName)")
+                    );
+                  }).toList(),
+                  onChanged: (val) => setState(() => _selectedOrderId = val),
                 ),
-                const Divider(),
-                Text("Vazifa: ${log['task_type']}", style: const TextStyle(fontWeight: FontWeight.bold)),
-                if (projectName.isNotEmpty) Text("Loyiha: $projectName", style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                const SizedBox(height: 25),
+
+                const Text("Nima ish qildingiz?", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  value: _selectedTaskType,
+                  decoration: const InputDecoration(border: OutlineInputBorder()),
+                  items: [
+                    DropdownMenuItem(
+                      value: 'my_role', 
+                      child: Text("O'z vazifam (${_myProfile?['app_roles']?['name'] ?? 'Asosiy'})", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue))
+                    ),
+                    const DropdownMenuItem(value: '', enabled: false, child: Divider()), 
+                    ..._taskTypes.map((t) => DropdownMenuItem(
+                      value: t['id'].toString(), 
+                      child: Text(t['name'] ?? "Noma'lum ish")
+                    )).toList(),
+                  ],
+                  onChanged: (val) {
+                    if (val != null && val.isNotEmpty) {
+                      setState(() => _selectedTaskType = val);
+                      _updateRateAndUnit();
+                    }
+                  },
+                ),
+                const SizedBox(height: 25),
+
+                const Text("Miqdor", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 const SizedBox(height: 8),
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text("Miqdor: ${log['area_m2']}"),
-                    Text("Stavka: ${NumberFormat("#,###").format(log['rate'])} so'm", style: const TextStyle(color: Colors.grey)),
+                    Expanded(
+                      flex: 2,
+                      child: TextField(
+                        controller: _amountCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: InputDecoration(
+                          border: const OutlineInputBorder(),
+                          hintText: "0.0",
+                          suffixText: _currentUnit,
+                        ),
+                        onChanged: (val) => setState(() {}),
+                      ),
+                    ),
+                    const SizedBox(width: 15),
+                    Expanded(
+                      flex: 3,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text("Stavka: ${NumberFormat("#,###").format(_currentRate)} / $_currentUnit", style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                          const SizedBox(height: 5),
+                          Text(
+                            "${NumberFormat("#,###").format(_calculatedTotal)} so'm", 
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.green)
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
-                const SizedBox(height: 5),
-                Text("Jami hisoblangan: ${NumberFormat("#,###").format(log['total_sum'])} so'm", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.green)),
-                if (log['description'] != null && log['description'].toString().isNotEmpty) ...[
-                  const SizedBox(height: 5),
-                  Text("Izoh: ${log['description']}", style: const TextStyle(fontStyle: FontStyle.italic, color: Colors.grey)),
-                ],
-                const SizedBox(height: 10),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
-                      icon: const Icon(Icons.close),
-                      label: const Text("Rad etish"),
-                      onPressed: () => _rejectLog(log['id']),
+                const SizedBox(height: 25),
+
+                const Text("Izoh (ixtiyoriy)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _descCtrl,
+                  maxLines: 2,
+                  decoration: const InputDecoration(border: OutlineInputBorder(), hintText: "Masalan: Qiyinroq burchak edi..."),
+                ),
+                const SizedBox(height: 40),
+
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF2E5BFF),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     ),
-                    const SizedBox(width: 10),
-                    ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
-                      icon: const Icon(Icons.check),
-                      label: const Text("Tasdiqlash"),
-                      onPressed: () => _approveLog(log['id']),
-                    ),
-                  ],
+                    onPressed: _isSubmitting ? null : _submitWorkLog,
+                    child: _isSubmitting 
+                      ? const CircularProgressIndicator(color: Colors.white)
+                      : const Text("Ishni Topsirish", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  ),
                 )
               ],
             ),
           ),
-        );
-      },
-    );
-  }
-
-  // 2-TAB: AVANSLAR
-  Widget _buildWithdrawalsTab() {
-    if (_withdrawals.isEmpty) {
-      return const Center(child: Text("So'ralgan avanslar yo'q", style: TextStyle(color: Colors.grey, fontSize: 16)));
-    }
-    return ListView.builder(
-      padding: const EdgeInsets.all(12),
-      itemCount: _withdrawals.length,
-      itemBuilder: (context, index) {
-        final avans = _withdrawals[index];
-        final workerName = avans['worker']?['full_name'] ?? "Noma'lum xodim";
-
-        return Card(
-          margin: const EdgeInsets.only(bottom: 12),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: Colors.blue.shade200, width: 1)),
-          child: Padding(
-            padding: const EdgeInsets.all(12.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(workerName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                    const Icon(Icons.money_off, color: Colors.orange),
-                  ],
-                ),
-                const Divider(),
-                Text("So'ralgan summa: ${NumberFormat("#,###").format(avans['amount'])} so'm", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.green)),
-                if (avans['description'] != null && avans['description'].toString().isNotEmpty) ...[
-                  const SizedBox(height: 5),
-                  Text("Sabab/Izoh: ${avans['description']}", style: const TextStyle(fontStyle: FontStyle.italic, color: Colors.grey)),
-                ],
-                const SizedBox(height: 10),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
-                      icon: const Icon(Icons.close),
-                      label: const Text("Rad etish"),
-                      onPressed: () => _rejectAvans(avans['id']),
-                    ),
-                    const SizedBox(width: 10),
-                    ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
-                      icon: const Icon(Icons.check),
-                      label: const Text("Tasdiqlash"),
-                      onPressed: () => _approveAvans(avans['id']),
-                    ),
-                  ],
-                )
-              ],
-            ),
-          ),
-        );
-      },
     );
   }
 }
