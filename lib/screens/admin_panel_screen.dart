@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'manage_users_screen.dart';
 import 'manage_roles_screen.dart';
-// Kelajakda Tariflar (TaskTypes) uchun ham import qo'shiladi
-// import 'task_types_screen.dart';
+import 'task_types_screen.dart';
 
 class AdminPanelScreen extends StatelessWidget {
   const AdminPanelScreen({super.key});
@@ -56,7 +55,6 @@ class AdminPanelScreen extends StatelessWidget {
   icon: Icons.price_change_rounded,
   color: Colors.orange,
   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TaskTypesScreen())),
-),
           ),
         ],
       ),
