@@ -137,7 +137,11 @@ class _HomeScreenState extends State<HomeScreen> {
         
         for (var o in orders) {
           totalIncome += (o['total_price'] ?? 0).toDouble();
-          if (o['status'] != OrderStatus.completed && o['status'] != OrderStatus.canceled) active++;
+          
+          // Agar status "activeStatuses" ro'yxatida bo'lsa (ya'ni pending, material, assembly yoki delivery)
+          if (OrderStatus.activeStatuses.contains(o['status'])) {
+             active++;
+          }
         }
         for (var w in withdrawals) totalPaid += (w['amount'] ?? 0).toDouble();
 
