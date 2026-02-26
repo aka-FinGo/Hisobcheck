@@ -119,18 +119,19 @@ class _AddWorkLogScreenState extends State<AddWorkLogScreen> {
     setState(() => _isSubmitting = true);
 
     try {
+      // 1. Work Log (Ish hisoboti) ga yozamiz
+      // DIQQAT: total_sum qatorini olib tashladik, chunki bazaning o'zi hisoblaydi!
       await _supabase.from('work_logs').insert({
         'worker_id': _supabase.auth.currentUser!.id,
         'order_id': _selectedOrderId,
         'task_type': _taskNameForLog,
         'area_m2': amount, 
         'rate': _currentRate,
-        'total_sum': _calculatedTotal,
         'description': _descCtrl.text.trim(),
         'is_approved': false, 
       });
 
-      // AVTOMATIZATSIYA
+      // 2. AVTOMATIZATSIYA
       if (_targetStatusForAutoMove != null) {
         await _supabase.from('orders').update({
           'status': _targetStatusForAutoMove
@@ -142,6 +143,11 @@ class _AddWorkLogScreenState extends State<AddWorkLogScreen> {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ish muvaffaqiyatli topshirildi! Rahbar tasdig'i kutilmoqda."), backgroundColor: Colors.green));
       }
     } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Xato: $e'), backgroundColor: Colors.red));
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
+  } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Xato: $e'), backgroundColor: Colors.red));
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
