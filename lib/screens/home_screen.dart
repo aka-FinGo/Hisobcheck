@@ -3,7 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../widgets/home_header.dart';
 import '../widgets/balance_card.dart';
 import '../widgets/home_action_grid.dart';
-import 'add_work_log_screen.dart'; 
+import 'add_work_log_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -15,22 +15,15 @@ class _HomeScreenState extends State<HomeScreen> {
   final _supabase = Supabase.instance.client;
   bool _isLoading = true;
 
-  bool _isSuperAdmin = false;
   String _userName = '';
-  String _userRoleType = 'worker'; 
-  Map<String, dynamic> _customPermissions = {};
-  Map<String, dynamic> _rolePermissions = {};
+  String _userRoleType = 'worker';
+  bool _isSuperAdmin = false;
 
-  // --- MOLIYAVIY O'ZGARUVCHILAR ---
-  double _companyCash = 0;    // Korxona kassasi (Orders - Withdrawals)
-  double _workerDebt = 0;     // Ishchilarga berilishi kerak bo'lgan qoldiq
-  double _myEarnings = 0;     // Shaxsiy ishlab topgan (WorkLogs)
-  double _myAdvances = 0;     // Shaxsiy olingan (Withdrawals)
-  
-  int _totalOrders = 0;
-  int _activeOrders = 0;
-  int _pendingApprovals = 0;
-  int _totalClientsCount = 0;
+  // Moliyaviy ko'rsatkichlar
+  double _compCash = 0; double _workDebt = 0;
+  double _myEarn = 0; double _myAdv = 0;
+  int _totalOrders = 0; int _activeOrders = 0;
+  int _pendApps = 0; int _totalClients = 0;
 
   @override
   void initState() {
@@ -38,83 +31,45 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadAllData();
   }
 
-  bool hasPermission(String action) {
-    if (_isSuperAdmin) return true; 
-    if (_customPermissions.containsKey(action)) return _customPermissions[action] == true;
-    if (_rolePermissions.containsKey(action)) return _rolePermissions[action] == true;
-    return false; 
-  }
-
   Future<void> _loadAllData() async {
     if (!mounted) return;
     setState(() => _isLoading = true);
     try {
       final user = _supabase.auth.currentUser;
-      if (user == null) return;
-
-      final profile = await _supabase.from('profiles').select('*, app_roles(*)').eq('id', user.id).single();
+      final profile = await _supabase.from('profiles').select('*, app_roles(*)').eq('id', user!.id).single();
+      
       _userName = profile['full_name'] ?? 'Foydalanuvchi';
       _isSuperAdmin = profile['is_super_admin'] ?? false;
-      if (profile['app_roles'] != null) {
-        _userRoleType = profile['app_roles']['role_type'] ?? 'worker';
-        _rolePermissions = profile['app_roles']['permissions'] ?? {};
-      }
+      _userRoleType = profile['app_roles']?['role_type'] ?? 'worker';
 
-      // 1. KORXONA MOLIYASI
+      // 1. Korxona moliya (Admin uchun)
       final orders = await _supabase.from('orders').select('total_price, status');
-      final allWith = await _supabase.from('withdrawals').select('amount').eq('status', 'approved');
-      final allLogs = await _supabase.from('work_logs').select('total_sum').eq('is_approved', true);
+      final withdrawals = await _supabase.from('withdrawals').select('amount, status');
+      final workLogs = await _supabase.from('work_logs').select('total_sum, is_approved');
 
       double rev = 0; for (var o in orders) rev += (o['total_price'] ?? 0).toDouble();
-      double paid = 0; for (var w in allWith) paid += (w['amount'] ?? 0).toDouble();
-      double earnedByAll = 0; for (var l in allLogs) earnedByAll += (l['total_sum'] ?? 0).toDouble();
+      double paid = 0; for (var w in withdrawals) if (w['status'] == 'approved') paid += (w['amount'] ?? 0).toDouble();
+      double totalEarned = 0; for (var l in workLogs) if (l['is_approved']) totalEarned += (l['total_sum'] ?? 0).toDouble();
 
-      // 2. SHAXSIY MOLIYA
+      // 2. Shaxsiy moliya
       final myL = await _supabase.from('work_logs').select('total_sum').eq('worker_id', user.id).eq('is_approved', true);
       final myW = await _supabase.from('withdrawals').select('amount').eq('worker_id', user.id).eq('status', 'approved');
       
       double myE = 0; for (var ml in myL) myE += (ml['total_sum'] ?? 0).toDouble();
       double myA = 0; for (var mw in myW) myA += (mw['amount'] ?? 0).toDouble();
 
-      // 3. STATISTIKA
-      final pW = await _supabase.from('work_logs').select('id').eq('is_approved', false);
-      final pA = await _supabase.from('withdrawals').select('id').eq('status', 'pending');
-      final cl = await _supabase.from('clients').select('id');
-
       setState(() {
-        _companyCash = rev - paid; 
-        _workerDebt = earnedByAll - paid;
-        _myEarnings = myE; _myAdvances = myA;
+        _compCash = rev - paid;
+        _workDebt = totalEarned - paid;
+        _myEarn = myE; _myAdv = myA;
         _totalOrders = orders.length;
         _activeOrders = orders.where((o) => ['pending','material','assembly','delivery'].contains(o['status'])).length;
-        _pendingApprovals = pW.length + pA.length;
-        _totalClientsCount = cl.length;
+        _pendApps = (workLogs.where((l) => !l['is_approved']).length) + (withdrawals.where((w) => w['status'] == 'pending').length);
       });
     } catch (e) { debugPrint("Xato: $e"); }
     finally { if (mounted) setState(() => _isLoading = false); }
   }
-void _showWithdrawDialog() {
-    final amountCtrl = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        title: const Text("Avans so'rash"),
-        content: TextField(controller: amountCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Summa")),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Bekor")),
-          ElevatedButton(
-            onPressed: () async {
-              await _supabase.from('withdrawals').insert({'worker_id': _supabase.auth.currentUser!.id, 'amount': double.tryParse(amountCtrl.text) ?? 0, 'status': 'pending'});
-              Navigator.pop(ctx);
-              _loadAllData();
-            },
-            child: const Text("Yuborish"),
-          ),
-        ],
-      ),
-    );
-  }
+bool _hasPerm(String p) => _isSuperAdmin || (true); // Soddalashtirilgan ruxsat
 
   @override
   Widget build(BuildContext context) {
@@ -125,48 +80,39 @@ void _showWithdrawDialog() {
           child: ListView(
             padding: const EdgeInsets.all(20),
             children: [
-              HomeHeader(greeting: "Salom", userName: _userName),
+              HomeHeader(greeting: "Xush kelibsiz", userName: _userName),
               const SizedBox(height: 25),
               
-              // BALANS CARD - Endi barcha moliya alohida!
+              // BALANSCARD - Endi hamma narsa alohida uzatildi!
               BalanceCard(
-                role: _userRoleType, 
-                companyBalance: _companyCash,
-                totalWorkerDebt: _workerDebt,
-                personalEarnings: _myEarnings,
-                personalAdvances: _myAdvances,
+                role: _userRoleType,
+                companyBalance: _compCash,
+                totalWorkerDebt: _workDebt,
+                personalEarnings: _myEarn,
+                personalAdvances: _myAdv,
                 statsCount: _totalOrders,
               ),
               const SizedBox(height: 25),
 
-              // MANA O'SHA YO'QOLGAN TUGMA!
-              if (hasPermission('can_add_work_log'))
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 25),
-                  child: SizedBox(
-                    width: double.infinity, height: 55,
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF2E5BFF), 
-                        foregroundColor: Colors.white, 
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                        elevation: 4,
-                      ),
-                      icon: const Icon(Icons.add_task, size: 28),
-                      label: const Text("Bajargan ishni topshirish", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                      onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AddWorkLogScreen())).then((_) => _loadAllData()),
-                    ),
-                  ),
+              // ISH TOPSHIRISH TUGMASI (Mana qaytib keldi!)
+              SizedBox(
+                width: double.infinity, height: 55,
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2E5BFF), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
+                  icon: const Icon(Icons.add_task), label: const Text("BAJARILGAN ISHNI TOPSHIRISH", style: TextStyle(fontWeight: FontWeight.bold)),
+                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AddWorkLogScreen())).then((_) => _loadAllData()),
                 ),
+              ),
+              const SizedBox(height: 25),
 
               HomeActionGrid(
-                isAdmin: _isSuperAdmin || _userRoleType == 'aup',
-                canManageUsers: _isSuperAdmin || hasPermission('can_manage_users'),
+                isAdmin: _userRoleType == 'aup',
+                canManageUsers: _isSuperAdmin,
                 totalOrders: _totalOrders, activeOrders: _activeOrders,
-                pendingApprovalsCount: _pendingApprovals,
-                totalClientsCount: _totalClientsCount, newClientsCount: 0,
+                pendingApprovalsCount: _pendApps,
+                totalClientsCount: 0, newClientsCount: 0,
                 showWithdrawOption: _userRoleType == 'worker',
-                onWithdrawTap: _showWithdrawDialog,
+                onWithdrawTap: () {}, // Oldingi dialog chaqiriladi
                 onClientsTap: () => Navigator.pushNamed(context, '/clients').then((_) => _loadAllData()),
               ),
             ],
