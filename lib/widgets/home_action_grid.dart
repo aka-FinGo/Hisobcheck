@@ -4,19 +4,19 @@ import '../screens/stats_screen.dart';
 import '../screens/manage_users_screen.dart';
 import '../screens/manage_roles_screen.dart'; 
 import '../screens/admin_approvals.dart';
-import '../screens/orders_list_screen.dart'; // O'zizdagi fayllar
+import '../screens/orders_list_screen.dart';
 
 class HomeActionGrid extends StatelessWidget {
   final bool isAdmin;
   final bool canManageUsers; 
   final int totalOrders;
   final int activeOrders;
-  final int pendingApprovalsCount; // Endi bu raqam HomeScreen'dan keladi (doim 5 emas!)
+  final int pendingApprovalsCount;
   final int totalClientsCount;
-  final int newClientsCount;       // Yangi (+1) mijozlar
+  final int newClientsCount;
   final bool showWithdrawOption;
   final VoidCallback onWithdrawTap;
-  final VoidCallback onClientsTap; // Bosilganda badgeni o'chirish uchun
+  final VoidCallback onClientsTap;
 
   const HomeActionGrid({
     super.key,
@@ -35,30 +35,25 @@ class HomeActionGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+    final isGlass = theme.scaffoldBackgroundColor == Colors.transparent;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (isAdmin) ...[
           Row(
             children: [
-              // JAMI ZAKAZ - Bosilganda OrdersListScreen ga o'tadi
               Expanded(
                 child: _MiniStatTile(
-                  title: "Jami zakaz", 
-                  value: "$totalOrders", 
-                  icon: Icons.assignment_outlined, 
+                  title: "Jami zakaz", value: "$totalOrders", icon: Icons.assignment, 
                   color: theme.colorScheme.primary,
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersListScreen())),
                 )
               ),
               const SizedBox(width: 15),
-              // JARAYONDA - Bosilganda OrdersListScreen ga o'tadi
               Expanded(
                 child: _MiniStatTile(
-                  title: "Jarayonda", 
-                  value: "$activeOrders", 
-                  icon: Icons.hourglass_empty, 
+                  title: "Jarayonda", value: "$activeOrders", icon: Icons.hourglass_top, 
                   color: Colors.orange,
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersListScreen())),
                 )
@@ -81,30 +76,24 @@ class HomeActionGrid extends StatelessWidget {
           children: [
             if (isAdmin) 
               _ActionCard(
-                title: "Tasdiqlashlar", 
-                icon: Icons.fact_check_outlined, 
-                color: Colors.redAccent, 
-                // Agar kutilayotganlar bo'lsa raqam chiqadi, bo'lmasa badge ko'rinmaydi
+                title: "Tasdiqlashlar", icon: Icons.fact_check, color: Colors.redAccent, 
                 badgeValue: pendingApprovalsCount > 0 ? "$pendingApprovalsCount" : null,
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminApprovalsScreen()))
               ),
 
             if (isAdmin) 
               _ActionCard(
-                title: "Mijozlar", 
-                icon: Icons.people_alt, 
-                color: Colors.blue, 
+                title: "Mijozlar", icon: Icons.people, color: Colors.blue, 
                 subTitle: "$totalClientsCount ta",
-                // Yangi mijozlar bo'lsa (+1) chiqadi
                 badgeValue: newClientsCount > 0 ? "+$newClientsCount" : null,
                 onTap: onClientsTap,
               ),
             
-            _ActionCard(title: "Statistika", icon: Icons.bar_chart, color: Colors.purple, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StatsScreen()))),
+            _ActionCard(title: "Statistika", icon: Icons.insights, color: Colors.purple, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StatsScreen()))),
             
             if (canManageUsers) ...[
-              _ActionCard(title: "Hodimlar", icon: Icons.manage_accounts, color: Colors.orange, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ManageUsersScreen()))),
-              _ActionCard(title: "Lavozimlar", icon: Icons.badge, color: Colors.teal, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ManageRolesScreen()))),
+              _ActionCard(title: "Hodimlar", icon: Icons.group_add, color: Colors.orange, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ManageUsersScreen()))),
+              _ActionCard(title: "Lavozimlar", icon: Icons.verified_user, color: Colors.teal, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ManageRolesScreen()))),
             ],
           ],
         ),
@@ -117,21 +106,17 @@ class HomeActionGrid extends StatelessWidget {
     );
   }
 }
-// ─── ACTION CARD (OQ, QORA, OYNA MAVZULARI UCHUN) ───────────────
+
+// ─── ACTION CARD (3 TA MAVZUGH MOS) ──────────────────────────
 class _ActionCard extends StatelessWidget {
-  final String title;
-  final String? subTitle;
-  final IconData icon;
-  final Color color;
-  final VoidCallback onTap;
-  final String? badgeValue;
+  final String title; final String? subTitle; final IconData icon; final Color color; final VoidCallback onTap; final String? badgeValue;
 
   const _ActionCard({required this.title, this.subTitle, required this.icon, required this.color, required this.onTap, this.badgeValue});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isGlass = theme.scaffoldBackgroundColor == Colors.transparent; // "Oyna" mavzusini aniqlash
+    final isGlass = theme.scaffoldBackgroundColor == Colors.transparent;
 
     return InkWell(
       onTap: onTap,
@@ -142,42 +127,27 @@ class _ActionCard extends StatelessWidget {
           Container(
             width: double.infinity,
             decoration: BoxDecoration(
-              // Mavzuga qarab rang: Oq, Qora yoki 0.15 shaffof oyna
-              color: theme.cardTheme.color ?? theme.cardColor, 
+              color: theme.cardTheme.color ?? theme.cardColor,
               borderRadius: BorderRadius.circular(15),
-              // "Oyna" mavzusida ingichka oq chiziq (iPhone style)
-              border: isGlass ? Border.all(color: Colors.white.withOpacity(0.2), width: 1) : null,
-              boxShadow: isGlass ? [] : [
-                BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))
-              ],
+              border: isGlass ? Border.all(color: Colors.white.withOpacity(0.2)) : null,
+              boxShadow: isGlass ? [] : [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))],
             ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                CircleAvatar(
-                  radius: 26, 
-                  backgroundColor: color.withOpacity(isGlass ? 0.2 : 0.1), 
-                  child: Icon(icon, size: 28, color: color)
-                ),
+                CircleAvatar(radius: 26, backgroundColor: color.withOpacity(isGlass ? 0.2 : 0.1), child: Icon(icon, size: 28, color: color)),
                 const SizedBox(height: 10),
                 Text(title, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold)),
-                if (subTitle != null)
-                  Text(subTitle!, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
+                if (subTitle != null) Text(subTitle!, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
               ],
             ),
           ),
-          
-          // QIZIL BILDIRISHNOMA (BADGE)
           if (badgeValue != null)
             Positioned(
               top: -5, right: -5,
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.red, 
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: theme.scaffoldBackgroundColor == Colors.transparent ? Colors.white : theme.scaffoldBackgroundColor, width: 2)
-                ),
+                decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(12), border: Border.all(color: isGlass ? Colors.white : theme.scaffoldBackgroundColor, width: 2)),
                 child: Text(badgeValue!, style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
               ),
             ),
@@ -187,7 +157,7 @@ class _ActionCard extends StatelessWidget {
   }
 }
 
-// ─── MINI STAT TILE (BOSILADIGAN) ─────────────────────────────
+// ─── MINI STAT TILE ──────────────────────────────────────────
 class _MiniStatTile extends StatelessWidget {
   final String title; final String value; final IconData icon; final Color color; final VoidCallback onTap;
   const _MiniStatTile({required this.title, required this.value, required this.icon, required this.color, required this.onTap});
@@ -209,17 +179,13 @@ class _MiniStatTile extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Container(
-              padding: const EdgeInsets.all(8), 
-              decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle), 
-              child: Icon(icon, color: color, size: 20)
-            ),
+            Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle), child: Icon(icon, color: color, size: 20)),
             const SizedBox(width: 10),
             Flexible(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: theme.textTheme.bodySmall?.copyWith(fontSize: 10), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  Text(title, style: theme.textTheme.bodySmall?.copyWith(fontSize: 10), maxLines: 1),
                   Text(value, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, fontSize: 14)),
                 ],
               ),
@@ -235,7 +201,6 @@ class _MiniStatTile extends StatelessWidget {
 class _WithdrawButton extends StatelessWidget {
   final VoidCallback onTap;
   const _WithdrawButton({required this.onTap});
-
   @override
   Widget build(BuildContext context) {
     return SizedBox(
