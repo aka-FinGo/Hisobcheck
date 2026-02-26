@@ -52,9 +52,12 @@ class _ManageRolesScreenState extends State<ManageRolesScreen> {
     final baseSalaryCtrl = TextEditingController(text: isEditing ? (role['base_salary'] ?? 0).toString() : '0');
     final ratePerUnitCtrl = TextEditingController(text: isEditing ? (role['rate_per_unit'] ?? 0).toString() : '0');
     
-    // Yangi qo'shilgan birlik tanlash qismi
     String selectedUnit = isEditing ? (role['unit_type'] ?? 'dona') : 'dona';
     String roleType = isEditing ? role['role_type'] : 'worker';
+    
+    // YARATILGAN YANGILIK 1: Keyingi status o'zgaruvchisi
+    String? targetStatus = isEditing ? role['target_status'] : null;
+
     Map<String, dynamic> currentPermissions = isEditing && role['permissions'] != null 
         ? Map<String, dynamic>.from(role['permissions']) : {};
 
@@ -89,7 +92,6 @@ class _ManageRolesScreenState extends State<ManageRolesScreen> {
                       ),
                       const Divider(height: 30),
                       
-                      // MOLIYA QISMI - ENDI HAMMA UCHUN OCHIQLADIK
                       const Text("Moliya va To'lov shartlari", style: TextStyle(fontWeight: FontWeight.bold)),
                       const SizedBox(height: 10),
                       TextField(
@@ -99,7 +101,6 @@ class _ManageRolesScreenState extends State<ManageRolesScreen> {
                       ),
                       const SizedBox(height: 10),
                       
-                      // Birlik tanlash va Summa (Unit selection)
                       Row(
                         children: [
                           Expanded(
@@ -127,7 +128,29 @@ class _ManageRolesScreenState extends State<ManageRolesScreen> {
                           ),
                         ],
                       ),
-                      const Divider(height: 30),
+                      const Divider(height: 20),
+
+                      // YARATILGAN YANGILIK 1 (UI): Avtomatizatsiya
+                      const Text("Avtomatizatsiya (Pipeline)", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
+                      const SizedBox(height: 8),
+                      DropdownButtonFormField<String?>(
+                        value: targetStatus,
+                        decoration: const InputDecoration(
+                          labelText: "Ish topshirilgach zakaz qayerga o'tadi?",
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                        ),
+                        isExpanded: true,
+                        items: const [
+                          DropdownMenuItem(value: null, child: Text("Status o'zgarmaydi")),
+                          DropdownMenuItem(value: 'material', child: Text("Kesish/Material ->")),
+                          DropdownMenuItem(value: 'assembly', child: Text("Yig'ish ->")),
+                          DropdownMenuItem(value: 'delivery', child: Text("O'rnatish ->")),
+                          DropdownMenuItem(value: 'completed', child: Text("Yakunlandi (Tugadi)")),
+                        ],
+                        onChanged: (val) => setST(() => targetStatus = val),
+                      ),
+                      const Divider(height: 20),
                       
                       const Text("Ruxsatlar:", style: TextStyle(fontWeight: FontWeight.bold)),
                       ..._availablePermissions.entries.map((entry) => SwitchListTile(
@@ -141,6 +164,45 @@ class _ManageRolesScreenState extends State<ManageRolesScreen> {
                 ),
               ),
               actions: [
+                // YARATILGAN YANGILIK 2: O'CHIRISH TUGMASI (Faqat tahrirlashda)
+                if (isEditing)
+                  TextButton(
+                    onPressed: () async {
+                      final confirm = await showDialog<bool>(
+                        context: context,
+                        builder: (c) => AlertDialog(
+                          title: const Text("Diqqat!"),
+                          content: const Text("Ushbu lavozimni haqiqatan ham o'chirmoqchimisiz?"),
+                          actions: [
+                            TextButton(onPressed: () => Navigator.pop(c, false), child: const Text("Yo'q")),
+                            ElevatedButton(
+                              style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+                              onPressed: () => Navigator.pop(c, true), 
+                              child: const Text("Ha, o'chirish")
+                            ),
+                          ],
+                        ),
+                      );
+
+                      if (confirm == true) {
+                        try {
+                          await _supabase.from('app_roles').delete().eq('id', role['id']);
+                          if (mounted) {
+                            Navigator.pop(context);
+                            _fetchRoles();
+                          }
+                        } catch (e) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text("Xatolik: Ushbu lavozimga xodimlar biriktirilgan!"), backgroundColor: Colors.red)
+                            );
+                          }
+                        }
+                      }
+                    },
+                    child: const Text("O'chirish", style: TextStyle(color: Colors.red)),
+                  ),
+                  
                 TextButton(onPressed: () => Navigator.pop(context), child: const Text("Bekor qilish")),
                 ElevatedButton(
                   onPressed: () async {
@@ -153,6 +215,7 @@ class _ManageRolesScreenState extends State<ManageRolesScreen> {
                         'base_salary': double.tryParse(baseSalaryCtrl.text) ?? 0,
                         'rate_per_unit': double.tryParse(ratePerUnitCtrl.text) ?? 0,
                         'unit_type': selectedUnit,
+                        'target_status': targetStatus, // Avtomatizatsiyani bazaga yozamiz
                       };
 
                       if (isEditing) {
@@ -191,6 +254,13 @@ class _ManageRolesScreenState extends State<ManageRolesScreen> {
               itemBuilder: (context, index) {
                 final role = _roles[index];
                 final isAup = role['role_type'] == 'aup';
+                
+                // Ro'yxatda target_status ni chiroyli ko'rsatish uchun
+                String targetDisplay = "Status o'zgarmaydi";
+                if (role['target_status'] == 'material') targetDisplay = "-> Kesish";
+                if (role['target_status'] == 'assembly') targetDisplay = "-> Yig'ish";
+                if (role['target_status'] == 'delivery') targetDisplay = "-> O'rnatish";
+                if (role['target_status'] == 'completed') targetDisplay = "-> Yakunlandi";
 
                 return Card(
                   margin: const EdgeInsets.only(bottom: 12),
@@ -204,8 +274,8 @@ class _ManageRolesScreenState extends State<ManageRolesScreen> {
                     subtitle: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text("Fiks: ${_formatMoney(role['base_salary'])}"),
                         Text("Stavka: ${_formatMoney(role['rate_per_unit'])} / ${role['unit_type'] ?? 'dona'}"),
+                        Text(targetDisplay, style: const TextStyle(color: Colors.blue, fontSize: 12)),
                       ],
                     ),
                     trailing: const Icon(Icons.edit),
