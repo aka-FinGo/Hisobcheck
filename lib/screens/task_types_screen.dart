@@ -50,42 +50,71 @@ class _TaskTypesScreenState extends State<TaskTypesScreen> {
     final nameCtrl = TextEditingController(text: isEdit ? task['name'] : '');
     final priceCtrl = TextEditingController(text: isEdit ? task['price_per_unit'].toString() : '');
     final unitCtrl = TextEditingController(text: isEdit ? task['unit'] : 'dona');
+    
+    // YARATILGAN YANGI MANTIQ: Keyingi statusni tanlash
+    String? targetStatus = isEdit ? task['target_status'] : null;
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text(isEdit ? "Tarifni tahrirlash" : "Yangi tarif"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: "Ish nomi (M: Kromka urish)")),
-            const SizedBox(height: 10),
-            TextField(controller: priceCtrl, decoration: const InputDecoration(labelText: "Narxi (so'mda)"), keyboardType: TextInputType.number),
-            const SizedBox(height: 10),
-            TextField(controller: unitCtrl, decoration: const InputDecoration(labelText: "O'lchov birligi (dona, m2, m/p)")),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setST) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text(isEdit ? "Tarifni tahrirlash" : "Yangi tarif"),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: "Ish nomi (M: Loyiha chizish)")),
+                const SizedBox(height: 10),
+                TextField(controller: priceCtrl, decoration: const InputDecoration(labelText: "Narxi (so'mda)"), keyboardType: TextInputType.number),
+                const SizedBox(height: 10),
+                TextField(controller: unitCtrl, decoration: const InputDecoration(labelText: "O'lchov birligi (dona, m2, m/p)")),
+                const SizedBox(height: 20),
+                
+                // AVTOMATIZATSIYA UCHUN DROPDOWN
+                const Text("Avtomatizatsiya:", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+                const SizedBox(height: 5),
+                DropdownButtonFormField<String?>(
+                  value: targetStatus,
+                  decoration: const InputDecoration(
+                    labelText: "Ish topshirilgach, zakaz qaysi bosqichga o'tadi?",
+                    border: OutlineInputBorder(),
+                  ),
+                  isExpanded: true,
+                  items: const [
+                    DropdownMenuItem(value: null, child: Text("Status o'zgarmaydi")),
+                    DropdownMenuItem(value: 'material', child: Text("Kesish/Material")),
+                    DropdownMenuItem(value: 'assembly', child: Text("Yig'ish")),
+                    DropdownMenuItem(value: 'delivery', child: Text("O'rnatish")),
+                    DropdownMenuItem(value: 'completed', child: Text("Yakunlandi")),
+                  ],
+                  onChanged: (val) => setST(() => targetStatus = val),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Bekor")),
+            ElevatedButton(
+              onPressed: () async {
+                final data = {
+                  'name': nameCtrl.text,
+                  'price_per_unit': double.tryParse(priceCtrl.text) ?? 0,
+                  'unit': unitCtrl.text,
+                  'target_status': targetStatus, // BAZAGA YOZAMIZ
+                };
+                if (isEdit) {
+                  await _supabase.from('task_types').update(data).eq('id', task['id']);
+                } else {
+                  await _supabase.from('task_types').insert(data);
+                }
+                Navigator.pop(ctx);
+                _fetchTasks();
+              },
+              child: const Text("Saqlash"),
+            )
           ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Bekor")),
-          ElevatedButton(
-            onPressed: () async {
-              final data = {
-                'name': nameCtrl.text,
-                'price_per_unit': double.tryParse(priceCtrl.text) ?? 0,
-                'unit': unitCtrl.text,
-              };
-              if (isEdit) {
-                await _supabase.from('task_types').update(data).eq('id', task['id']);
-              } else {
-                await _supabase.from('task_types').insert(data);
-              }
-              Navigator.pop(ctx);
-              _fetchTasks();
-            },
-            child: const Text("Saqlash"),
-          )
-        ],
       ),
     );
   }
