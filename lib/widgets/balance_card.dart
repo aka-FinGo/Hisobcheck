@@ -3,15 +3,11 @@ import 'package:intl/intl.dart';
 import 'package:flutter_flip_card/flutter_flip_card.dart';
 
 class BalanceCard extends StatelessWidget {
-  final String role; // 'admin', 'aup', 'worker'
-  
-  // --- KORHONA MA'LUMOTLARI (Admin/AUP uchun) ---
+  final String role;
   final double companyBalance; 
-  final double totalWorkerDebt; // Ishchilarga berilishi kerak bo'lgan jami qarz
-  
-  // --- SHAXSIY MA'LUMOTLAR (Hamma uchun) ---
-  final double personalEarnings; // Ishlab topgan maoshi
-  final double personalAdvances; // Olgan avanslari
+  final double totalWorkerDebt;
+  final double personalEarnings;
+  final double personalAdvances;
   final int? statsCount;
 
   const BalanceCard({
@@ -24,125 +20,67 @@ class BalanceCard extends StatelessWidget {
     this.statsCount,
   });
 
-  String _formatMoney(double amount) {
-    // Minus qiymatni musbat qilib ko'rsatish (yozuvda "Qarz" deymiz)
-    final absAmount = amount.abs();
-    return "${NumberFormat("#,###").format(absAmount).replaceAll(',', ' ')} so'm";
-  }
+  String _f(double a) => "${NumberFormat("#,###").format(a.abs()).replaceAll(',', ' ')} so'm";
 
   @override
   Widget build(BuildContext context) {
     return GestureFlipCard(
-      animationDuration: const Duration(milliseconds: 600),
       axis: FlipAxis.horizontal,
-      frontWidget: _buildFrontSide(context),
-      backWidget: _buildBackSide(context),
+      frontWidget: _buildFront(context),
+      backWidget: _buildBack(context),
     );
   }
 
-  // OLD TOMON: Admin uchun Korhona, Worker uchun Shaxsiy balans
-  Widget _buildFrontSide(BuildContext context) {
+  Widget _buildFront(BuildContext context) {
     final theme = Theme.of(context);
     final isAUP = role == 'admin' || role == 'aup';
+    final double mainBal = isAUP ? companyBalance : (personalEarnings - personalAdvances);
     
-    // Mantiq: Admin bo'lsa korhona kassasi, ishchi bo'lsa o'z puli
-    final double mainValue = isAUP ? companyBalance : (personalEarnings - personalAdvances);
-    final String label = isAUP 
-        ? "KORXONA KASSASI" 
-        : (mainValue < 0 ? "SIZNING QARZINGIZ" : "MAVJUD BALANSINGIZ");
+    // Qarz mantiqi: Agar minus bo'lsa qizil rangda chiqadi
+    final isDebt = mainBal < 0;
+    final label = isAUP ? "KORXONA KASSASI" : (isDebt ? "SIZNING QARZINGIZ" : "MAVJUD BALANSINGIZ");
 
-    return _baseCard(
-      context,
-      gradient: isAUP 
-        ? const LinearGradient(colors: [Color(0xFF1E3C72), Color(0xFF2A5298)]) 
-        : (mainValue < 0 
-            ? const LinearGradient(colors: [Color(0xFFD31027), Color(0xFFEA384D)]) // Qarz bo'lsa qizil
-            : const LinearGradient(colors: [Color(0xFF00B4DB), Color(0xFF0083B0)])),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
-              const Icon(Icons.account_balance_wallet_outlined, color: Colors.white54),
-            ],
-          ),
-          const SizedBox(height: 15),
-          Text(_formatMoney(mainValue), style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
-          const Spacer(),
-          if (isAUP) ...[
-            _miniStat("Ishchilarga qarz:", _formatMoney(totalWorkerDebt), Colors.orangeAccent),
-          ] else ...[
-            _miniStat("Jami ish haqi:", _formatMoney(personalEarnings), Colors.white),
-          ],
-        ],
-      ),
-    );
+    return _card(context, 
+      isDebt && !isAUP ? [const Color(0xFFD31027), const Color(0xFFEA384D)] : [const Color(0xFF1E3C72), const Color(0xFF2A5298)],
+      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(label, style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 10),
+        Text(_f(mainBal), style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.bold)),
+        const Spacer(),
+        _row(isAUP ? "Ishchilarga qarz:" : "Jami ish haqi:", _f(isAUP ? totalWorkerDebt : personalEarnings)),
+      ]));
   }
-// ORQA TOMON: Admin o'zining shaxsiy maoshini ko'radi
-  Widget _buildBackSide(BuildContext context) {
-    final theme = Theme.of(context);
+
+  Widget _buildBack(BuildContext context) {
     final isAUP = role == 'admin' || role == 'aup';
-    
-    // Shaxsiy balans hisobi
-    final double myBalance = personalEarnings - personalAdvances;
-    final String backLabel = isAUP ? "SHAXSIY HISOBINGIZ" : "STATISTIKA";
-
-    return _baseCard(
-      context,
-      gradient: const LinearGradient(colors: [Color(0xFF232526), Color(0xFF414345)]),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(backLabel, style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 10),
-          Text(_formatMoney(myBalance), style: const TextStyle(color: Colors.amberAccent, fontSize: 24, fontWeight: FontWeight.bold)),
-          const Divider(color: Colors.white10, height: 25),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _miniStat("Olingan avans:", _formatMoney(personalAdvances), Colors.redAccent),
-              if (statsCount != null)
-                _miniStat(isAUP ? "Buyurtmalar:" : "Ishlar soni:", "$statsCount ta", Colors.blueAccent, align: CrossAxisAlignment.end),
-            ],
-          ),
-          const Spacer(),
-          const Text("ARISTOKRAT MEBEL", style: TextStyle(color: Colors.white12, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 5)),
-        ],
-      ),
-    );
+    return _card(context, [const Color(0xFF232526), const Color(0xFF414345)],
+      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(isAUP ? "SHAXSIY HISOBINGIZ" : "STATISTIKA", style: const TextStyle(color: Colors.white70, fontSize: 11)),
+        const SizedBox(height: 10),
+        Text(_f(personalEarnings - personalAdvances), style: const TextStyle(color: Colors.amber, fontSize: 22, fontWeight: FontWeight.bold)),
+        const Divider(color: Colors.white24, height: 20),
+        _row("Olingan avanslar:", _f(personalAdvances)),
+        const Spacer(),
+        Text("ARISTOKRAT MEBEL", style: TextStyle(color: Colors.white.withOpacity(0.1), letterSpacing: 5, fontSize: 10)),
+      ]));
   }
 
-  // --- ASOSIY DIZAYN QOLIBI (3-Theme qo'llab quvvatlaydi) ---
-  Widget _baseCard(BuildContext context, {required Gradient gradient, required Widget child}) {
-    final theme = Theme.of(context);
-    final isGlass = theme.scaffoldBackgroundColor == Colors.transparent;
-
+  Widget _card(BuildContext context, List<Color> colors, Widget child) {
+    final isGlass = Theme.of(context).scaffoldBackgroundColor == Colors.transparent;
     return Container(
-      height: 200,
-      width: double.infinity,
+      height: 190, width: double.infinity, padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(25),
-        gradient: isGlass ? null : gradient,
-        color: isGlass ? theme.cardTheme.color : null,
-        border: isGlass ? Border.all(color: Colors.white.withOpacity(0.2)) : null,
-        boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 15, offset: const Offset(0, 8)),
-        ],
+        borderRadius: BorderRadius.circular(20),
+        gradient: isGlass ? null : LinearGradient(colors: colors),
+        color: isGlass ? Theme.of(context).cardTheme.color : null,
+        border: isGlass ? Border.all(color: Colors.white24) : null,
       ),
-      padding: const EdgeInsets.all(25),
       child: child,
     );
   }
 
-  Widget _miniStat(String label, String value, Color color, {CrossAxisAlignment align = CrossAxisAlignment.start}) {
-    return Column(
-      crossAxisAlignment: align,
-      children: [
-        Text(label, style: const TextStyle(color: Colors.white54, fontSize: 10)),
-        Text(value, style: TextStyle(color: color, fontSize: 14, fontWeight: FontWeight.bold)),
-      ],
-    );
-  }
+  Widget _row(String t, String v) => Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+    Text(t, style: const TextStyle(color: Colors.white60, fontSize: 11)),
+    Text(v, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+  ]);
 }
