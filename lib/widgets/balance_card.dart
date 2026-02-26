@@ -4,19 +4,19 @@ import 'package:flutter_flip_card/flutter_flip_card.dart';
 
 class BalanceCard extends StatelessWidget {
   final String role;
-  final double companyBalance; 
-  final double totalWorkerDebt;
-  final double personalEarnings;
-  final double personalAdvances;
+  final double companyCash;    // Korxona kassasi
+  final double workerDebt;     // Ishchilardan jami qarz
+  final double personalEarned; // Shaxsiy topgan
+  final double personalPaid;   // Shaxsiy olgan (avans)
   final int? statsCount;
 
   const BalanceCard({
     super.key,
     required this.role,
-    required this.companyBalance,
-    required this.totalWorkerDebt,
-    required this.personalEarnings,
-    required this.personalAdvances,
+    required this.companyCash,
+    required this.workerDebt,
+    required this.personalEarned,
+    required this.personalPaid,
     this.statsCount,
   });
 
@@ -34,20 +34,18 @@ class BalanceCard extends StatelessWidget {
   Widget _buildFront(BuildContext context) {
     final theme = Theme.of(context);
     final isAUP = role == 'admin' || role == 'aup';
-    final double mainBal = isAUP ? companyBalance : (personalEarnings - personalAdvances);
-    
-    // Qarz mantiqi: Agar minus bo'lsa qizil rangda chiqadi
+    final double mainBal = isAUP ? companyCash : (personalEarned - personalPaid);
     final isDebt = mainBal < 0;
-    final label = isAUP ? "KORXONA KASSASI" : (isDebt ? "SIZNING QARZINGIZ" : "MAVJUD BALANSINGIZ");
-
+    
     return _card(context, 
       isDebt && !isAUP ? [const Color(0xFFD31027), const Color(0xFFEA384D)] : [const Color(0xFF1E3C72), const Color(0xFF2A5298)],
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(label, style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold)),
+        Text(isAUP ? "KORXONA KASSASI" : (isDebt ? "SIZNING QARZINGIZ" : "MAVJUD BALANSINGIZ"), 
+            style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold)),
         const SizedBox(height: 10),
         Text(_f(mainBal), style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.bold)),
         const Spacer(),
-        _row(isAUP ? "Ishchilarga qarz:" : "Jami ish haqi:", _f(isAUP ? totalWorkerDebt : personalEarnings)),
+        _row(isAUP ? "Ishchilarga qarz:" : "Jami ish haqi:", _f(isAUP ? workerDebt : personalEarned)),
       ]));
   }
 
@@ -57,9 +55,9 @@ class BalanceCard extends StatelessWidget {
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(isAUP ? "SHAXSIY HISOBINGIZ" : "STATISTIKA", style: const TextStyle(color: Colors.white70, fontSize: 11)),
         const SizedBox(height: 10),
-        Text(_f(personalEarnings - personalAdvances), style: const TextStyle(color: Colors.amber, fontSize: 22, fontWeight: FontWeight.bold)),
+        Text(_f(personalEarned - personalPaid), style: const TextStyle(color: Colors.amber, fontSize: 22, fontWeight: FontWeight.bold)),
         const Divider(color: Colors.white24, height: 20),
-        _row("Olingan avanslar:", _f(personalAdvances)),
+        _row("Olingan avanslar:", _f(personalPaid)),
         const Spacer(),
         Text("ARISTOKRAT MEBEL", style: TextStyle(color: Colors.white.withOpacity(0.1), letterSpacing: 5, fontSize: 10)),
       ]));
@@ -68,7 +66,7 @@ class BalanceCard extends StatelessWidget {
   Widget _card(BuildContext context, List<Color> colors, Widget child) {
     final isGlass = Theme.of(context).scaffoldBackgroundColor == Colors.transparent;
     return Container(
-      height: 190, width: double.infinity, padding: const EdgeInsets.all(20),
+      height: 195, width: double.infinity, padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20),
         gradient: isGlass ? null : LinearGradient(colors: colors),
@@ -81,6 +79,6 @@ class BalanceCard extends StatelessWidget {
 
   Widget _row(String t, String v) => Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
     Text(t, style: const TextStyle(color: Colors.white60, fontSize: 11)),
-    Text(v, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+    Text(v, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
   ]);
 }
