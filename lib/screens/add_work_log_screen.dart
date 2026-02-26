@@ -185,8 +185,8 @@ class _AdminApprovalsScreenState extends State<AdminApprovalsScreen> with Single
       itemCount: _workLogs.length,
       itemBuilder: (context, index) {
         final log = _workLogs[index];
-        final workerName = log['worker']?['full_name'] ?? 'Noma\\'lum xodim';
-        final orderNum = log['order']?['order_number'] ?? 'Noma\\'lum zakaz';
+        final workerName = log['worker']?['full_name'] ?? "Noma'lum xodim";
+        final orderNum = log['order']?['order_number'] ?? "Noma'lum zakaz";
         final projectName = log['order']?['project_name'] ?? '';
 
         return Card(
