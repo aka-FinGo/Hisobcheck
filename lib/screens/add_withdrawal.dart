@@ -32,11 +32,21 @@ class _AddWithdrawalScreenState extends State<AddWithdrawalScreen> {
     setState(() => _isLoading = true);
 
     try {
-      await _supabase.from('withdrawals').insert({
+      final res = await _supabase.from('withdrawals').insert({
         'worker_id': _selectedUserId,
         'amount': double.parse(_amountCtrl.text),
         'description': _descCtrl.text.isEmpty ? 'Avans' : _descCtrl.text,
+      }).select().single();
+      
+      // Send notification to worker
+      await _supabase.from('notifications').insert({
+        'user_id': _selectedUserId,
+        'title': 'Sizga avans kiritildi',
+        'body': '${_amountCtrl.text} so\'m ajratildi. Izoh: ${_descCtrl.text.isEmpty ? "Avans" : _descCtrl.text}',
+        'type': 'withdrawal',
+        'target_id': res['id'].toString(),
       });
+
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Pul muvaffaqiyatli berildi!")));
