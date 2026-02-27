@@ -94,7 +94,8 @@ Future<void> _submit() async {
     setState(() => _isSubmitting = true);
     try {
       final role = _myProfile?['app_roles'];
-      final rate = (_myProfile?['custom_rate_per_unit'] ?? role?['rate_per_unit'] ?? 0).toDouble();
+      final cPerms = _myProfile?['custom_permissions'] ?? {};
+      final rate = (cPerms['custom_bonus_per_m2'] ?? role?['rate_per_unit'] ?? 0).toDouble();
 
       final res = await _supabase.from('work_logs').insert({
         'worker_id': _supabase.auth.currentUser!.id,
