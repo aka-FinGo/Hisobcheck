@@ -99,7 +99,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       // 2. Based on role, calculate specific finance details
       if (hasPermission('can_view_finance') || _isSuperAdmin) {
-        // Admin
+        // Admin: Korxona umumiy hisob-kitoblari
         final withdrawals = await _supabase.from('withdrawals').select('amount').eq('status', 'approved');
         final allWorks = await _supabase.from('work_logs').select('total_sum').eq('is_approved', true);
         final pendingWorks = await _supabase.from('work_logs').select('id').eq('is_approved', false);
@@ -116,6 +116,15 @@ class _HomeScreenState extends State<HomeScreen> {
         final dayAgo = DateTime.now().subtract(const Duration(days: 1));
         final recentOnes = clientsRes.where((c) => DateTime.parse(c['created_at']).isAfter(dayAgo)).length;
 
+        // Adminning SHAXSIY ishlari va olgan pullari (Admin ham ish haqiga ega!)
+        final myWorks = await _supabase.from('work_logs').select('total_sum').eq('worker_id', user.id).eq('is_approved', true);
+        final myWithdraws = await _supabase.from('withdrawals').select('amount').eq('worker_id', user.id).eq('status', 'approved');
+        
+        double myEarned = 0;
+        double myPaid = 0;
+        for (var w in myWorks) myEarned += (w['total_sum'] ?? 0).toDouble();
+        for (var w in myWithdraws) myPaid += (w['amount'] ?? 0).toDouble();
+
         if (mounted) {
           setState(() {
             _companyCash = totalIncome - totalPaid;
@@ -125,11 +134,11 @@ class _HomeScreenState extends State<HomeScreen> {
             _pendingApprovalsCount = pendingWorks.length + pendingAvans.length;
             _totalClientsCount = clientsRes.length;
             _newClientsCount = recentOnes;
-            _statsCount = workers.length; 
+            _statsCount = myWorks.length; // Adminning shaxsiy bajarilgan ishlari soni
             
-            // Unused for Admin but kept safe
-            _displayEarned = 0; 
-            _displayWithdrawn = 0;
+            // Adminning Shaxsiy maoshi va pullari
+            _displayEarned = myEarned; 
+            _displayWithdrawn = myPaid;
           });
         }
       } else {
