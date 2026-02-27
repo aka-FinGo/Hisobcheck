@@ -50,6 +50,7 @@ class _HomeScreenState extends State<HomeScreen> {
   int _statsCount = 0;
   int _totalOrders = 0;
   int _activeOrders = 0;
+  int _unreadNotificationsCount = 0;
 
   @override
   void initState() {
@@ -90,6 +91,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
       // 1. Order Stats (Common for both to display in Grid/Cards)
       final orders = await _supabase.from('orders').select('total_price, status');
+      final unreadNotifs = await _supabase.from('notifications').select('id').eq('user_id', user.id).eq('is_read', false);
+      
       int actOrds = 0;
       double totalIncome = 0;
       for (var o in orders) {
@@ -139,6 +142,7 @@ class _HomeScreenState extends State<HomeScreen> {
             // Adminning Shaxsiy maoshi va pullari
             _displayEarned = myEarned; 
             _displayWithdrawn = myPaid;
+            _unreadNotificationsCount = unreadNotifs.length;
           });
         }
       } else {
@@ -163,6 +167,7 @@ class _HomeScreenState extends State<HomeScreen> {
             _newClientsCount = 0;
             _companyCash = 0;
             _workerDebt = 0;
+            _unreadNotificationsCount = unreadNotifs.length;
           });
         }
       }
@@ -288,7 +293,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
                   children: [
                     // 1. Tepa qism (Home Header)
-                    HomeHeader(greeting: _greeting, userName: "$_userName ($_positionName)"),
+                    HomeHeader(
+                      greeting: _greeting, 
+                      userName: "$_userName ($_positionName)",
+                      unreadCount: _unreadNotificationsCount,
+                    ),
                     const SizedBox(height: 25),
                     
                     // 2. Katta Kassa Kartasi (Balance Card)
