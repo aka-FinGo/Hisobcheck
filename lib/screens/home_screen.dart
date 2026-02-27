@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter_flip_card/flutter_flip_card.dart';
 
 import '../theme/theme_provider.dart';
 import 'clients_screen.dart';
@@ -332,7 +333,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildAdminCard() {
     double sofFoyda = _displayEarned - _displayWithdrawn;
     
-    return Container(
+    Widget front = Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20),
         gradient: const LinearGradient(
@@ -386,13 +387,110 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
+
+    Widget back = Container(
+      height: 200, // Matching typical card height
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF1A4073), Color(0xFF1CB5A3)],
+          begin: Alignment.bottomRight,
+          end: Alignment.topLeft,
+        ),
+        boxShadow: [
+          BoxShadow(color: const Color(0xFF1CB5A3).withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 8))
+        ]
+      ),
+      child: Stack(
+        children: [
+          Positioned(
+            top: 30, left: 0, right: 0,
+            child: Container(color: Colors.black87, height: 45),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(22),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.end, // Align to bottom
+              children: [
+                const Spacer(),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text("Ma'sul shaxs", style: TextStyle(color: Colors.white54, fontSize: 10)),
+                        const SizedBox(height: 4),
+                        Text(_userName.toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600, letterSpacing: 1.5)),
+                      ],
+                    ),
+                    const Text("ARISTOKRAT", style: TextStyle(color: Colors.white24, fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: 2.0)),
+                  ]
+                )
+              ],
+            ),
+          )
+        ],
+      )
+    );
+
+    return GestureFlipCard(
+      axis: FlipAxis.horizontal,
+      enableController: false,
+      animationDuration: const Duration(milliseconds: 600),
+      frontWidget: front,
+      backWidget: back,
+    );
   }
 
   // --- SHAXSIY MAOSHINGIZ (Worker) ---
   Widget _buildWorkerCard() {
     double maosh = _displayEarned - _displayWithdrawn;
     
-    return Container(
+    Widget front = Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF0F1B29), Color(0xFF133C85)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        boxShadow: [
+          BoxShadow(color: const Color(0xFF133C85).withOpacity(0.4), blurRadius: 15, offset: const Offset(0, 8))
+        ]
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(22),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text("SHAXSIY HISOBLANGI", style: TextStyle(color: Colors.white70, fontSize: 12, letterSpacing: 1.5, fontWeight: FontWeight.w600)),
+                Icon(Icons.contactless, color: Colors.white70, size: 24),
+              ],
+            ),
+            const SizedBox(height: 35),
+            const Text("Joriy balans", style: TextStyle(color: Colors.white70, fontSize: 13)),
+            const SizedBox(height: 5),
+            Text("${_fmtMoney(maosh)} so'm", style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+            const Spacer(flex: 1),
+            const SizedBox(height: 25),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(_userName.toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600, letterSpacing: 1.5)),
+                const Text("ARISTOKRAT", style: TextStyle(color: Colors.white24, fontSize: 14, fontWeight: FontWeight.w900, letterSpacing: 2.0)),
+              ],
+            )
+          ],
+        ),
+      ),
+    );
+
+    Widget back = Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20),
         gradient: const LinearGradient(
@@ -408,7 +506,7 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           // Magnetic stripe effect
           Positioned(
-            top: 40, left: 0, right: 0,
+            top: 30, left: 0, right: 0,
             child: Container(color: Colors.black87, height: 45),
           ),
           Padding(
@@ -416,7 +514,7 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SizedBox(height: 70), // Spacer for stripe
+                const SizedBox(height: 60), // Spacer for stripe
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   crossAxisAlignment: CrossAxisAlignment.center,
@@ -431,13 +529,13 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text("SHAXSIY MAOSHINGIZ", style: TextStyle(color: Colors.black45, fontSize: 10, fontWeight: FontWeight.bold)),
+                          const Text("MAOSHINGIZ", style: TextStyle(color: Colors.black45, fontSize: 10, fontWeight: FontWeight.bold)),
                           const SizedBox(height: 8),
                           Text("${_fmtMoney(maosh)} so'm", style: const TextStyle(color: Colors.black, fontSize: 18, fontWeight: FontWeight.w900)),
                         ],
                       ),
                     ),
-                    // Bajarilgan ishlar count & Watermark
+                    // Bajarilgan ishlar count 
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
@@ -445,7 +543,6 @@ class _HomeScreenState extends State<HomeScreen> {
                         const SizedBox(height: 2),
                         Text("$_statsCount", style: const TextStyle(color: Colors.amber, fontSize: 26, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 15),
-                        const Text("ARISTOKRAT", style: TextStyle(color: Colors.white24, fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
                       ],
                     )
                   ],
@@ -455,6 +552,14 @@ class _HomeScreenState extends State<HomeScreen> {
           )
         ],
       )
+    );
+
+    return GestureFlipCard(
+      axis: FlipAxis.horizontal,
+      enableController: false,
+      animationDuration: const Duration(milliseconds: 600),
+      frontWidget: front,
+      backWidget: back,
     );
   }
 
