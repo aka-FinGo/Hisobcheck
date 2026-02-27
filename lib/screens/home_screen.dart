@@ -1,41 +1,28 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import 'dart:ui'; // Glass uchun
 
-// ─── Ekranlar ─────────────────────────────────────────────
+import 'manage_users_screen.dart';
 import 'clients_screen.dart';
 import 'stats_screen.dart';
-import 'orders_list_screen.dart';
 import 'user_profile_screen.dart';
-import 'admin_finance_screen.dart';
-import 'manage_users_screen.dart';
-import 'admin_approvals.dart';
+import '../theme/theme_provider.dart';
 
-// ─── Widgetlar ────────────────────────────────────────────
-import '../widgets/balance_card.dart';
-import '../widgets/home_header.dart';
-import '../widgets/home_grid_action.dart';
-import '../widgets/pwa_prompt.dart';
-
-// ═══════════════════════════════════════════════════════════
-// KONSTANTALAR
-// ═══════════════════════════════════════════════════════════
-
+// ─── CONSTANTLAR ────────────────────────────────────────────
 class AppRoles {
-  static const admin     = 'admin';
-  static const worker    = 'worker';
+  static const admin = 'admin';
+  static const worker = 'worker';
   static const installer = 'installer';
 }
 
 class OrderStatus {
-  static const pending   = 'pending';
+  static const pending = 'pending';
   static const completed = 'completed';
-  static const canceled  = 'canceled';
+  static const canceled = 'canceled';
 }
-
-// ═══════════════════════════════════════════════════════════
-// HOME SCREEN
-// ═══════════════════════════════════════════════════════════
+// ────────────────────────────────────────────────────────────
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -46,94 +33,113 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final _supabase = Supabase.instance.client;
+  bool _isLoading = true;
 
-  bool   _isLoading = true;
-  int    _bottomIdx = 0;
+  String _userRole = AppRoles.worker;
+  String _userName = '';
 
-  // ─── Profil ───────────────────────────────────────────────
-  String _userRole     = AppRoles.worker;
-  String _userName     = '';
-  String _positionName = '';
-  double _baseSalary   = 0;
-  double _bonusPct     = 0;
+  double _displayEarned = 0;
+  double _displayWithdrawn = 0;
 
-  // ─── Admin statistikasi ───────────────────────────────────
-  int    _clientCount      = 0;
-  int    _activeOrders     = 0;
-  double _todayRevenue     = 0;
-  double _totalRevenue     = 0;
-  double _totalExpense     = 0;
-  int    _pendingApprovals = 0;
-  int    _activeWorkers    = 0;
-
-  // ─── Worker statistikasi ──────────────────────────────────
-  double _workerEarned    = 0;
-  double _workerWithdrawn = 0;
-  double _workerBonus     = 0;
-  int    _workerJobCount  = 0; // bajarilgan ishlar soni
-
-  // ─── Oxirgi faoliyatlar ───────────────────────────────────
-  List<Map<String, dynamic>> _recentItems = [];
-
-  final _fmt = NumberFormat('#,###');
-  String _fmtSum(double v) =>
-      '${_fmt.format(v).replaceAll(',', ' ')} so\'m';
-
-  // ─── Salom matni (vaqtga qarab) ───────────────────────────
-  String get _greeting {
-    final h = DateTime.now().hour;
-    if (h < 6)  return 'Xayrli tun 🌙';
-    if (h < 12) return 'Xayrli tong ☀️';
-    if (h < 17) return 'Xayrli kun 🌤';
-    if (h < 21) return 'Xayrli kech 🌆';
-    return 'Xayrli tun 🌙';
-  }
+  int _totalOrders = 0;
+  int _activeOrders = 0;
 
   @override
   void initState() {
     super.initState();
-    _loadAll();
-    Future.delayed(const Duration(seconds: 3), () {
-      if (mounted) checkAndShowPwaPrompt(context);
-    });
+    _loadAllData();
   }
 
-  // ═══════════════════════════════════════════════════════════
-  // MA'LUMOT YUKLASH
-  // ═══════════════════════════════════════════════════════════
+  // ─── THEME HELPER ─────────────────────────────────────────
+  bool get _isDark {
+    final mode = context.read<ThemeProvider>().currentMode;
+    return mode == AppThemeMode.dark || mode == AppThemeMode.glass;
+  }
 
-  Future<void> _loadAll() async {
+  bool get _isGlass =>
+      context.read<ThemeProvider>().currentMode == AppThemeMode.glass;
+
+  Color get _textPrimary => _isDark ? Colors.white : const Color(0xFF1A1F36);
+  Color get _textSecondary => _isDark ? Colors.white60 : Colors.grey.shade600;
+  Color get _cardBg => _isGlass
+      ? Colors.white.withOpacity(0.12)
+      : _isDark
+          ? const Color(0xFF1E1E2E)
+          : Colors.white;
+  Color get _scaffoldBg => _isDark
+      ? const Color(0xFF121212)
+      : const Color(0xFFF4F6FC);
+
+  // ─── MA'LUMOT YUKLASH ──────────────────────────────────────
+  Future<void> _loadAllData() async {
     if (!mounted) return;
     setState(() => _isLoading = true);
-
     try {
       final user = _supabase.auth.currentUser;
       if (user == null) return;
 
-      // ✅ Profil + app_roles JOIN
       final profile = await _supabase
           .from('profiles')
-          .select('*, app_roles(name, base_salary, rate_per_unit, role_type)')
+          .select()
           .eq('id', user.id)
           .single();
 
       _userRole = profile['role'] ?? AppRoles.worker;
       _userName = profile['full_name'] ?? 'Foydalanuvchi';
 
-      final roleInfo = profile['app_roles'] as Map<String, dynamic>?;
-      _positionName = roleInfo?['name'] ?? '';
-      _baseSalary = (profile['custom_salary'] ?? roleInfo?['base_salary'] ?? 0).toDouble();
-      _bonusPct   = (profile['bonus_percentage'] ?? 0).toDouble();
-
-      // ─── ADMIN ──────────────────────────────────────────
       if (_userRole == AppRoles.admin) {
-        await _loadAdminData();
+        final orders =
+            await _supabase.from('orders').select('total_price, status');
+        final withdrawals = await _supabase
+            .from('withdrawals')
+            .select('amount')
+            .eq('status', 'approved');
+
+        double totalIncome = 0;
+        double totalPaid = 0;
+        for (var o in orders) totalIncome += (o['total_price'] ?? 0).toDouble();
+        for (var w in withdrawals) totalPaid += (w['amount'] ?? 0).toDouble();
+
+        if (mounted) {
+          setState(() {
+            _displayEarned = totalIncome;
+            _displayWithdrawn = totalPaid;
+            _totalOrders = orders.length;
+            _activeOrders = orders
+                .where((o) =>
+                    o['status'] != OrderStatus.completed &&
+                    o['status'] != OrderStatus.canceled)
+                .length;
+            _isLoading = false;
+          });
+        }
       } else {
-        // ─── WORKER / boshqa ────────────────────────────
-        await _loadWorkerData(user.id);
+        final works = await _supabase
+            .from('work_logs')
+            .select('total_sum')
+            .eq('worker_id', user.id)
+            .eq('is_approved', true);
+        final withdraws = await _supabase
+            .from('withdrawals')
+            .select('amount')
+            .eq('worker_id', user.id)
+            .eq('status', 'approved');
+
+        double earned = 0;
+        double paid = 0;
+        for (var w in works) earned += (w['total_sum'] ?? 0).toDouble();
+        for (var w in withdraws) paid += (w['amount'] ?? 0).toDouble();
+
+        if (mounted) {
+          setState(() {
+            _displayEarned = earned;
+            _displayWithdrawn = paid;
+            _isLoading = false;
+          });
+        }
       }
     } catch (e) {
-      debugPrint("HomeScreen xato: $e");
+      debugPrint("Yuklashda xato: $e");
       if (mounted) {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -143,1030 +149,1021 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _loadAdminData() async {
-    final today      = DateTime.now();
-    final todayStart = DateTime(today.year, today.month, today.day).toIso8601String();
-    final monthStart = DateTime(today.year, today.month, 1).toIso8601String();
+  // ─── FORMATLAR ─────────────────────────────────────────────
+  String _formatMoney(double amount) =>
+      "${NumberFormat("#,###").format(amount).replaceAll(',', ' ')} so'm";
 
-    final results = await Future.wait([
-      _supabase.from('clients').select('id'),
-      _supabase
-          .from('orders')
-          .select('id, status, total_price, created_at, project_name')
-          .order('created_at', ascending: false),
-      _supabase
-          .from('work_logs')
-          .select('id')
-          .eq('is_approved', false),
-      _supabase
-          .from('withdrawals')
-          .select('amount')
-          .eq('status', 'approved'),
-      // Faol xodimlar (shu oy ish topshirgan)
-      _supabase
-          .from('work_logs')
-          .select('worker_id')
-          .gte('created_at', monthStart),
-    ]);
-
-    final clients        = results[0] as List;
-    final orders         = results[1] as List;
-    final pendingLogs    = results[2] as List;
-    final approvedPays   = results[3] as List;
-    final monthlyLogs    = results[4] as List;
-
-    double totalRev = 0;
-    double todayRev = 0;
-    int activeC = 0;
-
-    for (final o in orders) {
-      final status    = (o['status'] ?? '').toString();
-      final price     = (o['total_price'] ?? 0).toDouble();
-      final createdAt = o['created_at']?.toString() ?? '';
-
-      if (status != OrderStatus.completed && status != OrderStatus.canceled) {
-        activeC++;
-      }
-      totalRev += price;
-      if (createdAt.compareTo(todayStart) >= 0) todayRev += price;
-    }
-
-    double totalExp = 0;
-    for (final w in approvedPays) totalExp += (w['amount'] ?? 0).toDouble();
-
-    // Faol ishchilar (unique worker_id)
-    final uniqueWorkers = <dynamic>{};
-    for (final l in monthlyLogs) {
-      if (l['worker_id'] != null) uniqueWorkers.add(l['worker_id']);
-    }
-
-    // Oxirgi 5 ta zakaz
-    final recent = orders.take(5).map<Map<String, dynamic>>((o) => {
-      'title':      o['project_name']?.toString() ?? 'Zakaz #${o['id']}',
-      'status':     (o['status'] ?? 'pending').toString(),
-      'created_at': o['created_at']?.toString() ?? '',
-    }).toList();
-
-    if (mounted) {
-      setState(() {
-        _clientCount      = clients.length;
-        _activeOrders     = activeC;
-        _todayRevenue     = todayRev;
-        _totalRevenue     = totalRev;
-        _totalExpense     = totalExp;
-        _pendingApprovals = pendingLogs.length;
-        _activeWorkers    = uniqueWorkers.length;
-        _recentItems      = recent;
-        _isLoading        = false;
-      });
-    }
+  String get _greeting {
+    final h = DateTime.now().hour;
+    if (h < 12) return "Xayrli tong";
+    if (h < 17) return "Xayrli kun";
+    return "Xayrli kech";
   }
 
-  Future<void> _loadWorkerData(String userId) async {
-    final results = await Future.wait([
-      // Tasdiqlangan ishlar
-      _supabase
-          .from('work_logs')
-          .select('total_sum')
-          .eq('worker_id', userId)
-          .eq('is_approved', true),
-      // Olingan pullar
-      _supabase
-          .from('withdrawals')
-          .select('amount')
-          .eq('worker_id', userId)
-          .eq('status', 'approved'),
-      // Oxirgi 5 ta ish
-      _supabase
-          .from('work_logs')
-          .select('task_type, total_sum, is_approved, created_at, orders(order_number)')
-          .eq('worker_id', userId)
-          .order('created_at', ascending: false)
-          .limit(5),
-    ]);
-
-    final works      = results[0] as List;
-    final withdraws  = results[1] as List;
-    final recentLogs = results[2] as List;
-
-    double worksSum = 0;
-    for (final w in works) worksSum += (w['total_sum'] ?? 0).toDouble();
-
-    final bonus  = worksSum * _bonusPct / 100;
-    final earned = _baseSalary + worksSum + bonus;
-
-    double paid = 0;
-    for (final w in withdraws) paid += (w['amount'] ?? 0).toDouble();
-
-    final recent = recentLogs.map<Map<String, dynamic>>((log) => {
-      'title':      '${log['task_type'] ?? 'Ish'} · ${log['orders']?['order_number'] ?? '?'}',
-      'status':     (log['is_approved'] ?? false) ? 'completed' : 'pending',
-      'created_at': log['created_at']?.toString() ?? '',
-      'amount':     (log['total_sum'] ?? 0).toDouble(),
-    }).toList();
-
-    if (mounted) {
-      setState(() {
-        _workerEarned    = earned;
-        _workerWithdrawn = paid;
-        _workerBonus     = bonus;
-        _workerJobCount  = works.length;
-        _recentItems     = recent;
-        _isLoading       = false;
-      });
-    }
-  }
-
-  // ═══════════════════════════════════════════════════════════
-  // DIALOGLAR
-  // ═══════════════════════════════════════════════════════════
-
+  // ─── DIALOGS ───────────────────────────────────────────────
   void _showWithdrawDialog() {
-    final ctrl    = TextEditingController();
-    final balance = _workerEarned - _workerWithdrawn;
+    final amountCtrl = TextEditingController();
+    final double balance = _displayEarned - _displayWithdrawn;
 
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        title: const Text("Avans so'rash",
-            style: TextStyle(fontWeight: FontWeight.bold)),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.green.shade50,
-              borderRadius: BorderRadius.circular(10),
+        backgroundColor: _cardBg,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.account_balance_wallet, color: Colors.green),
             ),
-            child: Row(children: [
-              const Icon(Icons.account_balance_wallet_outlined,
-                  color: Colors.green, size: 20),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  "Mavjud balans: ${_fmtSum(balance)}",
-                  style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.green.shade700),
+            const SizedBox(width: 12),
+            Text("Avans so'rash",
+                style: TextStyle(color: _textPrimary, fontSize: 18)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.green.withOpacity(0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.wallet, color: Colors.green, size: 18),
+                  const SizedBox(width: 8),
+                  Text("Mavjud balans: ",
+                      style: TextStyle(color: _textSecondary, fontSize: 13)),
+                  Text(_formatMoney(balance),
+                      style: const TextStyle(
+                          color: Colors.green,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14)),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: amountCtrl,
+              keyboardType: TextInputType.number,
+              style: TextStyle(color: _textPrimary),
+              decoration: InputDecoration(
+                labelText: "Summa",
+                suffixText: "so'm",
+                labelStyle: TextStyle(color: _textSecondary),
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12)),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide:
+                      const BorderSide(color: Color(0xFF2E5BFF), width: 2),
                 ),
               ),
-            ]),
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: ctrl,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              labelText: "Summa",
-              border: OutlineInputBorder(),
-              suffixText: "so'm",
-              prefixIcon: Icon(Icons.monetization_on_outlined),
             ),
-          ),
-        ]),
+          ],
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("BEKOR")),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text("Bekor", style: TextStyle(color: _textSecondary)),
+          ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF2E5BFF),
               foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
             ),
             onPressed: () async {
-              final amount = double.tryParse(ctrl.text) ?? 0;
+              final amount = double.tryParse(amountCtrl.text) ?? 0;
               if (amount <= 0) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Noto'g'ri summa!")));
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text("Noto'g'ri summa!"),
+                    backgroundColor: Colors.orange));
                 return;
               }
               if (amount > balance) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content: Text("Balans yetarli emas!"),
-                        backgroundColor: Colors.red));
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text("Balans yetarli emas!"),
+                    backgroundColor: Colors.red));
                 return;
               }
               try {
                 await _supabase.from('withdrawals').insert({
                   'worker_id': _supabase.auth.currentUser!.id,
-                  'amount':    amount,
-                  'status':    'pending',
+                  'amount': amount,
+                  'status': OrderStatus.pending,
                 });
                 if (mounted) {
                   Navigator.pop(ctx);
-                  _loadAll();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content: Text("So'rov yuborildi ✅"),
-                        backgroundColor: Colors.green),
-                  );
+                  _loadAllData();
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                      content: Text("So'rov yuborildi!"),
+                      backgroundColor: Colors.green));
                 }
               } catch (e) {
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text("Xato: $e"), backgroundColor: Colors.red));
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: Text("Xato: $e"),
+                      backgroundColor: Colors.red));
+                }
               }
             },
-            child: const Text("YUBORISH"),
+            child: const Text("Yuborish"),
           ),
         ],
       ),
-    );
+    ).whenComplete(() => amountCtrl.dispose());
   }
 
   void _showWorkDialog() async {
-    final results = await Future.wait([
-      _supabase
-          .from('orders')
-          .select('id, project_name, order_number, total_area_m2, client_name')
-          .not('status', 'in', '("completed","canceled")')
-          .order('created_at', ascending: false),
-      _supabase.from('task_types').select('id, name, default_rate, target_status'),
-    ]);
+    final ordersResp = await _supabase
+        .from('orders')
+        .select('*, clients(full_name)')
+        .neq('status', OrderStatus.completed)
+        .order('created_at', ascending: false);
+    final taskTypesResp = await _supabase.from('task_types').select();
 
     if (!mounted) return;
 
-    final orders    = List<Map<String, dynamic>>.from(results[0]);
-    final taskTypes = List<Map<String, dynamic>>.from(results[1]);
+    final orders = List<Map<String, dynamic>>.from(ordersResp);
+    final taskTypes = List<Map<String, dynamic>>.from(taskTypesResp);
 
-    dynamic selectedOrderId;
+    dynamic selectedOrder;
     Map<String, dynamic>? selectedTask;
-    final areaCtrl  = TextEditingController();
+    final areaCtrl = TextEditingController();
     final notesCtrl = TextEditingController();
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      backgroundColor: Colors.transparent,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setM) {
-          final area      = double.tryParse(areaCtrl.text) ?? 0;
-          final rate      = (selectedTask?['default_rate'] ?? 0).toDouble();
-          final estimated = area * rate;
+        builder: (ctx, setModal) => Container(
+          decoration: BoxDecoration(
+            color: _isGlass
+                ? Colors.white.withOpacity(0.15)
+                : _isDark
+                    ? const Color(0xFF1E1E2E)
+                    : Colors.white,
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(28)),
+            border: _isGlass
+                ? Border.all(color: Colors.white.withOpacity(0.2))
+                : null,
+          ),
+          child: ClipRRect(
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(28)),
+            child: BackdropFilter(
+              filter: _isGlass
+                  ? ImageFilter.blur(sigmaX: 20, sigmaY: 20)
+                  : ImageFilter.blur(sigmaX: 0, sigmaY: 0),
+              child: Padding(
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+                  left: 24,
+                  right: 24,
+                  top: 24,
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Handle
+                      Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.grey.withOpacity(0.4),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF2E5BFF).withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(Icons.add_task,
+                                color: Color(0xFF2E5BFF)),
+                          ),
+                          const SizedBox(width: 12),
+                          Text("Ish Topshirish",
+                              style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: _textPrimary)),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
 
-          return Padding(
-            padding: EdgeInsets.only(
-              bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
-              left: 20, right: 20, top: 20,
+                      // Zakaz tanlash
+                      DropdownButtonFormField<dynamic>(
+                        dropdownColor: _cardBg,
+                        style: TextStyle(color: _textPrimary),
+                        decoration: _inputDecoration("Zakaz tanlang",
+                            Icons.assignment_outlined),
+                        isExpanded: true,
+                        items: orders
+                            .map((o) => DropdownMenuItem(
+                                  value: o['id'],
+                                  child: Text(
+                                    o['project_name'] ?? 'Nomsiz',
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(color: _textPrimary),
+                                  ),
+                                ))
+                            .toList(),
+                        onChanged: (v) {
+                          setModal(() {
+                            selectedOrder = v;
+                            final full =
+                                orders.firstWhere((o) => o['id'] == v);
+                            areaCtrl.text =
+                                (full['total_area_m2'] ?? 0).toString();
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Ish turi
+                      DropdownButtonFormField<Map<String, dynamic>>(
+                        dropdownColor: _cardBg,
+                        style: TextStyle(color: _textPrimary),
+                        decoration:
+                            _inputDecoration("Ish turi", Icons.work_outline),
+                        items: taskTypes
+                            .map((t) => DropdownMenuItem(
+                                  value: t,
+                                  child: Text(t['name'],
+                                      style: TextStyle(color: _textPrimary)),
+                                ))
+                            .toList(),
+                        onChanged: (v) =>
+                            setModal(() => selectedTask = v),
+                      ),
+                      const SizedBox(height: 12),
+
+                      TextField(
+                        controller: areaCtrl,
+                        keyboardType: TextInputType.number,
+                        style: TextStyle(color: _textPrimary),
+                        decoration: _inputDecoration("Hajm (m²)",
+                            Icons.square_foot).copyWith(suffixText: "m²"),
+                      ),
+                      const SizedBox(height: 12),
+
+                      TextField(
+                        controller: notesCtrl,
+                        style: TextStyle(color: _textPrimary),
+                        decoration: _inputDecoration(
+                            "Izoh (ixtiyoriy)", Icons.notes),
+                      ),
+                      const SizedBox(height: 24),
+
+                      SizedBox(
+                        width: double.infinity,
+                        height: 52,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF2E5BFF),
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14)),
+                            elevation: 4,
+                          ),
+                          onPressed: () async {
+                            if (selectedOrder == null ||
+                                selectedTask == null) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                    content: Text(
+                                        "Barcha maydonlarni to'ldiring!")),
+                              );
+                              return;
+                            }
+                            try {
+                              await _supabase.from('work_logs').insert({
+                                'worker_id':
+                                    _supabase.auth.currentUser!.id,
+                                'order_id': selectedOrder,
+                                'task_type': selectedTask!['name'],
+                                'area_m2':
+                                    double.tryParse(areaCtrl.text) ?? 0,
+                                'rate': selectedTask!['default_rate'],
+                                'description': notesCtrl.text,
+                              });
+
+                              if (selectedTask!['target_status'] != null &&
+                                  selectedTask!['target_status']
+                                      .toString()
+                                      .isNotEmpty) {
+                                await _supabase
+                                    .from('orders')
+                                    .update({'status': selectedTask!['target_status']}).eq('id', selectedOrder);
+                              } else if (_userRole == AppRoles.installer) {
+                                await _supabase.from('orders').update(
+                                    {'status': OrderStatus.completed}).eq(
+                                    'id', selectedOrder);
+                              }
+
+                              if (mounted) {
+                                Navigator.pop(ctx);
+                                _loadAllData();
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                      content: Text("Ish qabul qilindi!"),
+                                      backgroundColor: Colors.green),
+                                );
+                              }
+                            } catch (e) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text("Xato: $e")),
+                                );
+                              }
+                            }
+                          },
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.check_circle_outline, size: 20),
+                              SizedBox(width: 8),
+                              Text("TOPSHIRISH",
+                                  style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              // Drag handle
-              Container(width: 40, height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(2),
-                  )),
-              const SizedBox(height: 16),
+          ),
+        ),
+      ),
+    ).whenComplete(() {
+      areaCtrl.dispose();
+      notesCtrl.dispose();
+    });
+  }
 
-              // Sarlavha
-              Row(children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF2E5BFF).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(Icons.add_task, color: Color(0xFF2E5BFF)),
-                ),
-                const SizedBox(width: 12),
-                const Text("Ish Topshirish",
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-              ]),
-              const SizedBox(height: 20),
-
-              // Zakaz
-              DropdownButtonFormField<dynamic>(
-                decoration: const InputDecoration(
-                  labelText: "Zakaz tanlang",
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.receipt_long_outlined),
-                ),
-                isExpanded: true,
-                items: orders.map((o) {
-                  final client = (o['client_name'] ?? '').toString();
-                  final label  = o['project_name'] ?? o['order_number'] ?? '—';
-                  return DropdownMenuItem(
-                    value: o['id'],
-                    child: Text(
-                      client.isNotEmpty ? '$label ($client)' : '$label',
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  );
-                }).toList(),
-                onChanged: (v) => setM(() {
-                  selectedOrderId = v;
-                  final full = orders.firstWhere((o) => o['id'] == v, orElse: () => {});
-                  if (full['total_area_m2'] != null) {
-                    areaCtrl.text = full['total_area_m2'].toString();
-                  }
-                }),
-              ),
-              const SizedBox(height: 12),
-
-              // Ish turi
-              DropdownButtonFormField<Map<String, dynamic>>(
-                decoration: const InputDecoration(
-                  labelText: "Ish turi",
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.construction_outlined),
-                ),
-                items: taskTypes.map((t) => DropdownMenuItem(
-                  value: t,
-                  child: Row(children: [
-                    Expanded(child: Text(t['name'] ?? '—')),
-                    Text(
-                      '${_fmt.format(t['default_rate'] ?? 0)} so\'m',
-                      style: TextStyle(color: Colors.green.shade600, fontSize: 12),
-                    ),
-                  ]),
-                )).toList(),
-                onChanged: (v) => setM(() => selectedTask = v),
-              ),
-              const SizedBox(height: 12),
-
-              // Hajm + izoh
-              Row(children: [
-                Expanded(
-                  child: TextField(
-                    controller: areaCtrl,
-                    keyboardType: TextInputType.number,
-                    onChanged: (_) => setM(() {}),
-                    decoration: const InputDecoration(
-                      labelText: "Hajm",
-                      border: OutlineInputBorder(),
-                      suffixText: "m²",
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: TextField(
-                    controller: notesCtrl,
-                    decoration: const InputDecoration(
-                      labelText: "Izoh",
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                ),
-              ]),
-
-              // Taxminiy hisob
-              if (selectedTask != null && estimated > 0) ...[
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.green.shade50,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.green.shade200),
-                  ),
-                  child: Row(children: [
-                    const Icon(Icons.calculate_outlined, color: Colors.green, size: 18),
-                    const SizedBox(width: 8),
-                    Text(
-                      "Taxminiy haq: ${_fmtSum(estimated)}",
-                      style: TextStyle(
-                          color: Colors.green.shade700,
-                          fontWeight: FontWeight.bold),
-                    ),
-                  ]),
-                ),
-              ],
-              const SizedBox(height: 20),
-
-              // Topshirish tugmasi
-              SizedBox(
-                width: double.infinity, height: 50,
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF2E5BFF),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                  ),
-                  icon: const Icon(Icons.send_rounded),
-                  label: const Text("TOPSHIRISH",
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                  onPressed: () async {
-                    if (selectedOrderId == null || selectedTask == null) {
-                      ScaffoldMessenger.of(ctx).showSnackBar(
-                          const SnackBar(
-                              content: Text("Zakaz va ish turini tanlang!")));
-                      return;
-                    }
-                    if ((double.tryParse(areaCtrl.text) ?? 0) <= 0) {
-                      ScaffoldMessenger.of(ctx).showSnackBar(
-                          const SnackBar(content: Text("Hajmni kiriting!")));
-                      return;
-                    }
-                    try {
-                      await _supabase.from('work_logs').insert({
-                        'worker_id':   _supabase.auth.currentUser!.id,
-                        'order_id':    selectedOrderId,
-                        'task_type':   selectedTask!['name'],
-                        'area_m2':     double.tryParse(areaCtrl.text) ?? 0,
-                        'rate':        (selectedTask!['default_rate'] ?? 0).toDouble(),
-                        'description': notesCtrl.text,
-                      });
-
-                      final ts = selectedTask!['target_status']?.toString() ?? '';
-                      if (ts.isNotEmpty) {
-                        await _supabase
-                            .from('orders')
-                            .update({'status': ts})
-                            .eq('id', selectedOrderId);
-                      }
-
-                      if (mounted) {
-                        Navigator.pop(ctx);
-                        _loadAll();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                              content: Text("Ish topshirildi ✅"),
-                              backgroundColor: Colors.green),
-                        );
-                      }
-                    } catch (e) {
-                      if (mounted) ScaffoldMessenger.of(ctx).showSnackBar(
-                          SnackBar(content: Text("Xato: $e"),
-                              backgroundColor: Colors.red));
-                    }
-                  },
-                ),
-              ),
-              const SizedBox(height: 8),
-            ]),
-          );
-        },
+  InputDecoration _inputDecoration(String label, IconData icon) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: TextStyle(color: _textSecondary),
+      prefixIcon: Icon(icon, color: _textSecondary, size: 20),
+      filled: true,
+      fillColor: _isDark
+          ? Colors.white.withOpacity(0.07)
+          : Colors.grey.shade50,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(
+          color: _isDark
+              ? Colors.white.withOpacity(0.1)
+              : Colors.grey.shade200,
+        ),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide:
+            const BorderSide(color: Color(0xFF2E5BFF), width: 2),
       ),
     );
   }
 
-  // ═══════════════════════════════════════════════════════════
-  // BUILD
-  // ═══════════════════════════════════════════════════════════
+  // ─── BUILD ────────────────────────────────────────────────
+  @override
+  Widget build(BuildContext context) {
+    // ThemeProvider o'zgarishlarini kuzatish
+    final themeProvider = context.watch<ThemeProvider>();
+    final isGlass = themeProvider.currentMode == AppThemeMode.glass;
+
+    Widget content = _isLoading
+        ? Center(
+            child: CircularProgressIndicator(
+              color: const Color(0xFF2E5BFF),
+            ),
+          )
+        : SafeArea(
+            child: Stack(
+              children: [
+                // ASOSIY KONTENT
+                SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 110),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // ── HEADER ──────────────────────────────
+                      _buildHeader(),
+                      const SizedBox(height: 24),
+
+                      // ── ADMIN MINI STATS ────────────────────
+                      if (_userRole == AppRoles.admin) ...[
+                        _buildAdminMiniStats(),
+                        const SizedBox(height: 20),
+                      ],
+
+                      // ── BALANS CARD ─────────────────────────
+                      _buildBalanceCard(),
+                      const SizedBox(height: 28),
+
+                      // ── MENYU ───────────────────────────────
+                      Text("Bo'limlar",
+                          style: TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.bold,
+                              color: _textPrimary)),
+                      const SizedBox(height: 14),
+                      _buildMenuGrid(),
+                    ],
+                  ),
+                ),
+
+                // ── PASTKI TUGMA ─────────────────────────────
+                Positioned(
+                  bottom: 16,
+                  left: 20,
+                  right: 20,
+                  child: _buildActionButton(),
+                ),
+              ],
+            ),
+          );
+
+    // Glass uchun gradient background
+    if (isGlass) {
+      return Scaffold(
+        body: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xFF1A237E), Color(0xFF4A148C), Color(0xFF006064)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+          child: content,
+        ),
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: _scaffoldBg,
+      body: content,
+    );
+  }
+
+  // ─── HEADER ────────────────────────────────────────────────
+  Widget _buildHeader() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(_greeting,
+                style: TextStyle(color: _textSecondary, fontSize: 13)),
+            const SizedBox(height: 2),
+            Text(_userName,
+                style: TextStyle(
+                    color: _textPrimary,
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold)),
+          ],
+        ),
+        Row(
+          children: [
+            // Tema almashtirish tugmasi
+            _ThemeSwitchButton(textSecondary: _textSecondary, cardBg: _cardBg),
+            const SizedBox(width: 10),
+            // Profil avatar
+            GestureDetector(
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const UserProfileScreen()),
+              ),
+              child: Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                      color: const Color(0xFF2E5BFF).withOpacity(0.5),
+                      width: 2),
+                ),
+                child: CircleAvatar(
+                  radius: 22,
+                  backgroundColor: const Color(0xFF2E5BFF).withOpacity(0.15),
+                  child: Text(
+                    _userName.isNotEmpty ? _userName[0].toUpperCase() : "A",
+                    style: const TextStyle(
+                        color: Color(0xFF2E5BFF),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  // ─── ADMIN MINI STATS ──────────────────────────────────────
+  Widget _buildAdminMiniStats() {
+    return Row(
+      children: [
+        Expanded(
+          child: _MiniStatTile(
+            title: "Jami zakaz",
+            value: "$_totalOrders",
+            icon: Icons.assignment_outlined,
+            color: const Color(0xFF2E5BFF),
+            cardBg: _cardBg,
+            textPrimary: _textPrimary,
+            textSecondary: _textSecondary,
+            isGlass: _isGlass,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _MiniStatTile(
+            title: "Jarayonda",
+            value: "$_activeOrders",
+            icon: Icons.timelapse_outlined,
+            color: Colors.orange,
+            cardBg: _cardBg,
+            textPrimary: _textPrimary,
+            textSecondary: _textSecondary,
+            isGlass: _isGlass,
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ─── BALANS CARD ───────────────────────────────────────────
+  Widget _buildBalanceCard() {
+    final balance = _displayEarned - _displayWithdrawn;
+    final isAdmin = _userRole == AppRoles.admin;
+
+    return GestureDetector(
+      onTap: isAdmin
+          ? () => Navigator.push(context,
+              MaterialPageRoute(builder: (_) => const StatsScreen()))
+          : null,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF2E5BFF), Color(0xFF6C3FE8)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF2E5BFF).withOpacity(0.35),
+              blurRadius: 20,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  isAdmin ? "Jami Kirim" : "Mening Balansom",
+                  style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 13,
+                      letterSpacing: 0.5),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        isAdmin
+                            ? Icons.bar_chart_rounded
+                            : Icons.account_balance_wallet_outlined,
+                        color: Colors.white,
+                        size: 14,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        isAdmin ? "Hisobot" : "Balans",
+                        style: const TextStyle(
+                            color: Colors.white, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              _formatMoney(_displayEarned),
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: -0.5),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              height: 1,
+              color: Colors.white.withOpacity(0.2),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: _BalanceRow(
+                    label: isAdmin ? "Xarajatlar" : "Olingan",
+                    value: _formatMoney(_displayWithdrawn),
+                    icon: Icons.arrow_upward_rounded,
+                    color: Colors.redAccent.shade100,
+                  ),
+                ),
+                Container(
+                  width: 1,
+                  height: 36,
+                  color: Colors.white.withOpacity(0.2),
+                ),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 16),
+                    child: _BalanceRow(
+                      label: isAdmin ? "Sof Foyda" : "Qoldiq",
+                      value: _formatMoney(balance),
+                      icon: Icons.savings_outlined,
+                      color: Colors.greenAccent.shade100,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ─── MENYU GRID ─────────────────────────────────────────────
+  Widget _buildMenuGrid() {
+    final items = <_MenuItem>[
+      _MenuItem(
+        title: "Mijozlar",
+        icon: Icons.people_outline_rounded,
+        color: Colors.orange,
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const ClientsScreen())),
+      ),
+      if (_userRole == AppRoles.admin) ...[
+        _MenuItem(
+          title: "Hisobotlar",
+          icon: Icons.insert_chart_outlined_rounded,
+          color: const Color(0xFF6C3FE8),
+          onTap: () => Navigator.push(context,
+              MaterialPageRoute(builder: (_) => const StatsScreen())),
+        ),
+        _MenuItem(
+          title: "Xodimlar",
+          icon: Icons.manage_accounts_outlined,
+          color: Colors.teal,
+          onTap: () => Navigator.push(context,
+              MaterialPageRoute(builder: (_) => const ManageUsersScreen())),
+        ),
+      ],
+      if (_userRole != AppRoles.admin)
+        _MenuItem(
+          title: "Avans So'rash",
+          icon: Icons.account_balance_wallet_outlined,
+          color: Colors.green,
+          onTap: _showWithdrawDialog,
+        ),
+    ];
+
+    return GridView.count(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisCount: 2,
+      crossAxisSpacing: 14,
+      mainAxisSpacing: 14,
+      childAspectRatio: 1.15,
+      children: items
+          .map((item) => _MenuCard(
+                item: item,
+                cardBg: _cardBg,
+                textPrimary: _textPrimary,
+                isGlass: _isGlass,
+              ))
+          .toList(),
+    );
+  }
+
+  // ─── PASTKI TUGMA ──────────────────────────────────────────
+  Widget _buildActionButton() {
+    final isWorker = _userRole != AppRoles.admin;
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: (isWorker
+                    ? const Color(0xFF2E5BFF)
+                    : const Color(0xFF00C853))
+                .withOpacity(0.4),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: ElevatedButton(
+        style: ElevatedButton.styleFrom(
+          backgroundColor:
+              isWorker ? const Color(0xFF2E5BFF) : const Color(0xFF00C853),
+          foregroundColor: Colors.white,
+          minimumSize: const Size(double.infinity, 56),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          elevation: 0,
+        ),
+        onPressed: isWorker
+            ? _showWorkDialog
+            : () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const ClientsScreen())),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              isWorker ? Icons.add_task_rounded : Icons.person_add_rounded,
+              size: 22,
+            ),
+            const SizedBox(width: 10),
+            Text(
+              isWorker ? "ISH TOPSHIRISH" : "YANGI MIJOZ QO'SHISH",
+              style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.5),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── TEMA ALMASHTIRISH TUGMASI ────────────────────────────────
+class _ThemeSwitchButton extends StatelessWidget {
+  final Color textSecondary;
+  final Color cardBg;
+
+  const _ThemeSwitchButton(
+      {required this.textSecondary, required this.cardBg});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: SafeArea(
-        child: Column(children: [
-          // ─── Header (HomeHeader widget) ──────────────────
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-            child: HomeHeader(
-              greeting: _greeting,
-              userName: _userName,
-            ),
-          ),
+    final provider = context.watch<ThemeProvider>();
+    final mode = provider.currentMode;
 
-          // ─── Asosiy kontent ──────────────────────────────
-          Expanded(
-            child: _isLoading
-                ? const Center(
-                    child: CircularProgressIndicator(color: Color(0xFF2E5BFF)))
-                : RefreshIndicator(
-                    onRefresh: _loadAll,
-                    color: const Color(0xFF2E5BFF),
-                    child: SingleChildScrollView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
-                      child: _userRole == AppRoles.admin
-                          ? _buildAdminBody()
-                          : _buildWorkerBody(),
-                    ),
-                  ),
-          ),
-        ]),
+    return GestureDetector(
+      onTap: () {
+        final next = AppThemeMode
+            .values[(mode.index + 1) % AppThemeMode.values.length];
+        provider.toggleTheme(next);
+      },
+      child: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: cardBg,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.withOpacity(0.2)),
+        ),
+        child: Icon(
+          mode == AppThemeMode.light
+              ? Icons.light_mode_rounded
+              : mode == AppThemeMode.dark
+                  ? Icons.dark_mode_rounded
+                  : Icons.auto_awesome_rounded,
+          color: mode == AppThemeMode.light
+              ? Colors.amber
+              : mode == AppThemeMode.dark
+                  ? Colors.blueGrey
+                  : Colors.purple.shade200,
+          size: 20,
+        ),
       ),
-      bottomNavigationBar: _buildBottomNav(),
-      floatingActionButton: _userRole != AppRoles.admin
-          ? FloatingActionButton.extended(
-              onPressed: _showWorkDialog,
-              backgroundColor: const Color(0xFF2E5BFF),
-              foregroundColor: Colors.white,
-              icon: const Icon(Icons.add_task),
-              label: const Text("Ish topshirish"),
-              elevation: 4,
-            )
-          : null,
     );
   }
+}
 
-  // ═══════════════════════════════════════════════════════════
-  // ADMIN BODY
-  // ═══════════════════════════════════════════════════════════
+// ─── YORDAMCHI WIDGET'LAR ─────────────────────────────────────
+class _MenuItem {
+  final String title;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
 
-  Widget _buildAdminBody() {
-    final netProfit = _totalRevenue - _totalExpense;
+  const _MenuItem({
+    required this.title,
+    required this.icon,
+    required this.color,
+    required this.onTap,
+  });
+}
 
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+class _MenuCard extends StatelessWidget {
+  final _MenuItem item;
+  final Color cardBg;
+  final Color textPrimary;
+  final bool isGlass;
 
-      // ─── BalanceCard (flip karta) ───────────────────────
-      // role: 'boss' → "KORXONA KASSASI" ko'rinadi
-      BalanceCard(
-        role: 'boss',
-        mainBalance: netProfit,
-        income: _totalRevenue,
-        expense: _totalExpense,
-        secondaryBalance: _totalExpense,  // ishchilarga to'langan
-        statsCount: _activeWorkers,       // faol ishchilar
-      ),
-      const SizedBox(height: 8),
-      Center(
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.touch_app, size: 14, color: Colors.grey),
-          const SizedBox(width: 4),
-          Text("Kartani bosib aylantiring",
-              style: TextStyle(color: Colors.grey.shade500, fontSize: 11)),
-        ]),
-      ),
+  const _MenuCard({
+    required this.item,
+    required this.cardBg,
+    required this.textPrimary,
+    required this.isGlass,
+  });
 
-      const SizedBox(height: 24),
-
-      // ─── 4 ta statistika kartasi ───────────────────────
-      _sectionTitle("📊 Umumiy ko'rsatkichlar"),
-      const SizedBox(height: 12),
-      GridView.count(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        crossAxisCount: 2,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
-        childAspectRatio: 1.5,
-        children: [
-          _statCard("Mijozlar",        '$_clientCount ta',  Icons.people_alt_rounded,    const Color(0xFF2E5BFF)),
-          _statCard("Faol buyurtmalar",'$_activeOrders ta', Icons.shopping_cart_rounded, const Color(0xFFE65100)),
-          _statCard("Bugungi savdo",   _fmtSum(_todayRevenue), Icons.today_rounded,      const Color(0xFF2E7D32)),
-          _statCard("Kutmoqda",        '$_pendingApprovals ta', Icons.pending_actions,   const Color(0xFF6A1B9A)),
-        ],
-      ),
-
-      const SizedBox(height: 24),
-
-      // ─── Tezkor akseslar (HomeGridAction) ─────────────
-      _sectionTitle("⚡ Tezkor akseslar"),
-      const SizedBox(height: 12),
-      GridView.count(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        crossAxisCount: 2,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
-        childAspectRatio: 1.35,
-        children: [
-          HomeGridAction(
-            title: "Yangi buyurtma",
-            icon: Icons.add_shopping_cart,
-            color: const Color(0xFF2E5BFF),
-            onTap: () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const ClientsScreen())),
-          ),
-          HomeGridAction(
-            title: "Moliya",
-            icon: Icons.account_balance_wallet_outlined,
-            color: const Color(0xFFE65100),
-            onTap: () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const AdminFinanceScreen())),
-          ),
-          HomeGridAction(
-            title: "Tasdiqlash",
-            icon: Icons.task_alt_rounded,
-            color: const Color(0xFF2E7D32),
-            // ✅ Badge: tasdiqlanmagan ishlar soni
-            badgeCount: _pendingApprovals,
-            onTap: () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const AdminApprovalsScreen())),
-          ),
-          HomeGridAction(
-            title: "Hisobotlar",
-            icon: Icons.bar_chart_rounded,
-            color: const Color(0xFF6A1B9A),
-            onTap: () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const StatsScreen())),
-          ),
-          HomeGridAction(
-            title: "Mijozlar",
-            icon: Icons.people_outline,
-            color: const Color(0xFF00838F),
-            onTap: () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const ClientsScreen())),
-          ),
-          HomeGridAction(
-            title: "Xodimlar",
-            icon: Icons.manage_accounts,
-            color: const Color(0xFFC62828),
-            onTap: () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const ManageUsersScreen())),
-          ),
-        ],
-      ),
-
-      const SizedBox(height: 24),
-
-      // ─── Oxirgi zakazlar ───────────────────────────────
-      _sectionTitle("🕐 Oxirgi buyurtmalar"),
-      const SizedBox(height: 10),
-      _recentItems.isEmpty
-          ? _emptyCard("Hozircha buyurtmalar yo'q")
-          : Column(
-              children: _recentItems.map((item) => _recentOrderTile(item)).toList()),
-
-      const SizedBox(height: 24),
-
-      // ─── Boshqaruv ro'yxati ────────────────────────────
-      _sectionTitle("⚙️ Boshqaruv"),
-      const SizedBox(height: 10),
-      _listTile(Icons.list_alt_rounded, "Barcha buyurtmalar",
-          const Color(0xFF2E5BFF),
-          () => Navigator.push(context,
-              MaterialPageRoute(builder: (_) => const OrdersListScreen()))),
-      _listTile(Icons.manage_accounts, "Xodimlarni boshqarish",
-          const Color(0xFF2E7D32),
-          () => Navigator.push(context,
-              MaterialPageRoute(builder: (_) => const ManageUsersScreen()))),
-    ]);
-  }
-
-  // ═══════════════════════════════════════════════════════════
-  // WORKER BODY
-  // ═══════════════════════════════════════════════════════════
-
-  Widget _buildWorkerBody() {
-    final balance = _workerEarned - _workerWithdrawn;
-
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-
-      // ─── BalanceCard (flip karta) ───────────────────────
-      // role: 'worker' → "HODIM KARTASI" ko'rinadi
-      BalanceCard(
-        role: 'worker',
-        mainBalance: balance,
-        income: _workerEarned,
-        expense: _workerWithdrawn,
-        secondaryBalance: _workerWithdrawn,   // orqada: kutilayotgan to'lov
-        statsCount: _workerJobCount,          // orqada: bajarilgan ishlar soni
-      ),
-      const SizedBox(height: 8),
-      Center(
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.touch_app, size: 14, color: Colors.grey),
-          const SizedBox(width: 4),
-          Text("Kartani bosib aylantiring",
-              style: TextStyle(color: Colors.grey.shade500, fontSize: 11)),
-        ]),
-      ),
-
-      // Bonus qator (agar bonusPct > 0)
-      if (_bonusPct > 0 && _workerBonus > 0) ...[
-        const SizedBox(height: 10),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          decoration: BoxDecoration(
-            color: Colors.amber.shade50,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Colors.amber.shade200),
-          ),
-          child: Row(children: [
-            const Icon(Icons.star_rounded, color: Colors.amber, size: 18),
-            const SizedBox(width: 8),
-            Text(
-              "Bonus ($_bonusPct%): ${_fmtSum(_workerBonus)}",
-              style: TextStyle(
-                  color: Colors.amber.shade800,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13),
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: item.onTap,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(18),
+        child: BackdropFilter(
+          filter: isGlass
+              ? ImageFilter.blur(sigmaX: 10, sigmaY: 10)
+              : ImageFilter.blur(sigmaX: 0, sigmaY: 0),
+          child: Container(
+            decoration: BoxDecoration(
+              color: cardBg,
+              borderRadius: BorderRadius.circular(18),
+              border: isGlass
+                  ? Border.all(color: Colors.white.withOpacity(0.2))
+                  : Border.all(color: Colors.transparent),
             ),
-          ]),
-        ),
-      ],
-
-      const SizedBox(height: 14),
-
-      // Avans so'rash tugmasi
-      SizedBox(
-        width: double.infinity, height: 46,
-        child: OutlinedButton.icon(
-          style: OutlinedButton.styleFrom(
-            side: const BorderSide(color: Color(0xFF2E5BFF), width: 1.5),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: item.color.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(item.icon, color: item.color, size: 24),
+                ),
+                Text(
+                  item.title,
+                  style: TextStyle(
+                      color: textPrimary,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14),
+                ),
+              ],
+            ),
           ),
-          icon: const Icon(Icons.account_balance_wallet_outlined,
-              color: Color(0xFF2E5BFF)),
-          label: const Text("Avans so'rash",
-              style: TextStyle(
-                  color: Color(0xFF2E5BFF), fontWeight: FontWeight.bold)),
-          onPressed: _showWithdrawDialog,
         ),
       ),
-
-      const SizedBox(height: 24),
-
-      // ─── Tezkor akseslar (HomeGridAction) ─────────────
-      _sectionTitle("⚡ Tezkor akseslar"),
-      const SizedBox(height: 12),
-      GridView.count(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        crossAxisCount: 2,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
-        childAspectRatio: 1.35,
-        children: [
-          HomeGridAction(
-            title: "Ish topshirish",
-            icon: Icons.add_task,
-            color: const Color(0xFF2E5BFF),
-            onTap: _showWorkDialog,
-          ),
-          HomeGridAction(
-            title: "Buyurtmalar",
-            icon: Icons.list_alt_rounded,
-            color: const Color(0xFF2E7D32),
-            onTap: () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const OrdersListScreen())),
-          ),
-          HomeGridAction(
-            title: "Mijozlar",
-            icon: Icons.people_outline,
-            color: const Color(0xFF00838F),
-            onTap: () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const ClientsScreen())),
-          ),
-          HomeGridAction(
-            title: "Hisobotlar",
-            icon: Icons.bar_chart_rounded,
-            color: const Color(0xFF6A1B9A),
-            onTap: () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const StatsScreen())),
-          ),
-        ],
-      ),
-
-      const SizedBox(height: 24),
-
-      // ─── Oxirgi ishlarim ───────────────────────────────
-      _sectionTitle("🕐 Oxirgi ishlarim"),
-      const SizedBox(height: 10),
-      _recentItems.isEmpty
-          ? _emptyCard("Hozircha ish topshirilmagan")
-          : Column(
-              children:
-                  _recentItems.map((item) => _recentWorkTile(item)).toList()),
-    ]);
+    );
   }
+}
 
-  // ═══════════════════════════════════════════════════════════
-  // YORDAMCHI WIDGETLAR
-  // ═══════════════════════════════════════════════════════════
+class _MiniStatTile extends StatelessWidget {
+  final String title;
+  final String value;
+  final IconData icon;
+  final Color color;
+  final Color cardBg;
+  final Color textPrimary;
+  final Color textSecondary;
+  final bool isGlass;
 
-  Widget _statCard(String title, String value, IconData icon, Color color) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [color, color.withOpacity(0.72)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+  const _MiniStatTile({
+    required this.title,
+    required this.value,
+    required this.icon,
+    required this.color,
+    required this.cardBg,
+    required this.textPrimary,
+    required this.textSecondary,
+    required this.isGlass,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: BackdropFilter(
+        filter: isGlass
+            ? ImageFilter.blur(sigmaX: 10, sigmaY: 10)
+            : ImageFilter.blur(sigmaX: 0, sigmaY: 0),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: cardBg,
+            borderRadius: BorderRadius.circular(16),
+            border: isGlass
+                ? Border.all(color: Colors.white.withOpacity(0.2))
+                : null,
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, color: color, size: 18),
+              ),
+              const SizedBox(width: 10),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style:
+                          TextStyle(color: textSecondary, fontSize: 11)),
+                  Text(value,
+                      style: TextStyle(
+                          color: textPrimary,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 20)),
+                ],
+              ),
+            ],
+          ),
         ),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(color: color.withOpacity(0.28), blurRadius: 8, offset: const Offset(0, 4)),
-        ],
       ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Text(title, style: const TextStyle(color: Colors.white70, fontSize: 11)),
-          Icon(icon, color: Colors.white54, size: 18),
-        ]),
-        const Spacer(),
+    );
+  }
+}
+
+class _BalanceRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color color;
+
+  const _BalanceRow({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, color: color, size: 14),
+            const SizedBox(width: 4),
+            Text(label,
+                style: TextStyle(color: color, fontSize: 11)),
+          ],
+        ),
+        const SizedBox(height: 4),
         Text(value,
             style: const TextStyle(
-                color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis),
-      ]),
-    );
-  }
-
-  Widget _listTile(IconData icon, String title, Color color, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(
-          color: Theme.of(context).cardColor,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withOpacity(0.15)),
-        ),
-        child: Row(children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, color: color, size: 20),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Text(title,
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
-          ),
-          Icon(Icons.chevron_right, color: Colors.grey.shade400),
-        ]),
-      ),
-    );
-  }
-
-  Widget _sectionTitle(String text) => Padding(
-    padding: const EdgeInsets.only(bottom: 2),
-    child: Text(text,
-        style: TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.bold,
-            color: Theme.of(context).textTheme.titleLarge?.color)),
-  );
-
-  Widget _emptyCard(String msg) => Container(
-    width: double.infinity,
-    padding: const EdgeInsets.all(16),
-    decoration: BoxDecoration(
-      color: Theme.of(context).cardColor,
-      borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: Colors.grey.shade200),
-    ),
-    child: Row(children: [
-      const Icon(Icons.info_outline, color: Colors.grey, size: 18),
-      const SizedBox(width: 10),
-      Text(msg, style: const TextStyle(color: Colors.grey, fontSize: 13)),
-    ]),
-  );
-
-  // Admin uchun zakaz tile
-  Widget _recentOrderTile(Map<String, dynamic> item) {
-    final status = item['status'].toString();
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: _statusColor(status).withOpacity(0.2)),
-      ),
-      child: Row(children: [
-        Container(
-          width: 8, height: 8,
-          decoration: BoxDecoration(
-              color: _statusColor(status), shape: BoxShape.circle),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(item['title'].toString(),
-              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-        ),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-          decoration: BoxDecoration(
-            color: _statusColor(status).withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Text(_statusLabel(status),
-              style: TextStyle(
-                  fontSize: 11,
-                  color: _statusColor(status),
-                  fontWeight: FontWeight.bold)),
-        ),
-      ]),
-    );
-  }
-
-  // Worker uchun ish tarixi tile
-  Widget _recentWorkTile(Map<String, dynamic> item) {
-    final isApproved = item['status'] == 'completed';
-    final amount     = (item['amount'] ?? 0.0) as double;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-            color: isApproved
-                ? Colors.green.shade100
-                : Colors.orange.shade100),
-      ),
-      child: Row(children: [
-        CircleAvatar(
-          radius: 18,
-          backgroundColor:
-              isApproved ? Colors.green.shade50 : Colors.orange.shade50,
-          child: Icon(
-            isApproved
-                ? Icons.check_circle_outline
-                : Icons.pending_outlined,
-            color: isApproved ? Colors.green : Colors.orange,
-            size: 18,
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(item['title'].toString(),
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis),
-        ),
-        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-          Text(
-            _fmtSum(amount),
-            style: TextStyle(
+                color: Colors.white,
                 fontWeight: FontWeight.bold,
-                color: isApproved ? Colors.green : Colors.orange,
-                fontSize: 13),
-          ),
-          Text(
-            isApproved ? "✅ Tasdiqlandi" : "⏳ Kutmoqda",
-            style: TextStyle(
-                fontSize: 10,
-                color: isApproved ? Colors.green : Colors.orange),
-          ),
-        ]),
-      ]),
-    );
-  }
-
-  String _statusLabel(String s) {
-    switch (s) {
-      case 'completed': return 'Bajarildi';
-      case 'canceled':  return 'Bekor';
-      case 'material':  return 'Kesish';
-      case 'assembly':  return 'Yig\'ish';
-      case 'delivery':  return 'Yetkazish';
-      default:          return 'Jarayonda';
-    }
-  }
-
-  Color _statusColor(String s) {
-    switch (s) {
-      case 'completed': return Colors.green;
-      case 'canceled':  return Colors.red;
-      case 'material':  return Colors.purple;
-      case 'assembly':  return Colors.blue;
-      case 'delivery':  return Colors.teal;
-      default:          return Colors.orange;
-    }
-  }
-
-  // ═══════════════════════════════════════════════════════════
-  // BOTTOM NAV
-  // ═══════════════════════════════════════════════════════════
-
-  Widget _buildBottomNav() {
-    return BottomNavigationBar(
-      currentIndex: _bottomIdx,
-      type: BottomNavigationBarType.fixed,
-      selectedItemColor: const Color(0xFF2E5BFF),
-      unselectedItemColor: Colors.grey,
-      elevation: 12,
-      selectedLabelStyle:
-          const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
-      onTap: (i) {
-        setState(() => _bottomIdx = i);
-        switch (i) {
-          case 0: _loadAll(); break;
-          case 1:
-            Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const ClientsScreen()));
-            break;
-          case 2:
-            Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const OrdersListScreen()));
-            break;
-          case 3:
-            Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const StatsScreen()));
-            break;
-          case 4:
-            Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const UserProfileScreen()));
-            break;
-        }
-      },
-      items: [
-        const BottomNavigationBarItem(
-            icon: Icon(Icons.home_rounded), label: "Asosiy"),
-        const BottomNavigationBarItem(
-            icon: Icon(Icons.people_outline), label: "Mijozlar"),
-        const BottomNavigationBarItem(
-            icon: Icon(Icons.list_alt_rounded), label: "Buyurtmalar"),
-        const BottomNavigationBarItem(
-            icon: Icon(Icons.bar_chart_rounded), label: "Hisobotlar"),
-        const BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline), label: "Profil"),
+                fontSize: 13)),
       ],
     );
   }
