@@ -128,6 +128,24 @@ class _HomeScreenState extends State<HomeScreen> {
         for (var w in myWorks) myEarned += (w['total_sum'] ?? 0).toDouble();
         for (var w in myWithdraws) myPaid += (w['amount'] ?? 0).toDouble();
 
+        // YANGI LUG'AT YORDAMIDA RAHBAR (Global bonus)
+        if (userData != null && (userData['is_super_admin'] == true || (userData['app_roles'] != null && userData['app_roles']['role_type'] == 'aup'))) {
+          double globalBonusLimit = 0;
+          if (userData['custom_permissions'] != null && userData['custom_permissions']['global_bonus_m2'] != null) {
+            globalBonusLimit = (userData['custom_permissions']['global_bonus_m2']).toDouble();
+          }
+
+          if (globalBonusLimit > 0) {
+            double totalCompletedArea = 0;
+            for (var o in orders) {
+              if (o['status'] == 'completed') {
+                totalCompletedArea += (o['total_area_m2'] ?? 0).toDouble();
+              }
+            }
+            myEarned += (totalCompletedArea * globalBonusLimit);
+          }
+        }
+
         if (mounted) {
           setState(() {
             _companyCash = totalIncome - totalPaid;
