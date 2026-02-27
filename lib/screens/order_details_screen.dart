@@ -154,6 +154,26 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
       onTap: () async {
         Navigator.pop(context);
         await _supabase.from('orders').update({'status': code}).eq('id', widget.orderId);
+        
+        // Adminlarga bildirishnoma yuborish
+        try {
+          final currentUser = _supabase.auth.currentUser;
+          final admins = await _supabase.from('profiles').select('id').eq('is_super_admin', true);
+          for (var a in admins) {
+            if (currentUser != null && a['id'] == currentUser.id) continue; // O'ziga o'zi bormasin
+            
+            await _supabase.from('notifications').insert({
+              'user_id': a['id'],
+              'title': 'Buyurtma holati o\'zgardi',
+              'body': '${_order['order_number'] ?? 'Buyurtma'} holati "$label" deb belgilandi.',
+              'type': 'order',
+              'target_id': widget.orderId.toString(),
+            });
+          }
+        } catch(e) {
+          debugPrint("Xato bildirishnoma: $e");
+        }
+        
         _loadOrderData();
       },
     );
