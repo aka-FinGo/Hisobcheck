@@ -67,8 +67,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   void _showAdminEditDialog() {
     int? selectedRoleId = _userData!['position_id'];
     Map<String, dynamic> customPerms = Map<String, dynamic>.from(_userData!['custom_permissions'] ?? {});
-    final salaryCtrl = TextEditingController(text: _userData!['custom_salary']?.toString() ?? '');
-    final bonusCtrl = TextEditingController(text: _userData!['custom_bonus_per_m2']?.toString() ?? '');
+    final salaryCtrl = TextEditingController(text: customPerms['custom_salary']?.toString() ?? '');
+    final bonusCtrl = TextEditingController(text: customPerms['custom_bonus_per_m2']?.toString() ?? '');
     final globalBonusCtrl = TextEditingController(text: customPerms['global_bonus_m2']?.toString() ?? '');
 
     showDialog(
@@ -123,10 +123,21 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                 }
 
                 try {
+                  // Shaxsiy fiks oylik va kvadrat bonusni JSON'ga tiqamiz!
+                  if (salaryCtrl.text.isNotEmpty) {
+                    customPerms['custom_salary'] = double.tryParse(salaryCtrl.text);
+                  } else {
+                    customPerms.remove('custom_salary');
+                  }
+
+                  if (bonusCtrl.text.isNotEmpty) {
+                    customPerms['custom_bonus_per_m2'] = double.tryParse(bonusCtrl.text);
+                  } else {
+                    customPerms.remove('custom_bonus_per_m2');
+                  }
+
                   await _supabase.from('profiles').update({
                     'position_id': selectedRoleId,
-                    'custom_salary': salaryCtrl.text.isEmpty ? null : double.tryParse(salaryCtrl.text),
-                    'custom_bonus_per_m2': bonusCtrl.text.isEmpty ? null : double.tryParse(bonusCtrl.text),
                     'custom_permissions': customPerms,
                   }).eq('id', _userData!['id']);
                   if (mounted) {
@@ -187,10 +198,14 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     final role = _userData!['app_roles'];
     final bool isSuper = _userData!['is_super_admin'] == true;
     final bool isAup = role != null && role['role_type'] == 'aup';
+    
+    final Map<String, dynamic> cPerms = _userData!['custom_permissions'] != null 
+        ? Map<String, dynamic>.from(_userData!['custom_permissions']) 
+        : {};
 
-    // Moliya mantiqi (Shaxsiy oylik tursa o'sha, bo'lmasa lavozimniki)
-    double salary = (_userData!['custom_salary'] ?? role?['base_salary'] ?? 0).toDouble();
-    double bonus = (_userData!['custom_bonus_per_m2'] ?? role?['bonus_per_m2'] ?? 0).toDouble();
+    // Moliya mantiqi (Shaxsiy oylik tursa o'sha, JSON ichidan)
+    double salary = (cPerms['custom_salary'] ?? role?['base_salary'] ?? 0).toDouble();
+    double bonus = (cPerms['custom_bonus_per_m2'] ?? role?['rate_per_unit'] ?? 0).toDouble();
 
     return Scaffold(
       appBar: AppBar(
