@@ -40,12 +40,12 @@ class BalanceCard extends StatelessWidget {
     return _card(context, 
       isDebt && !isAUP ? [const Color(0xFFD31027), const Color(0xFFEA384D)] : [const Color(0xFF1E3C72), const Color(0xFF2A5298)],
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(isAUP ? "KORXONA KASSASI" : (isDebt ? "SIZNING QARZINGIZ" : "MAVJUD BALANSINGIZ"), 
+        Text(isAUP ? "O'ZIMIZNIKI (KORXONA)" : (isDebt ? "SIZNING QARZINGIZ" : "OLISHIM KUTILYOTGAN HAQ (QOLDIQ)"), 
             style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold)),
         const SizedBox(height: 10),
         Text(_f(mainBal), style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.bold)),
         const Spacer(),
-        _row(isAUP ? "Ishchilarga qarz:" : "Jami ish haqi:", _f(isAUP ? workerDebt : personalEarned)),
+        _row(isAUP ? "Boshqalarga jami qarzlarimiz:" : "Shu oydagi jami hisoblangan:", _f(isAUP ? workerDebt : personalEarned)),
       ]));
   }
 
@@ -53,11 +53,11 @@ class BalanceCard extends StatelessWidget {
     final isAUP = role == 'admin' || role == 'aup';
     return _card(context, [const Color(0xFF232526), const Color(0xFF414345)],
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(isAUP ? "SHAXSIY HISOBINGIZ" : "STATISTIKA", style: const TextStyle(color: Colors.white70, fontSize: 11)),
+        Text(isAUP ? "SHAXSIY MAOSHIM" : "AVANSLAR VA ISHLAR", style: const TextStyle(color: Colors.white70, fontSize: 11)),
         const SizedBox(height: 10),
         Text(_f(personalEarned - personalPaid), style: const TextStyle(color: Colors.amber, fontSize: 22, fontWeight: FontWeight.bold)),
         const Divider(color: Colors.white24, height: 20),
-        _row("Olingan avanslar:", _f(personalPaid)),
+        _row(isAUP ? "Men olgan avanslar:" : "Olingan avanslar:", _f(personalPaid)),
         const Spacer(),
         Text("ARISTOKRAT MEBEL", style: TextStyle(color: Colors.white.withOpacity(0.1), letterSpacing: 5, fontSize: 10)),
       ]));
