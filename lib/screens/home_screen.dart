@@ -172,7 +172,97 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _showWithdrawDialog() {
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Avans so'rash funksiyasi")));
+    final amountCtrl = TextEditingController();
+    final descCtrl = TextEditingController();
+    bool isSubmitting = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return AlertDialog(
+              title: const Text("Avans so'rash", style: TextStyle(fontWeight: FontWeight.bold)),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: amountCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: "Summa (so'm)",
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.attach_money),
+                    ),
+                  ),
+                  const SizedBox(height: 15),
+                  TextField(
+                    controller: descCtrl,
+                    decoration: const InputDecoration(
+                      labelText: "Izoh (masalan: Yo'l kira uchun)",
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.notes),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text("Bekor qilish", style: TextStyle(color: Colors.grey)),
+                ),
+                ElevatedButton(
+                  onPressed: isSubmitting 
+                    ? null 
+                    : () async {
+                        final amtText = amountCtrl.text.replaceAll(RegExp(r'[^0-9]'), '');
+                        if (amtText.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Summani kiriting")));
+                          return;
+                        }
+                        
+                        setModalState(() => isSubmitting = true);
+                        
+                        try {
+                          final user = _supabase.auth.currentUser;
+                          if (user == null) throw Exception("Foydalanuvchi topilmadi");
+                          
+                          await _supabase.from('withdrawals').insert({
+                            'worker_id': user.id,
+                            'amount': double.parse(amtText),
+                            'description': descCtrl.text.trim().isEmpty ? 'Avans so\'rovi' : descCtrl.text.trim(),
+                            'status': 'pending', 
+                            'created_by_admin': false,
+                          });
+                          
+                          if (mounted) {
+                            Navigator.pop(ctx);
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("So'rov yuborildi! Kutilmoqda.")));
+                            _loadAllData(); // Ma'lumotlarni yangilash 
+                          }
+                        } catch (e) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e")));
+                          }
+                        } finally {
+                          setModalState(() => isSubmitting = false);
+                        }
+                      },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange, 
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))
+                  ),
+                  child: isSubmitting 
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    : const Text("So'rov yuborish"),
+                )
+              ],
+            );
+          }
+        );
+      }
+    );
   }
 
   @override
