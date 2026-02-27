@@ -241,13 +241,25 @@ class _HomeScreenState extends State<HomeScreen> {
                           final user = _supabase.auth.currentUser;
                           if (user == null) throw Exception("Foydalanuvchi topilmadi");
                           
-                          await _supabase.from('withdrawals').insert({
+                          final res = await _supabase.from('withdrawals').insert({
                             'worker_id': user.id,
                             'amount': double.parse(amtText),
                             'description': descCtrl.text.trim().isEmpty ? 'Avans so\'rovi' : descCtrl.text.trim(),
                             'status': 'pending', 
                             'created_by_admin': false,
-                          });
+                          }).select().single();
+                          
+                          // Adminlarga bildirishnoma yuborish
+                          final admins = await _supabase.from('profiles').select('id').eq('is_super_admin', true);
+                          for (var a in admins) {
+                            await _supabase.from('notifications').insert({
+                              'user_id': a['id'],
+                              'title': 'Yangi Avans So\'rovi',
+                              'body': '${_userName} (Hodim) ${amtText} so\'m so\'ramoqda.',
+                              'type': 'withdrawal',
+                              'target_id': res['id'].toString(),
+                            });
+                          }
                           
                           if (mounted) {
                             Navigator.pop(ctx);
