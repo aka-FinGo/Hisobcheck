@@ -98,7 +98,15 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                 ..._allPerms.entries.map((e) => CheckboxListTile(
                   title: Text(e.value, style: const TextStyle(fontSize: 13)),
                   value: customPerms[e.key] == true,
-                  onChanged: (v) => setST(() => customPerms[e.key] = v),
+                  onChanged: (v) {
+                    setST(() {
+                      if (v == true) {
+                        customPerms[e.key] = true;
+                      } else {
+                        customPerms.remove(e.key);
+                      }
+                    });
+                  },
                 )),
               ],
             ),
@@ -114,13 +122,24 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                   customPerms.remove('global_bonus_m2');
                 }
 
-                await _supabase.from('profiles').update({
-                  'position_id': selectedRoleId,
-                  'custom_salary': double.tryParse(salaryCtrl.text),
-                  'custom_bonus_per_m2': double.tryParse(bonusCtrl.text),
-                  'custom_permissions': customPerms,
-                }).eq('id', _userData!['id']);
-                Navigator.pop(context);
+                try {
+                  await _supabase.from('profiles').update({
+                    'position_id': selectedRoleId,
+                    'custom_salary': salaryCtrl.text.isEmpty ? null : double.tryParse(salaryCtrl.text),
+                    'custom_bonus_per_m2': bonusCtrl.text.isEmpty ? null : double.tryParse(bonusCtrl.text),
+                    'custom_permissions': customPerms,
+                  }).eq('id', _userData!['id']);
+                  if (mounted) {
+                    Navigator.pop(context);
+                    _loadData();
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Saqlandi!"), backgroundColor: Colors.green));
+                  }
+                } catch(e) {
+                  debugPrint("Profile saqlashda xato: $e");
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xatolik: $e"), backgroundColor: Colors.red));
+                  }
+                }
                 _loadData();
               },
               child: const Text("Saqlash"),
