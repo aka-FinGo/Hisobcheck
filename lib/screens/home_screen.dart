@@ -129,10 +129,10 @@ class _HomeScreenState extends State<HomeScreen> {
         for (var w in myWithdraws) myPaid += (w['amount'] ?? 0).toDouble();
 
         // YANGI LUG'AT YORDAMIDA RAHBAR (Global bonus)
-        if (userData != null && (userData['is_super_admin'] == true || (userData['app_roles'] != null && userData['app_roles']['role_type'] == 'aup'))) {
+        if (profile != null && (profile['is_super_admin'] == true || (profile['app_roles'] != null && profile['app_roles']['role_type'] == 'aup'))) {
           double globalBonusLimit = 0;
-          if (userData['custom_permissions'] != null && userData['custom_permissions']['global_bonus_m2'] != null) {
-            globalBonusLimit = (userData['custom_permissions']['global_bonus_m2']).toDouble();
+          if (profile['custom_permissions'] != null && profile['custom_permissions']['global_bonus_m2'] != null) {
+            globalBonusLimit = (profile['custom_permissions']['global_bonus_m2']).toDouble();
           }
 
           if (globalBonusLimit > 0) {
