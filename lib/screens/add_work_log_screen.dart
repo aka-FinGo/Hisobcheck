@@ -96,7 +96,7 @@ Future<void> _submit() async {
       final role = _myProfile?['app_roles'];
       final rate = (_myProfile?['custom_rate_per_unit'] ?? role?['rate_per_unit'] ?? 0).toDouble();
 
-      await _supabase.from('work_logs').insert({
+      final res = await _supabase.from('work_logs').insert({
         'worker_id': _supabase.auth.currentUser!.id,
         'order_id': _selectedOrderId,
         'task_type': role?['name'] ?? "Ish",
@@ -104,7 +104,19 @@ Future<void> _submit() async {
         'rate': rate,
         'description': _descCtrl.text.trim(),
         'is_approved': false,
-      });
+      }).select().single();
+      
+      // Adminlarga bildirishnoma yuborish
+      final admins = await _supabase.from('profiles').select('id').eq('is_super_admin', true);
+      for (var a in admins) {
+        await _supabase.from('notifications').insert({
+          'user_id': a['id'],
+          'title': 'Yangi Ish Topshirildi',
+          'body': '${_myProfile?['full_name'] ?? 'Hodim'} yangi ish topshirdi. Obyom: $amount $_unitLabel',
+          'type': 'work_log',
+          'target_id': res['id'].toString(),
+        });
+      }
 
       if (mounted) {
         Navigator.pop(context);
