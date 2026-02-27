@@ -69,6 +69,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     Map<String, dynamic> customPerms = Map<String, dynamic>.from(_userData!['custom_permissions'] ?? {});
     final salaryCtrl = TextEditingController(text: _userData!['custom_salary']?.toString() ?? '');
     final bonusCtrl = TextEditingController(text: _userData!['custom_bonus_per_m2']?.toString() ?? '');
+    final globalBonusCtrl = TextEditingController(text: customPerms['global_bonus_m2']?.toString() ?? '');
 
     showDialog(
       context: context,
@@ -90,11 +91,13 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                 TextField(controller: salaryCtrl, decoration: const InputDecoration(labelText: "Shaxsiy fiks oylik", border: OutlineInputBorder()), keyboardType: TextInputType.number),
                 const SizedBox(height: 10),
                 TextField(controller: bonusCtrl, decoration: const InputDecoration(labelText: "Kvadrat bonusi (m2)", border: OutlineInputBorder()), keyboardType: TextInputType.number),
+                const SizedBox(height: 10),
+                TextField(controller: globalBonusCtrl, decoration: const InputDecoration(labelText: "Barcha yakunlanganlardan ulush (m2)", border: OutlineInputBorder()), keyboardType: TextInputType.number),
                 const Divider(height: 30),
                 const Text("Maxsus ruxsatlar:", style: TextStyle(fontWeight: FontWeight.bold)),
                 ..._allPerms.entries.map((e) => CheckboxListTile(
                   title: Text(e.value, style: const TextStyle(fontSize: 13)),
-                  value: customPerms[e.key] ?? false,
+                  value: customPerms[e.key] == true,
                   onChanged: (v) => setST(() => customPerms[e.key] = v),
                 )),
               ],
@@ -104,6 +107,13 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             TextButton(onPressed: () => Navigator.pop(context), child: const Text("Bekor")),
             ElevatedButton(
               onPressed: () async {
+                // Yangi qiymatni ruxsatlar ichiga yozamiz
+                if (globalBonusCtrl.text.isNotEmpty) {
+                  customPerms['global_bonus_m2'] = double.tryParse(globalBonusCtrl.text);
+                } else {
+                  customPerms.remove('global_bonus_m2');
+                }
+
                 await _supabase.from('profiles').update({
                   'position_id': selectedRoleId,
                   'custom_salary': double.tryParse(salaryCtrl.text),
@@ -193,12 +203,24 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: isSuper 
-                ? const Row(children: [Icon(Icons.diamond, color: Colors.amber), SizedBox(width: 10), Text("Tizim Asoschisi (Superadmin)")])
+                ? Column(
+                    children: [
+                      const Row(children: [Icon(Icons.diamond, color: Colors.amber), SizedBox(width: 10), Text("Tizim Asoschisi (Superadmin)")]),
+                      if ((_userData!['custom_permissions']?['global_bonus_m2'] ?? 0) > 0) ...[
+                        const Divider(height: 25),
+                        _infoRow("Umumiy ulush:", "${_formatMoney(_userData!['custom_permissions']['global_bonus_m2'])} / m²"),
+                      ]
+                    ]
+                  )
                 : (isAup 
                     ? Column(children: [
                         _infoRow("Fiks oylik:", _formatMoney(salary)),
                         const Divider(height: 25),
                         _infoRow("Kvadrat bonusi:", "${_formatMoney(bonus)} / m²"),
+                        if ((_userData!['custom_permissions']?['global_bonus_m2'] ?? 0) > 0) ...[
+                          const Divider(height: 25),
+                          _infoRow("Umumiy ulush:", "${_formatMoney(_userData!['custom_permissions']['global_bonus_m2'])} / m²"),
+                        ]
                       ])
                     : const Row(children: [Icon(Icons.engineering, color: Colors.orange), SizedBox(width: 10), Text("Ishbay (Tarif bo'yicha) hisoblanadi")])),
             ),
