@@ -379,6 +379,7 @@ class _StatsScreenState extends State<StatsScreen> {
   }
 
   void _showExportOptions() {
+    final statsTheme = Theme.of(context).extension<StatsTheme>()!;
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -397,7 +398,7 @@ class _StatsScreenState extends State<StatsScreen> {
             ),
             _exportOptionTile(
               icon: Icons.table_view_rounded,
-              color: AppColors.income,
+              color: statsTheme.income,
               title: "Excel (.xlsx) formatida",
               subtitle: "Barcha buxgalteriya amallari jadvali",
               onTap: () { Navigator.pop(ctx); _exportToExcel(); },
@@ -405,7 +406,7 @@ class _StatsScreenState extends State<StatsScreen> {
             const SizedBox(height: 8),
             _exportOptionTile(
               icon: Icons.picture_as_pdf_rounded,
-              color: AppColors.expense,
+              color: statsTheme.expense,
               title: "PDF formatida",
               subtitle: "Chop etish uchun qulay ko'rinish",
               onTap: () { Navigator.pop(ctx); _exportToPDF(); },
@@ -590,7 +591,7 @@ class _StatsScreenState extends State<StatsScreen> {
         // ── TARIX (Audit Log) ──
         _sectionTitle('Tarix', Icons.history_rounded),
         if (_isLoading) ...[_skeletonCard(context), _skeletonCard(context)]
-        else if (_historyItems.isEmpty) _card(context, child: const Center(child: Text("Hozircha tarix mavjud emas", style: TextStyle(color: AppColors.textSecondary))))
+        else if (_historyItems.isEmpty) _card(context, child: Center(child: Text("Hozircha tarix mavjud emas", style: TextStyle(color: statsTheme.textSecondary))))
         else ...List.generate(_historyItems.length, (i) => _buildHistoryItem(_historyItems[i])),
         
         const SizedBox(height: 20),
@@ -771,23 +772,5 @@ class _StatsScreenState extends State<StatsScreen> {
       ],
     ));
     await Printing.sharePdf(bytes: await pdf.save(), filename: 'hisobot.pdf');
-  }
-
-  Widget _chip(String label) {
-    final ok = _selectedFilter == label;
-    return ChoiceChip(
-      label: Text(label),
-      selected: ok,
-      onSelected: (_) => setState(() { _selectedFilter = label; _loadStats(); }),
-      selectedColor: AppColors.primary,
-      backgroundColor: Colors.white,
-      side: BorderSide(color: ok ? AppColors.primary : AppColors.border),
-      labelStyle: TextStyle(
-        color: ok ? Colors.white : const Color(0xFF4A4E6B),
-        fontWeight: ok ? FontWeight.bold : FontWeight.normal,
-        fontSize: 13,
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-    );
   }
 }
