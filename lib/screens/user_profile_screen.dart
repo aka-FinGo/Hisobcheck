@@ -3,6 +3,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../theme/theme_provider.dart';
+import '../theme/app_themes.dart';
+import 'user_transactions_screen.dart';
 
 class UserProfileScreen extends StatefulWidget {
   final String? userId; 
@@ -18,6 +20,11 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   bool _isMe = false;
   Map<String, dynamic>? _userData;
   List<dynamic> _roles = [];
+  
+  // Balans ma'lumotlari
+  double _balance = 0;
+  bool _canSeeBalance = false;
+  bool _isAup = false;
 
   // Siz aytgan barcha ruxsatnomalar ro'yxati
   final Map<String, String> _allPerms = {
@@ -56,14 +63,44 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         _userData = userRes;
         _roles = rolesRes;
       });
+
+      // 2. Ruxsatlarni va Balansni tekshirish
+      final currentUserRes = await _supabase.from('profiles').select('*, app_roles(*)').eq('id', _supabase.auth.currentUser!.id).single();
+      _isAup = currentUserRes['is_super_admin'] == true || (currentUserRes['app_roles'] != null && currentUserRes['app_roles']['role_type'] == 'aup');
+      
+      _canSeeBalance = _isMe || _isAup;
+
+      if (_canSeeBalance) {
+        await _loadBalance(targetId);
+      }
+
     } catch (e) {
       debugPrint("Ma'lumot yuklashda xato: $e");
-      // AGAR PROFIL O'CHIRILGAN BO'LSA - LOGOUT (FAQAT O'ZIMIZ UCHUN)
       if (_isMe && (e.toString().contains('single') || e.toString().contains('null'))) {
          await _supabase.auth.signOut();
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _loadBalance(String targetId) async {
+    try {
+      //Approved ishlar (Tushum)
+      final logsRes = await _supabase.from('work_logs').select('total_sum').eq('worker_id', targetId).eq('is_approved', true);
+      double income = 0;
+      for (var l in logsRes) income += (l['total_sum'] ?? 0).toDouble();
+
+      //Approved xarajatlar (Chiqim)
+      final withdrawRes = await _supabase.from('withdrawals').select('amount').eq('worker_id', targetId).eq('status', 'approved');
+      double expense = 0;
+      for (var w in withdrawRes) expense += (w['amount'] ?? 0).toDouble();
+
+      setState(() {
+        _balance = income - expense;
+      });
+    } catch (e) {
+      debugPrint("Balans yuklashda xato: $e");
     }
   }
 
@@ -233,6 +270,14 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           ),
           const SizedBox(height: 30),
 
+          // 1.5 BALANS VA AMALLAR (YANGI)
+          if (_canSeeBalance) ...[
+            _buildBalanceCard(),
+            const SizedBox(height: 12),
+            _buildActionButton(),
+            const SizedBox(height: 30),
+          ],
+
           // 2. MOLIYA VA SHARTLAR (To'liq tiklandi)
           const Text("MOLIYA VA SHARTLAR", style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.grey)),
           const SizedBox(height: 10),
@@ -316,5 +361,70 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         child: Column(children: [Icon(i, color: sel ? c : Colors.grey), Text(t, style: TextStyle(fontSize: 12, color: sel ? c : Colors.grey))]),
       ),
     ));
+  }
+
+  // --- YANGI WIDGETLAR ---
+  Widget _buildBalanceCard() {
+    final statsTheme = Theme.of(context).extension<StatsTheme>()!;
+    final isNegative = _balance < 0;
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: isNegative 
+            ? [statsTheme.expense, statsTheme.expense.withOpacity(0.8)]
+            : [statsTheme.income, statsTheme.income.withOpacity(0.8)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: (isNegative ? statsTheme.expense : statsTheme.income).withOpacity(0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text("Hozirgi balans", style: TextStyle(color: Colors.white70, fontSize: 14)),
+              Icon(Icons.account_balance_wallet_outlined, color: Colors.white.withOpacity(0.5)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _formatMoney(_balance),
+            style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionButton() {
+    final statsTheme = Theme.of(context).extension<StatsTheme>()!;
+    return SizedBox(
+      width: double.infinity,
+      height: 55,
+      child: ElevatedButton.icon(
+        onPressed: () => Navigator.push(
+          context, 
+          MaterialPageRoute(builder: (c) => UserTransactionsScreen(userId: _userData!['id'], fullName: _userData!['full_name']))
+        ),
+        icon: const Icon(Icons.history_rounded),
+        label: const Text("Amallar / Tarix", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppColors.primary,
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          elevation: 0,
+        ),
+      ),
+    );
   }
 }
