@@ -354,7 +354,9 @@ class _StatsScreenState extends State<StatsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isGlass = Theme.of(context).scaffoldBackgroundColor == Colors.transparent;
+    final theme = Theme.of(context);
+    final statsTheme = theme.extension<StatsTheme>()!;
+    final isGlass = theme.scaffoldBackgroundColor == Colors.transparent;
     return Scaffold(
       backgroundColor: isGlass ? Colors.transparent : const Color(0xFFF4F7FE),
       appBar: AppBar(
@@ -368,7 +370,7 @@ class _StatsScreenState extends State<StatsScreen> {
             onPressed: _showExportOptions
           ),
           IconButton(
-            icon: const Icon(Icons.refresh_rounded, color: AppColors.textSecondary), 
+            icon: Icon(Icons.refresh_rounded, color: statsTheme.textSecondary), 
             onPressed: _loadStats
           ),
           const SizedBox(width: 8),
