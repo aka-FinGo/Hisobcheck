@@ -21,6 +21,7 @@ class HomeHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isGlass = themeProvider.currentMode == AppThemeMode.glass;
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
