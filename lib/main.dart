@@ -53,9 +53,9 @@ class MyApp extends StatelessWidget {
       theme: themeProvider.themeData,
       builder: isGlass ? (context, child) => Container(
         decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xFF1A237E), Color(0xFF4A148C), Color(0xFF006064)],
-            begin: Alignment.topLeft, end: Alignment.bottomRight,
+          image: DecorationImage(
+            image: AssetImage('assets/images/bg.jpg'),
+            fit: BoxFit.cover,
           ),
         ),
         child: child,
