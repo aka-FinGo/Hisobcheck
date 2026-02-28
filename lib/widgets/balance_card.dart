@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_flip_card/flutter_flip_card.dart';
+import '../widgets/glass_card.dart';
 
 class BalanceCard extends StatelessWidget {
   final String role;
@@ -65,13 +66,20 @@ class BalanceCard extends StatelessWidget {
 
   Widget _card(BuildContext context, List<Color> colors, Widget child) {
     final isGlass = Theme.of(context).scaffoldBackgroundColor == Colors.transparent;
+    
+    if (isGlass) {
+      return GlassCard(
+        height: 195,
+        child: child,
+      );
+    }
+
+    // Odatiy Gradient karta
     return Container(
       height: 195, width: double.infinity, padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20),
-        gradient: isGlass ? null : LinearGradient(colors: colors),
-        color: isGlass ? Theme.of(context).cardTheme.color : null,
-        border: isGlass ? Border.all(color: Colors.white24) : null,
+        gradient: LinearGradient(colors: colors),
       ),
       child: child,
     );
