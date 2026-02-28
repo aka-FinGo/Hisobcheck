@@ -1,5 +1,5 @@
 name: hisobcheck
-description: "Mebel korxonasi uchun moliyaviy ERP tizimi"
+description: "Mebel sexi uchun moliyaviy ERP tizimi"
 publish_to: 'none'
 
 version: 1.0.0+1
@@ -41,3 +41,7 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  # Rasm yuklash uchun ruxsat
+  assets:
+    - assets/images/
