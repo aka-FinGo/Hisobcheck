@@ -58,6 +58,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       });
     } catch (e) {
       debugPrint("Ma'lumot yuklashda xato: $e");
+      // AGAR PROFIL O'CHIRILGAN BO'LSA - LOGOUT (FAQAT O'ZIMIZ UCHUN)
+      if (_isMe && (e.toString().contains('single') || e.toString().contains('null'))) {
+         await _supabase.auth.signOut();
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -275,20 +279,22 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             const SizedBox(height: 30),
           ],
 
-          // 4. SOZLAMALAR
-          const Text("SOZLAMALAR", style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.grey)),
-          Card(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-            child: Column(children: [
-              ListTile(leading: const Icon(Icons.person_outline), title: const Text("Ma'lumotlarni tahrirlash"), onTap: _showEditInfoDialog),
-              const Divider(height: 1),
-              ListTile(
-                leading: const Icon(Icons.logout, color: Colors.red), 
-                title: const Text("Tizimdan chiqish", style: TextStyle(color: Colors.red)),
-                onTap: () => _supabase.auth.signOut(),
-              ),
-            ]),
-          ),
+          // 4. SOZLAMALAR (Faqat o'zimiz uchun)
+          if (_isMe) ...[
+            const Text("SOZLAMALAR", style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.grey)),
+            Card(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+              child: Column(children: [
+                ListTile(leading: const Icon(Icons.person_outline), title: const Text("Ma'lumotlarni tahrirlash"), onTap: _showEditInfoDialog),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.logout, color: Colors.red), 
+                  title: const Text("Tizimdan chiqish", style: TextStyle(color: Colors.red)),
+                  onTap: () => _supabase.auth.signOut(),
+                ),
+              ]),
+            ),
+          ],
         ],
       ),
     );
