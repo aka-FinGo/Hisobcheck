@@ -191,6 +191,15 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     } catch (e) {
       debugPrint("Yuklashda xato: $e");
+      // AGAR PROFIL TOPILMASA (FOYDALANUVCHI O'CHIRILGAN BO'LSA) - LOGOUT QILAMIZ
+      if (e.toString().contains('PostgrestException') || e.toString().contains('JSON object') || e.toString().contains('null')) {
+         debugPrint("Profil topilmadi, tizimdan chiqish majburiy...");
+         try {
+           await _supabase.auth.signOut();
+         } catch(e2) {
+           debugPrint("Logoutda xato: $e2");
+         }
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
