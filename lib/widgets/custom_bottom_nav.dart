@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_nav_bar/google_nav_bar.dart';
 import 'package:provider/provider.dart';
@@ -19,17 +20,15 @@ class CustomBottomNav extends StatelessWidget {
     final isGlass = themeProvider.currentMode == AppThemeMode.glass;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Container(
+    Widget navContent = Container(
       decoration: BoxDecoration(
-        // Glass rejimda shaffof, aks holda mavzudagi Card rangini oladi
-        color: isGlass ? Colors.white.withOpacity(0.1) : Theme.of(context).cardTheme.color,
+        color: isGlass ? Colors.white.withOpacity(0.05) : Theme.of(context).cardTheme.color,
         boxShadow: [
           BoxShadow(
             blurRadius: 20,
             color: Colors.black.withOpacity(isDark ? 0.3 : 0.1),
           )
         ],
-        // Glass rejimda tepadagi ingichka chiziq (border)
         border: isGlass 
             ? Border(top: BorderSide(color: Colors.white.withOpacity(0.1), width: 0.5))
             : null,
@@ -41,7 +40,6 @@ class CustomBottomNav extends StatelessWidget {
             rippleColor: isDark ? Colors.white10 : Colors.grey[300]!,
             hoverColor: isDark ? Colors.white12 : Colors.grey[100]!,
             gap: 8,
-            // Faol rangni mavzudan yoki ko'k rangdan oladi
             activeColor: isGlass ? Colors.tealAccent : const Color(0xFF2E5BFF),
             iconSize: 26,
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -49,7 +47,6 @@ class CustomBottomNav extends StatelessWidget {
             tabBackgroundColor: isGlass 
                 ? Colors.white.withOpacity(0.1) 
                 : const Color(0xFF2E5BFF).withOpacity(0.1),
-            // Faol bo'lmagan ikonka ranglari
             color: isDark ? Colors.white60 : Colors.grey[600]!,
             tabs: const [
               GButton(icon: Icons.home_rounded, text: 'Asosiy'),
@@ -64,5 +61,16 @@ class CustomBottomNav extends StatelessWidget {
         ),
       ),
     );
+
+    if (isGlass) {
+      return ClipRRect(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: navContent,
+        ),
+      );
+    }
+
+    return navContent;
   }
 }
