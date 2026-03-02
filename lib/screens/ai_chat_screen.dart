@@ -18,7 +18,6 @@ class _AiChatScreenState extends State<AiChatScreen> {
   final _supabase = Supabase.instance.client;
   bool _isTyping = false;
 
-  // --- HAQIQIY MIYA (API ga so'rov) ---
   Future<void> _sendMessage() async {
     final text = _msgCtrl.text.trim();
     if (text.isEmpty) return;
@@ -31,50 +30,73 @@ class _AiChatScreenState extends State<AiChatScreen> {
 
     try {
       final userId = _supabase.auth.currentUser!.id;
-      final profile = await _supabase.from('profiles').select('is_super_admin, groq_api_key, custom_ai_prompt').eq('id', userId).single();
+      final profile = await _supabase.from('profiles').select('is_super_admin, groq_api_key, gemini_api_key, custom_ai_prompt').eq('id', userId).single();
       
-      // 1. Foydalanuvchi shaxsiy kalitini o'qiymiz
-      String apiKey = EncryptionService.decryptText(profile['groq_api_key'] ?? '');
+      String groqKey = EncryptionService.decryptText(profile['groq_api_key'] ?? '');
+      String geminiKey = EncryptionService.decryptText(profile['gemini_api_key'] ?? '');
       
-      // 2. Agar o'zida kalit bo'lmasa, Admin ommaviy ruxsat berganligini tekshiramiz
-      if (apiKey.isEmpty) {
+      if (groqKey.isEmpty && geminiKey.isEmpty) {
         final setting = await _supabase.from('app_settings').select('value').eq('key', 'allow_default_ai').maybeSingle();
         if (setting != null && setting['value'] == 'true') {
-          apiKey = const String.fromEnvironment('GROQ_API_KEY', defaultValue: '');
+          groqKey = const String.fromEnvironment('GROQ_API_KEY', defaultValue: '');
+          geminiKey = const String.fromEnvironment('GEMINI_API_KEY', defaultValue: '');
         }
       }
 
-      // 3. Ikkisi ham yo'q bo'lsa
-      if (apiKey.isEmpty) {
-        setState(() => _messages.add({"role": "ai", "text": "API kalit topilmadi! Iltimos, tepa o'ng burchakdagi sozlamalardan o'z kalitingizni kiriting."}));
+      if (groqKey.isEmpty && geminiKey.isEmpty) {
+        setState(() => _messages.add({
+          "role": "ai", 
+          "text": "API kalit topilmadi!\n\nYO'RIQNOMA:\n1. Tepa o'ng burchakdagi (⚙️) belgisini bosing.\n2. Groq kaliti uchun: console.groq.com saytidan API oling.\n3. Gemini kaliti uchun: aistudio.google.com saytidan oling.\n4. Kalitlarni kiritib 'Saqlash' tugmasini bosing."
+        }));
         return;
       }
 
-      // 4. ERP Standart Prompt + Foydalanuvchi Custom Prompti
-      final systemPrompt = "Sen 'Aristokrat Mebel' korxonasining rasmiy ERP AI yordamchisisan. Faqat mebel ishlab chiqarish, moliya, xodimlar va buyurtmalar bo'yicha qisqa va aniq javob ber. " + (profile['custom_ai_prompt'] ?? '');
+      final systemPrompt = "Sen 'Aristokrat Mebel' ERP AI yordamchisisan. Qisqa, aniq va ortiqcha suvsiz javob ber. " + (profile['custom_ai_prompt'] ?? '');
+      bool groqSuccess = false;
 
-      // 5. Groq API ga yuborish
-      final response = await http.post(
-        Uri.parse("https://api.groq.com/openai/v1/chat/completions"),
-        headers: {
-          "Authorization": "Bearer $apiKey",
-          "Content-Type": "application/json"
-        },
-        body: jsonEncode({
-          "model": "llama3-70b-8192", // Groq'ning eng kuchli modeli
-          "messages": [
-            {"role": "system", "content": systemPrompt},
-            {"role": "user", "content": text}
-          ]
-        }),
-      );
+      // 1. GROQ COMPOUND API (Birlamchi)
+      if (groqKey.isNotEmpty) {
+        final groqRes = await http.post(
+          Uri.parse("https://api.groq.com/openai/v1/chat/completions"),
+          headers: {"Authorization": "Bearer $groqKey", "Content-Type": "application/json"},
+          body: jsonEncode({
+            "model": "groq/compound",
+            "messages": [
+              {"role": "system", "content": systemPrompt},
+              {"role": "user", "content": text}
+            ],
+            "temperature": 1.0,
+            "compound_custom": {
+              "tools": { "enabled_tools": ["web_search", "code_interpreter"] }
+            }
+          }),
+        );
+        if (groqRes.statusCode == 200) {
+          final data = jsonDecode(utf8.decode(groqRes.bodyBytes));
+          final aiReply = data['choices'][0]['message']['content'];
+          setState(() => _messages.add({"role": "ai", "text": aiReply}));
+          groqSuccess = true;
+        }
+      }
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(utf8.decode(response.bodyBytes));
-        final aiReply = data['choices'][0]['message']['content'];
-        setState(() => _messages.add({"role": "ai", "text": aiReply}));
-      } else {
-        setState(() => _messages.add({"role": "ai", "text": "Groq xatosi: HTTP ${response.statusCode}"}));
+      // 2. GEMINI 2.5 FLASH API (Fallback - Groq ishlamasa)
+      if (!groqSuccess && geminiKey.isNotEmpty) {
+        final geminiUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$geminiKey";
+        final geminiRes = await http.post(
+          Uri.parse(geminiUrl),
+          headers: {"Content-Type": "application/json"},
+          body: jsonEncode({
+            "systemInstruction": { "parts": [{"text": systemPrompt}] },
+            "contents": [{"parts": [{"text": text}]}]
+          })
+        );
+        if (geminiRes.statusCode == 200) {
+          final data = jsonDecode(utf8.decode(geminiRes.bodyBytes));
+          final aiReply = data['candidates'][0]['content']['parts'][0]['text'];
+          setState(() => _messages.add({"role": "ai", "text": aiReply}));
+        } else {
+          setState(() => _messages.add({"role": "ai", "text": "Xatolik: Groq ham, Gemini ham javob bermadi."}));
+        }
       }
     } catch (e) {
       setState(() => _messages.add({"role": "ai", "text": "Ulanishda xato yuz berdi: $e"}));
