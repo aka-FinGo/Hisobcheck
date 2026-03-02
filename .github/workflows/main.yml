@@ -37,12 +37,15 @@ jobs:
           flutter pub add fl_chart
           flutter pub add provider
           flutter pub add google_nav_bar
+          flutter pub add encrypt
 
       - name: Build Web
         run: |
           flutter build web --release \
             --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
             --dart-define=SUPABASE_KEY=${{ secrets.SUPABASE_KEY }} \
+            --dart-define=GROQ_API_KEY=${{ secrets.GROQ_API_KEY }} \
+            --dart-define=GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }} \
             --base-href "/${{ github.event.repository.name }}/"
 
       - uses: actions/upload-pages-artifact@v3
