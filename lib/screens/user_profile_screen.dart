@@ -5,7 +5,7 @@ import 'package:provider/provider.dart';
 import '../theme/theme_provider.dart';
 import '../theme/app_themes.dart';
 import 'user_transactions_screen.dart';
-import 'ai_chat_screen.dart'; // AI Chat uchun ulandi
+import 'ai_chat_screen.dart';
 
 class UserProfileScreen extends StatefulWidget {
   final String? userId; 
@@ -22,72 +22,370 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   Map<String, dynamic>? _userData;
   List<dynamic> _roles = [];
   
+  // Balans ma'lumotlari
   double _balance = 0;
   bool _canSeeBalance = false;
   bool _isAup = false;
 
-  // XATOLIK TUZATILDI: Hamma matnlar "" (qo'shtirnoq) ichiga olindi
+  // Siz aytgan barcha ruxsatnomalar ro'yxati
   final Map<String, String> _allPerms = {
-    'can_view_finance': "Kassani ko'rish",
-    'can_add_order': "Zakaz qo'shish",
-    'can_manage_users': "Xodimlarni boshqarish",
-    'can_manage_clients': "Mijozlarni boshqarish",
-    'can_add_work_log': "Ish hisobotini kiritish",
-    'can_view_all_orders': "Barcha zakazlarni ko'rish",
+    'can_view_finance': 'Kassani ko\'rish',
+    'can_add_order': 'Zakaz qo\'shish',
+    'can_manage_users': 'Xodimlarni boshqarish',
+    'can_manage_clients': 'Mijozlarni boshqarish',
+    'can_add_work_log': 'Ish hisobotini kiritish',
+    'can_view_all_orders': 'Barcha zakazlarni ko\'rish',
   };
 
   @override
   void initState() {
     super.initState();
-    _loadUserData();
+    _isMe = widget.userId == null || widget.userId == _supabase.auth.currentUser!.id;
+    _loadData();
   }
 
-  Future<void> _loadUserData() async {
+  Future<void> _loadData() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
     try {
-      final currentUserId = _supabase.auth.currentUser!.id;
-      final targetId = widget.userId ?? currentUserId;
-      _isMe = (targetId == currentUserId);
+      final String targetId = widget.userId ?? _supabase.auth.currentUser!.id;
+      
+      // Profil, Lavozim va Ruxsatlarni bittada tortamiz
+      final userRes = await _supabase
+          .from('profiles')
+          .select('*, app_roles(*)')
+          .eq('id', targetId)
+          .single();
+      
+      // Rollar ro'yxati (Dropdown uchun)
+      final rolesRes = await _supabase.from('app_roles').select().order('name');
 
-      final data = await _supabase.from('profiles').select('*, app_roles(*)').eq('id', targetId).single();
-      _userData = data;
+      setState(() {
+        _userData = userRes;
+        _roles = rolesRes;
+      });
 
-      final isSuperAdmin = data['is_super_admin'] ?? false;
-      final roleType = data['app_roles']?['role_type'] ?? 'worker';
-      _isAup = (roleType == 'aup');
-
-      _canSeeBalance = _isMe || isSuperAdmin || _isAup;
-
-      final roleRes = await _supabase.from('app_roles').select('*');
-      _roles = roleRes;
+      // 2. Ruxsatlarni va Balansni tekshirish
+      final currentUserRes = await _supabase.from('profiles').select('*, app_roles(*)').eq('id', _supabase.auth.currentUser!.id).single();
+      _isAup = currentUserRes['is_super_admin'] == true || (currentUserRes['app_roles'] != null && currentUserRes['app_roles']['role_type'] == 'aup');
+      
+      _canSeeBalance = _isMe || _isAup;
 
       if (_canSeeBalance) {
-        final works = await _supabase.from('work_logs').select('total_sum').eq('worker_id', targetId).eq('is_approved', true);
-        final withdraws = await _supabase.from('withdrawals').select('amount').eq('worker_id', targetId).eq('status', 'approved');
-        
-        double earned = 0;
-        for (var w in works) earned += (w['total_sum'] ?? 0).toDouble();
-        
-        double paid = 0;
-        for (var w in withdraws) paid += (w['amount'] ?? 0).toDouble();
-
-        _balance = earned - paid;
+        await _loadBalance(targetId);
       }
+
     } catch (e) {
-      debugPrint("Profil yuklashda xato: $e");
+      debugPrint("Ma'lumot yuklashda xato: $e");
+      if (_isMe && (e.toString().contains('single') || e.toString().contains('null'))) {
+         await _supabase.auth.signOut();
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  String _formatMoney(double amount) => "${NumberFormat('#,###').format(amount).replaceAll(',', ' ')} so'm";
+  Future<void> _loadBalance(String targetId) async {
+    try {
+      //Approved ishlar (Tushum)
+      final logsRes = await _supabase.from('work_logs').select('total_sum').eq('worker_id', targetId).eq('is_approved', true);
+      double income = 0;
+      for (var l in logsRes) income += (l['total_sum'] ?? 0).toDouble();
+
+      //Approved xarajatlar (Chiqim)
+      final withdrawRes = await _supabase.from('withdrawals').select('amount').eq('worker_id', targetId).eq('status', 'approved');
+      double expense = 0;
+      for (var w in withdrawRes) expense += (w['amount'] ?? 0).toDouble();
+
+      setState(() {
+        _balance = income - expense;
+      });
+    } catch (e) {
+      debugPrint("Balans yuklashda xato: $e");
+    }
+  }
+
+  // --- ADMIN UCHUN HODIMNI TO'LIQ SOZLASH DIALOGI ---
+  void _showAdminEditDialog() {
+    int? selectedRoleId = _userData!['position_id'];
+    Map<String, dynamic> customPerms = Map<String, dynamic>.from(_userData!['custom_permissions'] ?? {});
+    final salaryCtrl = TextEditingController(text: customPerms['custom_salary']?.toString() ?? '');
+    final bonusCtrl = TextEditingController(text: customPerms['custom_bonus_per_m2']?.toString() ?? '');
+    final globalBonusCtrl = TextEditingController(text: customPerms['global_bonus_m2']?.toString() ?? '');
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setST) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text("${_userData!['full_name']} sozlamalari"),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<int>(
+                  value: selectedRoleId,
+                  items: _roles.map((r) => DropdownMenuItem<int>(value: r['id'], child: Text(r['name']))).toList(),
+                  onChanged: (v) => setST(() => selectedRoleId = v),
+                  decoration: const InputDecoration(labelText: "Lavozimi", border: OutlineInputBorder()),
+                ),
+                const SizedBox(height: 15),
+                TextField(controller: salaryCtrl, decoration: const InputDecoration(labelText: "Shaxsiy fiks oylik", border: OutlineInputBorder()), keyboardType: TextInputType.number),
+                const SizedBox(height: 10),
+                TextField(controller: bonusCtrl, decoration: const InputDecoration(labelText: "Kvadrat bonusi (m2)", border: OutlineInputBorder()), keyboardType: TextInputType.number),
+                const SizedBox(height: 10),
+                TextField(controller: globalBonusCtrl, decoration: const InputDecoration(labelText: "Barcha yakunlanganlardan ulush (m2)", border: OutlineInputBorder()), keyboardType: TextInputType.number),
+                const Divider(height: 30),
+                const Text("Maxsus ruxsatlar:", style: TextStyle(fontWeight: FontWeight.bold)),
+                ..._allPerms.entries.map((e) => CheckboxListTile(
+                  title: Text(e.value, style: const TextStyle(fontSize: 13)),
+                  value: customPerms[e.key] == true,
+                  onChanged: (v) {
+                    setST(() {
+                      if (v == true) {
+                        customPerms[e.key] = true;
+                      } else {
+                        customPerms.remove(e.key);
+                      }
+                    });
+                  },
+                )),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Bekor")),
+            ElevatedButton(
+              onPressed: () async {
+                // Yangi qiymatni ruxsatlar ichiga yozamiz
+                if (globalBonusCtrl.text.isNotEmpty) {
+                  customPerms['global_bonus_m2'] = double.tryParse(globalBonusCtrl.text);
+                } else {
+                  customPerms.remove('global_bonus_m2');
+                }
+
+                try {
+                  // Shaxsiy fiks oylik va kvadrat bonusni JSON'ga tiqamiz!
+                  if (salaryCtrl.text.isNotEmpty) {
+                    customPerms['custom_salary'] = double.tryParse(salaryCtrl.text);
+                  } else {
+                    customPerms.remove('custom_salary');
+                  }
+
+                  if (bonusCtrl.text.isNotEmpty) {
+                    customPerms['custom_bonus_per_m2'] = double.tryParse(bonusCtrl.text);
+                  } else {
+                    customPerms.remove('custom_bonus_per_m2');
+                  }
+
+                  await _supabase.from('profiles').update({
+                    'position_id': selectedRoleId,
+                    'custom_permissions': customPerms,
+                  }).eq('id', _userData!['id']);
+                  if (mounted) {
+                    Navigator.pop(context);
+                    _loadData();
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Saqlandi!"), backgroundColor: Colors.green));
+                  }
+                } catch(e) {
+                  debugPrint("Profile saqlashda xato: $e");
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xatolik: $e"), backgroundColor: Colors.red));
+                  }
+                }
+                _loadData();
+              },
+              child: const Text("Saqlash"),
+            )
+          ],
+        ),
+      ),
+    );
+  }
+  // --- DAVOMI: UI VA QO'SHIMCHA FUNKSIYALAR ---
+  String _formatMoney(dynamic amount) {
+    if (amount == null || amount == 0) return "0 so'm";
+    return "${NumberFormat("#,###").format(amount).replaceAll(',', ' ')} so'm";
+  }
+
+  void _showEditInfoDialog() {
+    final nameCtrl = TextEditingController(text: _userData!['full_name']);
+    final phoneCtrl = TextEditingController(text: _userData!['phone']);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Ma'lumotlar"),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: "Ism")),
+          TextField(controller: phoneCtrl, decoration: const InputDecoration(labelText: "Telefon")),
+        ]),
+        actions: [
+          ElevatedButton(
+            onPressed: () async {
+              await _supabase.from('profiles').update({'full_name': nameCtrl.text, 'phone': phoneCtrl.text}).eq('id', _userData!['id']);
+              Navigator.pop(ctx); _loadData();
+            }, 
+            child: const Text("Saqlash")
+          )
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    
+    final themeP = Provider.of<ThemeProvider>(context);
+    final role = _userData!['app_roles'];
+    final bool isSuper = _userData!['is_super_admin'] == true;
+    final bool isAup = role != null && role['role_type'] == 'aup';
+    
+    final Map<String, dynamic> cPerms = _userData!['custom_permissions'] != null 
+        ? Map<String, dynamic>.from(_userData!['custom_permissions']) 
+        : {};
+
+    // Moliya mantiqi (Shaxsiy oylik tursa o'sha, JSON ichidan)
+    double salary = (cPerms['custom_salary'] ?? role?['base_salary'] ?? 0).toDouble();
+    double bonus = (cPerms['custom_bonus_per_m2'] ?? role?['rate_per_unit'] ?? 0).toDouble();
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(_isMe ? "Mening profilim" : "Xodim profili"),
+        actions: [
+          if (!_isMe && !isSuper) 
+            IconButton(onPressed: _showAdminEditDialog, icon: const Icon(Icons.edit_note, size: 35, color: Colors.blue)),
+        ],
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          // 1. HEADER
+          Center(
+            child: Column(children: [
+              CircleAvatar(radius: 50, child: Text(_userData!['full_name']?[0] ?? 'U', style: const TextStyle(fontSize: 32))),
+              const SizedBox(height: 10),
+              Text(_userData!['full_name'] ?? 'Ismsiz', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+              Text(role?['name'] ?? 'Lavozimsiz', style: const TextStyle(color: Colors.grey)),
+            ]),
+          ),
+          const SizedBox(height: 30),
+
+          // 1.5 BALANS VA AMALLAR (YANGI)
+          if (_canSeeBalance) ...[
+            _buildBalanceCard(),
+            const SizedBox(height: 12),
+            _buildActionButton(),
+            const SizedBox(height: 30),
+          ],
+
+          // 2. MOLIYA VA SHARTLAR (To'liq tiklandi)
+          const Text("MOLIYA VA SHARTLAR", style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.grey)),
+          const SizedBox(height: 10),
+          Card(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: isSuper 
+                ? Column(
+                    children: [
+                      const Row(children: [Icon(Icons.diamond, color: Colors.amber), SizedBox(width: 10), Text("Tizim Asoschisi (Superadmin)")]),
+                      if ((_userData!['custom_permissions']?['global_bonus_m2'] ?? 0) > 0) ...[
+                        const Divider(height: 25),
+                        _infoRow("Umumiy ulush:", "${_formatMoney(_userData!['custom_permissions']['global_bonus_m2'])} / m²"),
+                      ]
+                    ]
+                  )
+                : (isAup 
+                    ? Column(children: [
+                        _infoRow("Fiks oylik:", _formatMoney(salary)),
+                        const Divider(height: 25),
+                        _infoRow("Kvadrat bonusi:", "${_formatMoney(bonus)} / m²"),
+                        if ((_userData!['custom_permissions']?['global_bonus_m2'] ?? 0) > 0) ...[
+                          const Divider(height: 25),
+                          _infoRow("Umumiy ulush:", "${_formatMoney(_userData!['custom_permissions']['global_bonus_m2'])} / m²"),
+                        ]
+                      ])
+                    : const Row(children: [Icon(Icons.engineering, color: Colors.orange), SizedBox(width: 10), Text("Ishbay (Tarif bo'yicha) hisoblanadi")])),
+            ),
+          ),
+          const SizedBox(height: 30),
+
+          // 3. ILOVA DIZAYNI (3 ta iPhone Style tugma)
+          if (_isMe) ...[
+            const Text("ILOVA DIZAYNI", style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.grey)),
+            const SizedBox(height: 10),
+            Row(children: [
+              _themeB(themeP, AppThemeMode.light, "Oq", Icons.light_mode, Colors.blue),
+              const SizedBox(width: 10),
+              _themeB(themeP, AppThemeMode.dark, "Qora", Icons.dark_mode, Colors.deepPurple),
+              const SizedBox(width: 10),
+              _themeB(themeP, AppThemeMode.glass, "Oyna", Icons.blur_on, Colors.teal),
+            ]),
+            const SizedBox(height: 30),
+          ],
+
+          // 4. SOZLAMALAR (Faqat o'zimiz uchun)
+          if (_isMe) ...[
+            const Text("SOZLAMALAR", style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.grey)),
+            Card(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+              child: Column(children: [
+                ListTile(leading: const Icon(Icons.person_outline), title: const Text("Ma'lumotlarni tahrirlash"), onTap: _showEditInfoDialog),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.logout, color: Colors.red), 
+                  title: const Text("Tizimdan chiqish", style: TextStyle(color: Colors.red)),
+                  onTap: () => _supabase.auth.signOut(),
+                ),
+              ]),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _infoRow(String l, String v) => Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(l, style: const TextStyle(color: Colors.grey)), Text(v, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green))]);
+
+  Widget _themeB(ThemeProvider p, AppThemeMode m, String t, IconData i, Color c) {
+    final sel = p.currentMode == m;
+    return Expanded(child: GestureDetector(
+      onTap: () => p.toggleTheme(m),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        decoration: BoxDecoration(
+          color: sel ? c.withOpacity(0.1) : Colors.transparent,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: sel ? c : Colors.grey.withOpacity(0.3)),
+        ),
+        child: Column(children: [Icon(i, color: sel ? c : Colors.grey), Text(t, style: TextStyle(fontSize: 12, color: sel ? c : Colors.grey))]),
+      ),
+    ));
+  }
+
+  // --- YANGI WIDGETLAR ---
   Widget _buildBalanceCard() {
+    final statsTheme = Theme.of(context).extension<StatsTheme>()!;
+    final isNegative = _balance < 0;
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        gradient: LinearGradient(colors: [AppColors.primary, AppColors.primary.withOpacity(0.8)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: AppColors.primary.withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 8))],
+        gradient: LinearGradient(
+          colors: isNegative 
+            ? [statsTheme.expense, statsTheme.expense.withOpacity(0.8)]
+            : [statsTheme.income, statsTheme.income.withOpacity(0.8)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: (isNegative ? statsTheme.expense : statsTheme.income).withOpacity(0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -100,131 +398,33 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             ],
           ),
           const SizedBox(height: 8),
-          Text(_formatMoney(_balance), style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+          Text(
+            _formatMoney(_balance),
+            style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold),
+          ),
         ],
       ),
     );
   }
 
   Widget _buildActionButton() {
+    final statsTheme = Theme.of(context).extension<StatsTheme>()!;
     return SizedBox(
-      width: double.infinity, height: 55,
+      width: double.infinity,
+      height: 55,
       child: ElevatedButton.icon(
-        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => UserTransactionsScreen(userId: _userData!['id'], fullName: _userData!['full_name']))),
+        onPressed: () => Navigator.push(
+          context, 
+          MaterialPageRoute(builder: (c) => UserTransactionsScreen(userId: _userData!['id'], fullName: _userData!['full_name']))
+        ),
         icon: const Icon(Icons.history_rounded),
         label: const Text("Amallar / Tarix", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-        style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 0),
-      ),
-    );
-  }
-
-  // YANGI QO'SHILDI: Faqat o'zimning profilimda chiqadigan AI tugma
-  Widget _buildAiChatButton() {
-    if (!_isMe) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.only(top: 16.0),
-      child: SizedBox(
-        width: double.infinity, height: 55,
-        child: ElevatedButton.icon(
-          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AiChatScreen())),
-          icon: const Icon(Icons.auto_awesome),
-          label: const Text("AI Yordamchi bilan suhbat", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          style: ElevatedButton.styleFrom(backgroundColor: Colors.purple, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 0),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppColors.primary,
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          elevation: 0,
         ),
-      ),
-    );
-  }
-
-  Widget _buildPermissionsCard() {
-    final customPerms = Map<String, dynamic>.from(_userData!['custom_permissions'] ?? {});
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text("Ruxsatnomalar", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const Divider(),
-            ..._allPerms.entries.map((entry) {
-              final hasPerm = customPerms[entry.key] == true;
-              return ListTile(dense: true, contentPadding: EdgeInsets.zero, leading: Icon(hasPerm ? Icons.check_circle : Icons.cancel, color: hasPerm ? Colors.green : Colors.red), title: Text(entry.value));
-            }),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showAdminEditDialog() {
-    int? selectedRoleId = _userData!['position_id'];
-    Map<String, dynamic> customPerms = Map<String, dynamic>.from(_userData!['custom_permissions'] ?? {});
-    final salaryCtrl = TextEditingController(text: _userData!['custom_salary']?.toString() ?? '');
-    final bonusCtrl = TextEditingController(text: _userData!['custom_bonus_per_m2']?.toString() ?? '');
-
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text("Xodimni tahrirlash"),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                DropdownButtonFormField<int>(value: selectedRoleId, decoration: const InputDecoration(labelText: "Lavozimi"), items: _roles.map((r) => DropdownMenuItem<int>(value: r['id'], child: Text(r['name']))).toList(), onChanged: (v) => setDialogState(() => selectedRoleId = v)),
-                const SizedBox(height: 10),
-                TextField(controller: salaryCtrl, decoration: const InputDecoration(labelText: "Maxsus oylik (ixtiyoriy)"), keyboardType: TextInputType.number),
-                TextField(controller: bonusCtrl, decoration: const InputDecoration(labelText: "Bonus % (ixtiyoriy)"), keyboardType: TextInputType.number),
-                const Divider(),
-                const Text("Qo'shimcha ruxsatlar", style: TextStyle(fontWeight: FontWeight.bold)),
-                ..._allPerms.entries.map((entry) {
-                  return CheckboxListTile(title: Text(entry.value, style: const TextStyle(fontSize: 14)), value: customPerms[entry.key] == true, onChanged: (val) => setDialogState(() => customPerms[entry.key] = val));
-                }),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Bekor")),
-            ElevatedButton(
-              onPressed: () async {
-                await _supabase.from('profiles').update({'position_id': selectedRoleId, 'custom_salary': double.tryParse(salaryCtrl.text), 'custom_bonus_per_m2': double.tryParse(bonusCtrl.text), 'custom_permissions': customPerms}).eq('id', _userData!['id']);
-                Navigator.pop(ctx);
-                _loadUserData();
-              },
-              child: const Text("Saqlash"),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text("Profil"),
-        actions: [
-          if (!_isMe && (_supabase.auth.currentUser!.id == widget.userId || _userData?['is_super_admin'] == true))
-             IconButton(icon: const Icon(Icons.edit), onPressed: _showAdminEditDialog),
-        ],
-      ),
-      body: _isLoading ? const Center(child: CircularProgressIndicator()) : ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          Text(_userData?['full_name'] ?? '', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-          Text(_userData?['app_roles']?['name'] ?? 'Lavozim belgilanmagan', style: const TextStyle(fontSize: 16, color: Colors.grey)),
-          const SizedBox(height: 20),
-          if (_canSeeBalance) ...[
-            _buildBalanceCard(),
-            const SizedBox(height: 16),
-            _buildActionButton(),
-            _buildAiChatButton(), // TUGMA QO'SHILDI
-            const SizedBox(height: 20),
-          ],
-          if (_userData?['custom_permissions'] != null)
-            _buildPermissionsCard(),
-        ],
       ),
     );
   }
