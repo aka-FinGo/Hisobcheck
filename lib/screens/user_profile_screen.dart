@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
-import '../services/encryption_service.dart';
+import 'package:provider/provider.dart';
+import '../theme/theme_provider.dart';
+import '../theme/app_themes.dart';
 import 'user_transactions_screen.dart';
+import '../services/encryption_service.dart';
 
 class UserProfileScreen extends StatefulWidget {
   final String? userId; 
@@ -17,118 +20,145 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   bool _isLoading = true;
   bool _isMe = false;
   Map<String, dynamic>? _userData;
+  List<dynamic> _roles = [];
   
+  // Eski Balans ma'lumotlari
   double _balance = 0;
+  bool _canSeeBalance = false;
+  bool _isAup = false;
 
-  // --- AI SOZLAMALARI UCHUN CONTROLLERLAR ---
+  // --- YANGI: AI VA ADMIN SOZLAMALARI ---
+  bool _allowDefaultAi = false; 
+  bool _isSuperAdmin = false;
   final _groqKeyCtrl = TextEditingController();
   final _geminiKeyCtrl = TextEditingController();
   final _customPromptCtrl = TextEditingController();
 
+  final Map<String, String> _allPerms = {
+    'can_view_finance': 'Kassani ko\\'rish',
+    'can_add_order': 'Zakaz qo\\'shish',
+    'can_manage_users': 'Xodimlarni boshqarish',
+    'can_manage_clients': 'Mijozlarni boshqarish',
+    'can_add_work_log': 'Ish hisobotini kiritish',
+    'can_view_all_orders': 'Barcha zakazlarni ko\\'rish',
+  };
+
   @override
   void initState() {
     super.initState();
-    _loadUserData();
+    _loadData();
   }
 
-  Future<void> _loadUserData() async {
+  Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
       final currentUserId = _supabase.auth.currentUser!.id;
       final targetId = widget.userId ?? currentUserId;
-      _isMe = (targetId == currentUserId);
+      _isMe = targetId == currentUserId;
 
-      // Profilni yuklash
       final data = await _supabase.from('profiles').select('*, app_roles(*)').eq('id', targetId).single();
       _userData = data;
+      _isSuperAdmin = data['is_super_admin'] ?? false;
+      _isAup = data['app_roles']?['role_type'] == 'aup';
+      _canSeeBalance = _isMe || _isSuperAdmin || _isAup;
 
-      // Agar o'zimning profilim bo'lsa, AI kalitlarni o'qib, UI ga qo'yamiz
+      // Agar o'zimning profilim bo'lsa, AI kalitlarni decrypt qilamiz
       if (_isMe) {
         _groqKeyCtrl.text = EncryptionService.decryptText(data['groq_api_key'] ?? '');
         _geminiKeyCtrl.text = EncryptionService.decryptText(data['gemini_api_key'] ?? '');
         _customPromptCtrl.text = data['custom_ai_prompt'] ?? '';
       }
 
-      // Balans hisoblash (Kiritilgan sodda mantiq)
+      // Admin uchun global AI tugmasi holatini tekshirish
+      if (_isSuperAdmin) {
+        final aiSetting = await _supabase.from('app_settings').select('value').eq('key', 'allow_default_ai').maybeSingle();
+        if (aiSetting != null) _allowDefaultAi = aiSetting['value'] == 'true';
+      }
+
+      // Eski Balans hisoblash mantiqi qoldi
       final works = await _supabase.from('work_logs').select('total_sum').eq('worker_id', targetId).eq('is_approved', true);
       final withdraws = await _supabase.from('withdrawals').select('amount').eq('worker_id', targetId).eq('status', 'approved');
-      
       double earned = 0; for (var w in works) earned += (w['total_sum'] ?? 0).toDouble();
       double paid = 0; for (var w in withdraws) paid += (w['amount'] ?? 0).toDouble();
       _balance = earned - paid;
 
-    } catch (e) {
-      debugPrint("Profil yuklashda xato: $e");
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
+    } catch (e) { debugPrint("Xato: $e"); } 
+    finally { if (mounted) setState(() => _isLoading = false); }
   }
 
-  String _formatMoney(double amount) => "${NumberFormat("#,###").format(amount).replaceAll(',', ' ')} so'm";
-  // --- AI YO'RIQNOMASI (TUTORIAL) ---
-  void _showAITutorial() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(children: [Icon(Icons.smart_toy, color: Colors.blue), SizedBox(width: 10), Text("AI Yordamchi")]),
-        content: const SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text("Tizimdan bepul foydalanishingiz mumkin, ammo AI yordamchi uchun o'z API kalitingizni kiritishingiz shart (BYOK tizimi)."),
-              SizedBox(height: 15),
-              Text("🔑 Groq API (Tavsiya etiladi)", style: TextStyle(fontWeight: FontWeight.bold)),
-              Text("1. console.groq.com saytiga kiring.\n2. API Keys bo'limidan yangi kalit oling.\n3. Model: groq/compound (Avtomat)"),
-              SizedBox(height: 15),
-              Text("🔑 Gemini API", style: TextStyle(fontWeight: FontWeight.bold)),
-              Text("1. aistudio.google.com saytiga kiring.\n2. API kalit yarating.\n3. Model: gemini-2.5-flash (Avtomat)"),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Tushundim")),
-        ],
+  String _formatMoney(double amount) => "${NumberFormat('#,###').format(amount).replaceAll(',', ' ')} so'm";
+  // --- ADMIN TUGMASI: TIZIM AI KALITLARINI YOQISH/O'CHIRISH ---
+  Widget _buildAdminAiToggle() {
+    if (!_isSuperAdmin) return const SizedBox.shrink();
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.orange.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.orange.withOpacity(0.5)),
+      ),
+      child: SwitchListTile(
+        title: const Text("Tizim AI kalitlaridan foydalanishga ruxsat berish", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange)),
+        subtitle: const Text("Yoqilsa, o'z kaliti yo'q xodimlar ham sizning GitHub'ga kiritgan kalitingizdan foydalana oladi.", style: TextStyle(fontSize: 12)),
+        value: _allowDefaultAi,
+        activeColor: Colors.orange,
+        onChanged: (val) async {
+          setState(() => _allowDefaultAi = val);
+          await _supabase.from('app_settings').upsert({'key': 'allow_default_ai', 'value': val.toString()});
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Tizim AI ruxsati ${val ? 'yoqildi' : 'o\\'chirildi'}!")));
+        },
       ),
     );
   }
 
-  // --- AI SOZLAMALARI BLOKI ---
+  // --- AI SOZLAMALARI (BYOK) ---
   Widget _buildAISettings() {
-    if (!_isMe) return const SizedBox.shrink(); // Boshqalar birovning kalitini ko'rolmaydi
-
+    if (!_isMe) return const SizedBox.shrink();
     return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: Theme.of(context).cardTheme.color, borderRadius: BorderRadius.circular(20)),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: Theme.of(context).cardTheme.color, borderRadius: BorderRadius.circular(16)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text("🤖 AI YORDAMCHI SOZLAMALARI", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
-          const SizedBox(height: 15),
+          const Text("🤖 SHAXSIY AI SOZLAMALARI", style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.blue)),
+          const SizedBox(height: 12),
           TextField(controller: _groqKeyCtrl, obscureText: true, decoration: const InputDecoration(labelText: "Groq API Key", border: OutlineInputBorder())),
           const SizedBox(height: 10),
           TextField(controller: _geminiKeyCtrl, obscureText: true, decoration: const InputDecoration(labelText: "Gemini API Key", border: OutlineInputBorder())),
           const SizedBox(height: 10),
-          TextField(controller: _customPromptCtrl, maxLines: 2, decoration: const InputDecoration(labelText: "Shaxsiy AI ko'rsatmalaringiz (Prompt)", border: OutlineInputBorder(), hintText: "Masalan: Menga qisqa va faqat raqamlarda javob ber...")),
-          const SizedBox(height: 15),
+          TextField(controller: _customPromptCtrl, maxLines: 2, decoration: const InputDecoration(labelText: "Shaxsiy qo'shimcha ko'rsatma (Prompt)", border: OutlineInputBorder())),
+          const SizedBox(height: 10),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
               icon: const Icon(Icons.security), label: const Text("Xavfsiz Saqlash"),
               style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
               onPressed: () async {
-                // Kalitlarni shifrlab bazaga saqlaymiz
                 final encGroq = EncryptionService.encryptText(_groqKeyCtrl.text.trim());
                 final encGemini = EncryptionService.encryptText(_geminiKeyCtrl.text.trim());
                 await _supabase.from('profiles').update({
                   'groq_api_key': encGroq, 'gemini_api_key': encGemini, 'custom_ai_prompt': _customPromptCtrl.text.trim(),
                 }).eq('id', _supabase.auth.currentUser!.id);
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("AI sozlamalari shifrlanib saqlandi!")));
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Saqlandi!")));
               },
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  // SIZNING ESKI TUGMANGIZ (O'CHIRILMADI)
+  Widget _buildActionButton() {
+    return SizedBox(
+      width: double.infinity, height: 55,
+      child: ElevatedButton.icon(
+        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => UserTransactionsScreen(userId: _userData!['id'], fullName: _userData!['full_name']))),
+        icon: const Icon(Icons.history_rounded),
+        label: const Text("Amallar / Tarix", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
       ),
     );
   }
@@ -140,27 +170,14 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       body: _isLoading ? const Center(child: CircularProgressIndicator()) : ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          // Profil asosi (Ism, Balans, Tarix tugmalari) - O'zingizdagi dizaynni qoldiring
-          Text(_userData?['full_name'] ?? 'Foydalanuvchi', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-          Text("Balans: ${_formatMoney(_balance)}", style: const TextStyle(fontSize: 18, color: Colors.green)),
-          const SizedBox(height: 25),
-          
-          // AI CHAT TUGMASI (GATEKEEPER)
-          if (_isMe)
-            ElevatedButton.icon(
-              icon: const Icon(Icons.auto_awesome), label: const Text("AI Yordamchi bilan suhbat"),
-              style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 55), backgroundColor: Colors.purple, foregroundColor: Colors.white),
-              onPressed: () {
-                if (_groqKeyCtrl.text.trim().isEmpty && _geminiKeyCtrl.text.trim().isEmpty) {
-                  _showAITutorial(); // Kalit yo'q -> Yo'riqnoma chiqadi
-                } else {
-                  // Kalit bor -> Chat ekraniga o'tadi
-                  // Navigator.push(context, MaterialPageRoute(builder: (_) => const AIChatScreen()));
-                }
-              },
-            ),
+          Text(_userData?['full_name'] ?? '', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+          if (_canSeeBalance) Text("Balans: ${_formatMoney(_balance)}", style: const TextStyle(fontSize: 18, color: Colors.green)),
           const SizedBox(height: 20),
-          _buildAISettings(),
+          _buildActionButton(), // Eski tarix tugmasi
+          const SizedBox(height: 20),
+          
+          _buildAdminAiToggle(), // Faqat Superadmin ko'radi
+          _buildAISettings(),    // O'zining profiliga kirganda ko'rinadi
         ],
       ),
     );
