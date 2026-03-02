@@ -10,6 +10,10 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # ... sizdagi mavjud boshqa paketlar (supabase_flutter, provider, h.k.) ...
+  
+  # SHIFRLASH UCHUN PAKET:
+  encrypt: ^5.0.3 
 
   # MANA SHU QATORNI QO'SHING:
   flutter_flip_card: any
