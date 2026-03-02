@@ -275,7 +275,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           if (_canSeeBalance) ...[
             _buildBalanceCard(),
             const SizedBox(height: 12),
-            _buildActionButton(),
+          _buildActionButton(),
+          _buildAiChatButton(), // <-- MANA 
             const SizedBox(height: 30),
           ],
 
@@ -403,6 +404,28 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold),
           ),
         ],
+      ),
+    );
+  }
+  Widget _buildAiChatButton() {
+    // Agar o'zimning profilim bo'lmasa, tugma umuman chiqmaydi (yashirinadi)
+    if (!_isMe) return const SizedBox.shrink(); 
+    
+    return Padding(
+      padding: const EdgeInsets.only(top: 16.0),
+      child: SizedBox(
+        width: double.infinity, height: 55,
+        child: ElevatedButton.icon(
+          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AiChatScreen())),
+          icon: const Icon(Icons.auto_awesome),
+          label: const Text("AI Yordamchi bilan suhbat", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.purple, 
+            foregroundColor: Colors.white, 
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), 
+            elevation: 0
+          ),
+        ),
       ),
     );
   }
