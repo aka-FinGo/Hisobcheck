@@ -1,5 +1,5 @@
 name: hisobcheck
-description: "Mebel sexi uchun moliyaviy ERP tizimi"
+description: "Mebel korxonasi uchun moliyaviy ERP tizimi"
 publish_to: 'none'
 
 version: 1.0.0+1
@@ -21,9 +21,15 @@ dependencies:
   shared_preferences: ^2.2.3
   provider: ^6.1.2
   google_nav_bar: ^5.0.6
+  
+  # PDF va Excel uchun
   excel: ^4.0.5
   pdf: ^3.11.1
   printing: ^5.13.2
+  
+  # Fayllarni saqlash va ulashish uchun (YANGI QO'SHILDI)
+  path_provider: ^2.1.5
+  share_plus: ^10.1.4
 
 dev_dependencies:
   flutter_test:
