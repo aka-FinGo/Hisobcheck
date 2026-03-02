@@ -10,41 +10,20 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-    http: ^1.2.0
-  # ... sizdagi mavjud boshqa paketlar (supabase_flutter, provider, h.k.) ...
-  
-  # SHIFRLASH UCHUN PAKET:
+    
+  http: ^1.2.0
   encrypt: ^5.0.3 
-
-  # MANA SHU QATORNI QO'SHING:
   flutter_flip_card: any
-  # 1. Supabase (Baza)
   supabase_flutter: ^2.6.0
-
-  # 2. Formatlash (Sana va Summa)
   intl: ^0.19.0
-
-  # 3. Ikonkalar
   cupertino_icons: ^1.0.6
-
-  # 4. Grafiklar (Charts)
   fl_chart: ^0.66.0
-
-  # 5. Sozlamalarni saqlash (Login, Tema)
   shared_preferences: ^2.2.3
-
-  # 6. Tema boshqaruvi (ThemeProvider)
   provider: ^6.1.2
-
-  # 7. Pastki navigatsiya
   google_nav_bar: ^5.0.6
-
-  # 8. Eksport (XLS & PDF)
   excel: ^4.0.5
   pdf: ^3.11.1
   printing: ^5.13.2
-  share_plus: ^10.1.2
-  path_provider: ^2.1.3
 
 dev_dependencies:
   flutter_test:
@@ -53,7 +32,3 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-
-  # Rasm yuklash uchun ruxsat
-  assets:
-    - assets/images/
