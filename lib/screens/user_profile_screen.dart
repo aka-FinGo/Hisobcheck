@@ -5,7 +5,7 @@ import 'package:provider/provider.dart';
 import '../theme/theme_provider.dart';
 import '../theme/app_themes.dart';
 import 'user_transactions_screen.dart';
-import 'ai_chat_screen.dart'; // YANGI QO'SHILDI
+import 'ai_chat_screen.dart'; // AI Chat uchun ulandi
 
 class UserProfileScreen extends StatefulWidget {
   final String? userId; 
@@ -26,13 +26,14 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   bool _canSeeBalance = false;
   bool _isAup = false;
 
+  // XATOLIK TUZATILDI: Hamma matnlar "" (qo'shtirnoq) ichiga olindi
   final Map<String, String> _allPerms = {
-    'can_view_finance': 'Kassani ko\\'rish',
-    'can_add_order': 'Zakaz qo\\'shish',
-    'can_manage_users': 'Xodimlarni boshqarish',
-    'can_manage_clients': 'Mijozlarni boshqarish',
-    'can_add_work_log': 'Ish hisobotini kiritish',
-    'can_view_all_orders': 'Barcha zakazlarni ko\\'rish',
+    'can_view_finance': "Kassani ko'rish",
+    'can_add_order': "Zakaz qo'shish",
+    'can_manage_users': "Xodimlarni boshqarish",
+    'can_manage_clients': "Mijozlarni boshqarish",
+    'can_add_work_log': "Ish hisobotini kiritish",
+    'can_view_all_orders': "Barcha zakazlarni ko'rish",
   };
 
   @override
@@ -79,23 +80,14 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     }
   }
 
-  String _formatMoney(double amount) => "${NumberFormat("#,###").format(amount).replaceAll(',', ' ')} so'm";
+  String _formatMoney(double amount) => "${NumberFormat('#,###').format(amount).replaceAll(',', ' ')} so'm";
   Widget _buildBalanceCard() {
-    final theme = Theme.of(context);
-    final statsTheme = theme.extension<StatsTheme>()!;
-    
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [AppColors.primary, AppColors.primary.withOpacity(0.8)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        gradient: LinearGradient(colors: [AppColors.primary, AppColors.primary.withOpacity(0.8)], begin: Alignment.topLeft, end: Alignment.bottomRight),
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(color: AppColors.primary.withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 8)),
-        ],
+        boxShadow: [BoxShadow(color: AppColors.primary.withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 8))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -121,15 +113,12 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => UserTransactionsScreen(userId: _userData!['id'], fullName: _userData!['full_name']))),
         icon: const Icon(Icons.history_rounded),
         label: const Text("Amallar / Tarix", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.primary, foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 0,
-        ),
+        style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 0),
       ),
     );
   }
 
-  // YANGI QO'SHILGAN TUGMA (Faqat profil egasiga ko'rinadi)
+  // YANGI QO'SHILDI: Faqat o'zimning profilimda chiqadigan AI tugma
   Widget _buildAiChatButton() {
     if (!_isMe) return const SizedBox.shrink();
     return Padding(
@@ -140,11 +129,103 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AiChatScreen())),
           icon: const Icon(Icons.auto_awesome),
           label: const Text("AI Yordamchi bilan suhbat", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.purple, foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 0,
-          ),
+          style: ElevatedButton.styleFrom(backgroundColor: Colors.purple, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 0),
         ),
       ),
     );
   }
+
+  Widget _buildPermissionsCard() {
+    final customPerms = Map<String, dynamic>.from(_userData!['custom_permissions'] ?? {});
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text("Ruxsatnomalar", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const Divider(),
+            ..._allPerms.entries.map((entry) {
+              final hasPerm = customPerms[entry.key] == true;
+              return ListTile(dense: true, contentPadding: EdgeInsets.zero, leading: Icon(hasPerm ? Icons.check_circle : Icons.cancel, color: hasPerm ? Colors.green : Colors.red), title: Text(entry.value));
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showAdminEditDialog() {
+    int? selectedRoleId = _userData!['position_id'];
+    Map<String, dynamic> customPerms = Map<String, dynamic>.from(_userData!['custom_permissions'] ?? {});
+    final salaryCtrl = TextEditingController(text: _userData!['custom_salary']?.toString() ?? '');
+    final bonusCtrl = TextEditingController(text: _userData!['custom_bonus_per_m2']?.toString() ?? '');
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text("Xodimni tahrirlash"),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<int>(value: selectedRoleId, decoration: const InputDecoration(labelText: "Lavozimi"), items: _roles.map((r) => DropdownMenuItem<int>(value: r['id'], child: Text(r['name']))).toList(), onChanged: (v) => setDialogState(() => selectedRoleId = v)),
+                const SizedBox(height: 10),
+                TextField(controller: salaryCtrl, decoration: const InputDecoration(labelText: "Maxsus oylik (ixtiyoriy)"), keyboardType: TextInputType.number),
+                TextField(controller: bonusCtrl, decoration: const InputDecoration(labelText: "Bonus % (ixtiyoriy)"), keyboardType: TextInputType.number),
+                const Divider(),
+                const Text("Qo'shimcha ruxsatlar", style: TextStyle(fontWeight: FontWeight.bold)),
+                ..._allPerms.entries.map((entry) {
+                  return CheckboxListTile(title: Text(entry.value, style: const TextStyle(fontSize: 14)), value: customPerms[entry.key] == true, onChanged: (val) => setDialogState(() => customPerms[entry.key] = val));
+                }),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Bekor")),
+            ElevatedButton(
+              onPressed: () async {
+                await _supabase.from('profiles').update({'position_id': selectedRoleId, 'custom_salary': double.tryParse(salaryCtrl.text), 'custom_bonus_per_m2': double.tryParse(bonusCtrl.text), 'custom_permissions': customPerms}).eq('id', _userData!['id']);
+                Navigator.pop(ctx);
+                _loadUserData();
+              },
+              child: const Text("Saqlash"),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("Profil"),
+        actions: [
+          if (!_isMe && (_supabase.auth.currentUser!.id == widget.userId || _userData?['is_super_admin'] == true))
+             IconButton(icon: const Icon(Icons.edit), onPressed: _showAdminEditDialog),
+        ],
+      ),
+      body: _isLoading ? const Center(child: CircularProgressIndicator()) : ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          Text(_userData?['full_name'] ?? '', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+          Text(_userData?['app_roles']?['name'] ?? 'Lavozim belgilanmagan', style: const TextStyle(fontSize: 16, color: Colors.grey)),
+          const SizedBox(height: 20),
+          if (_canSeeBalance) ...[
+            _buildBalanceCard(),
+            const SizedBox(height: 16),
+            _buildActionButton(),
+            _buildAiChatButton(), // TUGMA QO'SHILDI
+            const SizedBox(height: 20),
+          ],
+          if (_userData?['custom_permissions'] != null)
+            _buildPermissionsCard(),
+        ],
+      ),
+    );
+  }
+}
