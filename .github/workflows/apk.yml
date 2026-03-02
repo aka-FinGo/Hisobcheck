@@ -24,7 +24,7 @@ jobs:
         run: |
           sed -i 's/name: Hisobcheck/name: hisobcheck/g' pubspec.yaml
           flutter pub get
-          flutter pub add supabase_flutter intl shared_preferences
+          flutter pub add supabase_flutter intl shared_preferences encrypt
 
       - name: Build APK
         run: |
@@ -35,7 +35,9 @@ jobs:
           # Build with secrets
           flutter build apk --release \
             --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
-            --dart-define=SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}
+            --dart-define=SUPABASE_KEY=${{ secrets.SUPABASE_KEY }} \
+            --dart-define=GROQ_API_KEY=${{ secrets.GROQ_API_KEY }} \
+            --dart-define=GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
