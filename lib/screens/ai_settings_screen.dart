@@ -2,6 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/encryption_service.dart';
 
+class AiSettingsScreen extends StatefulWidget {
+  const AiSettingsScreen({super.key});
+
+  @override
+  State<AiSettingsScreen> createState() => _AiSettingsScreenState();
+}
+
 class _AiSettingsScreenState extends State<AiSettingsScreen> {
   final _supabase = Supabase.instance.client;
   bool _isLoading = true;
@@ -12,7 +19,6 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
   final _geminiKeyCtrl = TextEditingController();
   final _customPromptCtrl = TextEditingController();
   final _globalPromptCtrl = TextEditingController();
-  // YANGI: Model nomlari uchun kontrollerlar
   final _groqModelCtrl = TextEditingController();
   final _geminiModelCtrl = TextEditingController();
 
@@ -39,11 +45,11 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
           if (s["key"] == "allow_default_ai") _allowDefaultAi = s["value"] == "true";
           if (s["key"] == "global_system_prompt") _globalPromptCtrl.text = s["value"] ?? "";
           if (s["key"] == "groq_model_name") _groqModelCtrl.text = s["value"] ?? "groq/compound";
-          if (s["key"] == "gemini_model_name") _geminiModelCtrl.text = s["value"] ?? "gemini-2.0-flash";
+          if (s["key"] == "gemini_model_name") _geminiModelCtrl.text = s["value"] ?? "gemini-2.5-flash";
         }
       }
     } catch (e) {
-      debugPrint("Yuklashda xato: $e");
+      debugPrint("Sozlamalarni yuklashda xato: $e");
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -68,27 +74,32 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
       
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Sozlamalar saqlandi!")));
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e")));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Saqlashda xato: $e")));
     }
   }
-
   Widget _buildAdminPanel() {
     return Container(
       margin: const EdgeInsets.only(bottom: 20),
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: Colors.orange.withOpacity(0.1), borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.orange.withOpacity(0.5))),
+      decoration: BoxDecoration(
+        color: Colors.orange.withOpacity(0.1), 
+        borderRadius: BorderRadius.circular(16), 
+        border: Border.all(color: Colors.orange.withOpacity(0.5))
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text("👑 ADMIN BOSHQARUVI", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange)),
+          const SizedBox(height: 15),
+          TextField(controller: _groqModelCtrl, decoration: const InputDecoration(labelText: "Groq Model Nomi (masalan: groq/compound)", border: OutlineInputBorder())),
           const SizedBox(height: 10),
-          TextField(controller: _groqModelCtrl, decoration: const InputDecoration(labelText: "Groq Model Nomi", hintText: "Masalan: groq/compound")),
+          TextField(controller: _geminiModelCtrl, decoration: const InputDecoration(labelText: "Gemini Model Nomi (masalan: gemini-2.5-flash)", border: OutlineInputBorder())),
           const SizedBox(height: 10),
-          TextField(controller: _geminiModelCtrl, decoration: const InputDecoration(labelText: "Gemini Model Nomi", hintText: "Masalan: gemini-2.0-flash")),
+          TextField(controller: _globalPromptCtrl, maxLines: 4, decoration: const InputDecoration(labelText: "Global System Prompt", border: OutlineInputBorder())),
           const SizedBox(height: 10),
-          TextField(controller: _globalPromptCtrl, maxLines: 3, decoration: const InputDecoration(labelText: "Global System Prompt", border: OutlineInputBorder())),
           SwitchListTile(
-            title: const Text("Ommaviy API ishlatish"),
+            contentPadding: EdgeInsets.zero,
+            title: const Text("Ommaviy API kalitlarini yoqish"),
             value: _allowDefaultAi,
             onChanged: (val) async {
               setState(() => _allowDefaultAi = val);
@@ -99,7 +110,6 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
       ),
     );
   }
-  // Build metodi va qolgan UI qismlari o'zgarishsiz qoladi...
 
   @override
   Widget build(BuildContext context) {
@@ -109,20 +119,18 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
         padding: const EdgeInsets.all(20),
         children: [
           if (_isSuperAdmin) _buildAdminPanel(),
-          
           const Text("Shaxsiy API Kalitlar", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           const SizedBox(height: 15),
           TextField(controller: _groqKeyCtrl, obscureText: true, decoration: const InputDecoration(labelText: "Groq API Key", border: OutlineInputBorder())),
           const SizedBox(height: 15),
           TextField(controller: _geminiKeyCtrl, obscureText: true, decoration: const InputDecoration(labelText: "Gemini API Key", border: OutlineInputBorder())),
           const SizedBox(height: 15),
-          TextField(controller: _customPromptCtrl, maxLines: 3, decoration: const InputDecoration(labelText: "Shaxsiy Prompt (Faqat o'zingiz uchun)", border: OutlineInputBorder())),
+          TextField(controller: _customPromptCtrl, maxLines: 3, decoration: const InputDecoration(labelText: "Shaxsiy Prompt", border: OutlineInputBorder())),
           const SizedBox(height: 20),
-          
           SizedBox(
             width: double.infinity, height: 55,
             child: ElevatedButton.icon(
-              icon: const Icon(Icons.security), 
+              icon: const Icon(Icons.save), 
               label: const Text("Saqlash", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
               onPressed: _saveSettings,
