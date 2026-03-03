@@ -23,6 +23,7 @@ class _AdminFinanceScreenState extends State<AdminFinanceScreen> {
   double _companyBalance = 0;
 
   // Ro'yxatlar
+  List<Map<String, dynamic>> _pendingRequests = [];
   List<Map<String, dynamic>> _history = [];
   List<Map<String, dynamic>> _workers = [];
   Map<String, double> _workerSalaries = {}; // Aggregated totals per month
@@ -148,6 +149,8 @@ class _AdminFinanceScreenState extends State<AdminFinanceScreen> {
   void _showGiveMoneyDialog() {
     dynamic selectedWorkerId;
     final amountController = TextEditingController();
+    final rateController = TextEditingController(text: "12900");
+    bool isUsd = false;
 
     showDialog(
       context: context,
@@ -169,8 +172,24 @@ class _AdminFinanceScreenState extends State<AdminFinanceScreen> {
               TextField(
                 controller: amountController,
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: "Summa", border: OutlineInputBorder(), suffixText: "so'm"),
+                decoration: InputDecoration(
+                  labelText: "Summa", 
+                  border: const OutlineInputBorder(), 
+                  suffixText: isUsd ? "USD" : "so'm",
+                  prefixIcon: IconButton(
+                    icon: Icon(isUsd ? Icons.attach_money : Icons.money),
+                    onPressed: () => setModalState(() => isUsd = !isUsd),
+                  ),
+                ),
               ),
+              if (isUsd) ...[
+                const SizedBox(height: 15),
+                TextField(
+                  controller: rateController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: "Dollar kursi", border: OutlineInputBorder(), prefixIcon: Icon(Icons.currency_exchange)),
+                ),
+              ],
             ],
           ),
           actions: [
@@ -185,10 +204,13 @@ class _AdminFinanceScreenState extends State<AdminFinanceScreen> {
                 }
 
                 try {
+                  final rate = double.tryParse(rateController.text) ?? 12900;
+                  final finalAmount = isUsd ? amount * rate : amount;
+                  
                   // Admin qo'lda bergan pul to'g'ridan-to'g'ri "approved" (tasdiqlangan) bo'lib tushadi
                   await _supabase.from('withdrawals').insert({
                     'worker_id': selectedWorkerId,
-                    'amount': amount,
+                    'amount': finalAmount,
                     'status': 'approved'
                   });
 
