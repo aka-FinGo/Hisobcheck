@@ -16,15 +16,16 @@ class _AdminFinanceScreenState extends State<AdminFinanceScreen> {
   bool _isLoading = true;
   DateTime _selectedMonth = DateTime.now();
 
-  // Statistika
   double _totalIncome = 0;
   double _totalPaid = 0;
+  double _monthIncome = 0;
+  double _monthPaid = 0;
   double _companyBalance = 0;
 
   // Ro'yxatlar
-  List<Map<String, dynamic>> _pendingRequests = [];
   List<Map<String, dynamic>> _history = [];
-  List<Map<String, dynamic>> _workers = []; // Admin tanlashi uchun xodimlar
+  List<Map<String, dynamic>> _workers = [];
+  Map<String, double> _workerSalaries = {}; // Aggregated totals per month
 
   @override
   void initState() {
@@ -41,8 +42,11 @@ class _AdminFinanceScreenState extends State<AdminFinanceScreen> {
 
       double income = 0;
       double paid = 0;
-      for (var o in orders) income += (o['total_price'] ?? 0).toDouble();
-      for (var w in approvedWithdrawals) paid += (w['amount'] ?? 0).toDouble();
+      final incomeList = List<Map<String, dynamic>>.from(orders);
+      final paidList = List<Map<String, dynamic>>.from(approvedWithdrawals);
+      
+      for (var o in incomeList) income += (o['total_price'] ?? 0).toDouble();
+      for (var w in paidList) paid += (w['amount'] ?? 0).toDouble();
 
       // 2. KUTILAYOTGAN SO'ROVLAR (worker_id orqali profillarga ulanamiz)
       final requests = await _supabase
@@ -62,19 +66,42 @@ class _AdminFinanceScreenState extends State<AdminFinanceScreen> {
       // 4. XODIMLAR RO'YXATI (Admin qo'lda pul berishi uchun)
       final workersRes = await _supabase.from('profiles').select('id, full_name, role').neq('role', 'admin');
 
-      _applyFilters(income, paid, requests, historyRes, workersRes);
+      _applyFilters(orders, approvedWithdrawals, requests, historyRes, workersRes);
     } catch (e) {
       debugPrint("Moliya yuklashda xato: $e");
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  void _applyFilters(double income, double paid, List requests, List history, List workers) {
+  void _applyFilters(List incomeList, List paidList, List requests, List history, List workers) {
     if (mounted) {
       setState(() {
-        _totalIncome = income;
-        _totalPaid = paid;
-        _companyBalance = income - paid;
+        _totalIncome = 0;
+        _totalPaid = 0;
+        _monthIncome = 0;
+        _monthPaid = 0;
+
+        for (var o in incomeList) {
+          final amt = (o['total_price'] ?? 0).toDouble();
+          _totalIncome += amt;
+          // Filter by month for monthIncome
+          if (o['created_at'] != null) {
+             final date = DateTime.parse(o['created_at']);
+             if (date.year == _selectedMonth.year && date.month == _selectedMonth.month) _monthIncome += amt;
+          }
+        }
+
+        for (var w in paidList) {
+          final amt = (w['amount'] ?? 0).toDouble();
+          _totalPaid += amt;
+          if (w['created_at'] != null) {
+             final date = DateTime.parse(w['created_at']);
+             if (date.year == _selectedMonth.year && date.month == _selectedMonth.month) _monthPaid += amt;
+          }
+        }
+
+        _companyBalance = _totalIncome - _totalPaid;
+        
         _pendingRequests = List<Map<String, dynamic>>.from(requests).where((r) {
           final date = DateTime.parse(r['created_at']);
           return date.year == _selectedMonth.year && date.month == _selectedMonth.month;
@@ -83,6 +110,17 @@ class _AdminFinanceScreenState extends State<AdminFinanceScreen> {
           final date = DateTime.parse(h['created_at']);
           return date.year == _selectedMonth.year && date.month == _selectedMonth.month;
         }).toList();
+
+        // Calculate per-worker totals for selected month
+        _workerSalaries = {};
+        for (var item in _history) {
+          if (item['status'] == 'approved') {
+            final workerName = item['profiles']?['full_name'] ?? "Noma'lum";
+            final amt = (item['amount'] ?? 0).toDouble();
+            _workerSalaries[workerName] = (_workerSalaries[workerName] ?? 0) + amt;
+          }
+        }
+
         _workers = List<Map<String, dynamic>>.from(workers);
         _isLoading = false;
       });
@@ -207,6 +245,10 @@ class _AdminFinanceScreenState extends State<AdminFinanceScreen> {
                   const SizedBox(height: 15),
                   _buildPendingList(formatter, statsTheme),
                   const SizedBox(height: 30),
+                  _buildSectionHeader("Xodimlar Hisoboti", Icons.people_outline_rounded, statsTheme.income),
+                  const SizedBox(height: 15),
+                  _buildWorkerSalariesList(formatter, statsTheme),
+                  const SizedBox(height: 30),
                   _buildSectionHeader("To'lovlar Tarixi", Icons.history_rounded, statsTheme.income),
                   const SizedBox(height: 15),
                   _buildHistoryList(formatter, statsTheme),
@@ -280,9 +322,9 @@ class _AdminFinanceScreenState extends State<AdminFinanceScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _statItem("Jami Tushum", _totalIncome, statsTheme.income, formatter),
+              _statItem("${DateFormat('MMMM').format(_selectedMonth)} kirimi", _monthIncome, statsTheme.income, formatter),
               Container(width: 1, height: 35, color: Colors.white.withOpacity(0.1)),
-              _statItem("Ish haqi to'landi", _totalPaid, statsTheme.expense, formatter),
+              _statItem("${DateFormat('MMMM').format(_selectedMonth)} chiqimi", _monthPaid, statsTheme.expense, formatter),
             ],
           )
         ],
@@ -340,6 +382,49 @@ class _AdminFinanceScreenState extends State<AdminFinanceScreen> {
                   IconButton(icon: const Icon(Icons.cancel_rounded, color: Colors.redAccent), onPressed: () => _processRequest(req['id'], false)),
                   IconButton(icon: const Icon(Icons.check_circle_rounded, color: Colors.greenAccent), onPressed: () => _processRequest(req['id'], true)),
                 ],
+              ),
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildWorkerSalariesList(NumberFormat formatter, StatsTheme statsTheme) {
+    if (_workerSalaries.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(color: statsTheme.cardColor, borderRadius: BorderRadius.circular(25)),
+        child: const Center(child: Text("Ushbu oyda hali to'lovlar qilinmagan", style: TextStyle(color: Colors.grey, fontSize: 12))),
+      );
+    }
+    return Column(
+      children: _workerSalaries.entries.map((e) {
+        return Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.all(15),
+          decoration: BoxDecoration(
+            color: statsTheme.cardColor,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white.withOpacity(0.02)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                   CircleAvatar(
+                     radius: 15,
+                     backgroundColor: statsTheme.income.withOpacity(0.1),
+                     child: Text(e.key[0].toUpperCase(), style: TextStyle(color: statsTheme.income, fontSize: 12, fontWeight: FontWeight.bold)),
+                   ),
+                   const SizedBox(width: 12),
+                   Text(e.key, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                ],
+              ),
+              Text(
+                "${formatter.format(e.value)} UZS",
+                style: TextStyle(color: statsTheme.income, fontWeight: FontWeight.w900, fontSize: 13),
               ),
             ],
           ),
