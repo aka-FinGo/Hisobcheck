@@ -48,7 +48,17 @@ class _AiChatScreenState extends State<AiChatScreen> {
         {"role": "system", "content": systemPrompt},
         {"role": "user", "content": userText},
       ],
-      "tools": [
+    };
+
+    if (isCompound) {
+      body["compound_custom"] = {
+        "tools": {
+          "enabled_tools": ["web_search", "code_interpreter", "visit_website"]
+        }
+      };
+    } else {
+      // groq/compound does NOT support OpenAI-style tool calling.
+      body["tools"] = [
         {
           "type": "function",
           "function": {
@@ -63,21 +73,19 @@ class _AiChatScreenState extends State<AiChatScreen> {
                 "data_type": {
                   "type": "string",
                   "enum": ["finance", "orders", "remnants"]
+                },
+                "from_date": {
+                  "type": "string"
+                },
+                "to_date": {
+                  "type": "string"
                 }
               },
               "required": ["format", "data_type"]
             }
           }
         }
-      ],
-    };
-
-    if (isCompound) {
-      body["compound_custom"] = {
-        "tools": {
-          "enabled_tools": ["web_search", "code_interpreter", "visit_website"]
-        }
-      };
+      ];
     }
 
     return http.post(
@@ -100,7 +108,12 @@ class _AiChatScreenState extends State<AiChatScreen> {
     }
   }
 
-  Future<void> _executeToolCall(String format, String dataType) async {
+  Future<void> _executeToolCall(
+    String format,
+    String dataType, {
+    String? fromDate,
+    String? toDate,
+  }) async {
     setState(() => _messages.add({"role": "ai", "text": "⚙️ $dataType bo'yicha $format hisoboti tayyorlanmoqda...", "model": "System"}));
     try {
       List<Map<String, dynamic>> data = [];
@@ -174,9 +187,14 @@ class _AiChatScreenState extends State<AiChatScreen> {
           if (res.statusCode == 200) {
             final data = jsonDecode(utf8.decode(res.bodyBytes));
             final msg = data["choices"][0]["message"];
-            if (msg["tool_calls"] != null) {
-              final args = jsonDecode(msg["tool_calls"][0]["function"]["arguments"]);
-              await _executeToolCall(args["format"], args["data_type"]);
+          if (msg["tool_calls"] != null) {
+            final args = jsonDecode(msg["tool_calls"][0]["function"]["arguments"]);
+            await _executeToolCall(
+              args["format"],
+              args["data_type"],
+              fromDate: args["from_date"],
+              toDate: args["to_date"],
+            );
             } else {
               setState(() => _messages.add({"role": "ai", "text": msg["content"], "model": "⚡ $usedModel"}));
             }
