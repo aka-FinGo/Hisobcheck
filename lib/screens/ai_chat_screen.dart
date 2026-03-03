@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'ai_settings_screen.dart';
+import '../services/ai_service.dart';
 import '../services/encryption_service.dart';
 import '../services/report_generator_service.dart';
 
@@ -138,8 +139,18 @@ class _AiChatScreenState extends State<AiChatScreen> {
       String geminiMdl = (settings.firstWhere((s) => s["key"] == "gemini_model_name", orElse: () => {"value": "gemini-2.5-flash"})["value"] ?? "gemini-2.5-flash").toString().trim();
       String globalPrm = (settings.firstWhere((s) => s["key"] == "global_system_prompt", orElse: () => {"value": ""})["value"] ?? "").toString();
       
-      String groqK = EncryptionService.decryptText(profile["groq_api_key"] ?? "");
-      String geminiK = EncryptionService.decryptText(profile["gemini_api_key"] ?? "");
+      // AI keys: personal -> (optional) admin default keys from --dart-define
+      String groqK = "";
+      String geminiK = "";
+      try {
+        final keys = await AiService().getValidAiKeys();
+        groqK = keys["groq"] ?? "";
+        geminiK = keys["gemini"] ?? "";
+      } catch (_) {
+        // Fallback to legacy per-profile keys (older behavior)
+        groqK = EncryptionService.decryptText(profile["groq_api_key"] ?? "");
+        geminiK = EncryptionService.decryptText(profile["gemini_api_key"] ?? "");
+      }
       String ctx = await _getDbContext(isAdmin);
 
       final prompt = "Siz Aristokrat Mebel ERP yordamchisisisiz. $globalPrm\n$ctx";
