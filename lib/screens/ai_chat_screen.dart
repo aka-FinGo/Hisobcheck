@@ -98,11 +98,41 @@ class _AiChatScreenState extends State<AiChatScreen> {
     );
   }
 
-  Future<String> _getDbContext(bool isAdmin) async {
+  Future<String> _getDbContext(String userId, bool isAdmin) async {
     try {
-      if (!isAdmin) return "Foydalanuvchi huquqlari cheklangan.";
-      final res = await _supabase.from("ai_erp_summary").select().single();
-      return "BALANS: ${res['total_balance']} so'm. ZAKAZLAR: ${res['pending_orders_count']} ta kutilmoqda. OMBOR: ${res['total_items_quantity']} dona qoldiq.";
+      final summary = await _supabase.from("ai_erp_summary").select().single();
+      final num companyBalanceNum = (summary["total_balance"] ?? 0) as num;
+      final num pendingOrdersNum = (summary["pending_orders_count"] ?? 0) as num;
+      final num totalItemsNum = (summary["total_items_quantity"] ?? 0) as num;
+
+      // Foydalanuvchining shaxsiy balansi: bajarilgan ishlar - olgan avanslar
+      final works = await _supabase
+          .from("work_logs")
+          .select("total_sum")
+          .eq("worker_id", userId)
+          .eq("is_approved", true);
+      final withdraws = await _supabase
+          .from("withdrawals")
+          .select("amount")
+          .eq("worker_id", userId)
+          .eq("status", "approved");
+
+      double earned = 0;
+      double paid = 0;
+      for (final w in works) {
+        final num v = (w["total_sum"] ?? 0) as num;
+        earned += v.toDouble();
+      }
+      for (final w in withdraws) {
+        final num v = (w["amount"] ?? 0) as num;
+        paid += v.toDouble();
+      }
+      final personalBalance = earned - paid;
+
+      return "KORXONA BALANSI: ${companyBalanceNum.toStringAsFixed(0)} so'm. "
+          "KUTILAYOTGAN ZAKAZLAR: ${pendingOrdersNum.toInt()} ta. "
+          "OMBOR QOLDIQ: ${totalItemsNum.toInt()} dona.\n"
+          "SIZNING SHAXSIY BALANSINGIZ: ${personalBalance.toStringAsFixed(0)} so'm (bajarilgan ishlar minus tasdiqlangan avanslar).";
     } catch (e) {
       return "Baza bilan bog'lanishda xato.";
     }
@@ -164,7 +194,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
         groqK = EncryptionService.decryptText(profile["groq_api_key"] ?? "");
         geminiK = EncryptionService.decryptText(profile["gemini_api_key"] ?? "");
       }
-      String ctx = await _getDbContext(isAdmin);
+      String ctx = await _getDbContext(userId, isAdmin);
 
       final prompt = "Siz Aristokrat Mebel ERP yordamchisisisiz. $globalPrm\n$ctx";
       bool success = false;
@@ -229,47 +259,194 @@ class _AiChatScreenState extends State<AiChatScreen> {
   }
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text("Aristokrat AI"), actions: [IconButton(icon: const Icon(Icons.settings), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AiSettingsScreen())))]),
-      body: Column(
-        children: [
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: _messages.length,
-              itemBuilder: (context, index) {
-                final msg = _messages[index];
-                final isUser = msg["role"] == "user";
-                return Align(
-                  alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-                  child: Container(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    decoration: BoxDecoration(color: isUser ? Colors.purple : Colors.grey.shade200, borderRadius: BorderRadius.circular(20)),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(msg["text"]!, style: TextStyle(color: isUser ? Colors.white : Colors.black87)),
-                        if (!isUser && msg["model"] != null)
-                          Padding(padding: const EdgeInsets.only(top: 4), child: Text(msg["model"]!, style: const TextStyle(fontSize: 9, color: Colors.grey, fontStyle: FontStyle.italic))),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-          if (_isTyping) const LinearProgressIndicator(),
-          Container(
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              children: [
-                Expanded(child: TextField(controller: _msgCtrl, decoration: const InputDecoration(hintText: "Savol..."), onSubmitted: (_) => _sendMessage())),
-                IconButton(icon: const Icon(Icons.send, color: Colors.purple), onPressed: _sendMessage),
-              ],
+      appBar: AppBar(
+        title: const Text("Aristokrat AI"),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const AiSettingsScreen()),
             ),
           ),
         ],
+      ),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              theme.colorScheme.surface,
+              theme.colorScheme.surfaceVariant.withOpacity(0.8),
+            ],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
+        ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              Expanded(
+                child: ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: _messages.length,
+                  itemBuilder: (context, index) {
+                    final msg = _messages[index];
+                    final isUser = msg["role"] == "user";
+                    final bubbleColor =
+                        isUser ? theme.colorScheme.primary : theme.cardColor;
+                    final textColor =
+                        isUser ? Colors.white : theme.colorScheme.onSurface;
+
+                    return Align(
+                      alignment: isUser
+                          ? Alignment.centerRight
+                          : Alignment.centerLeft,
+                      child: Container(
+                        margin: const EdgeInsets.only(bottom: 10),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: bubbleColor,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.06),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              msg["text"] ?? "",
+                              style: TextStyle(color: textColor, fontSize: 14),
+                            ),
+                            if (!isUser && msg["model"] != null)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 4),
+                                child: Text(
+                                  msg["model"]!,
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: textColor.withOpacity(0.6),
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              if (_isTyping) const _TypingIndicator(),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _msgCtrl,
+                        decoration: InputDecoration(
+                          hintText: "Savol yoki buyruq yozing...",
+                          filled: true,
+                          fillColor: theme.cardColor,
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 12),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(24),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                        onSubmitted: (_) => _sendMessage(),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    CircleAvatar(
+                      backgroundColor: theme.colorScheme.primary,
+                      child: IconButton(
+                        icon: const Icon(Icons.send, color: Colors.white),
+                        onPressed: _sendMessage,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+}
+
+class _TypingIndicator extends StatefulWidget {
+  const _TypingIndicator();
+
+  @override
+  State<_TypingIndicator> createState() => _TypingIndicatorState();
+}
+
+class _TypingIndicatorState extends State<_TypingIndicator>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: theme.cardColor,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                "AI yozmoqda",
+                style: TextStyle(fontSize: 12),
+              ),
+              const SizedBox(width: 8),
+              AnimatedBuilder(
+                animation: _controller,
+                builder: (context, _) {
+                  final value = _controller.value;
+                  int dots = (value * 3).floor() + 1;
+                  if (dots > 3) dots = 3;
+                  return Text("." * dots,
+                      style: const TextStyle(fontSize: 16));
+                },
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
