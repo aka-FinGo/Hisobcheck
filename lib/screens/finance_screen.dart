@@ -12,6 +12,7 @@ import '../services/ai_service.dart';
 import '../services/encryption_service.dart';
 import 'ai_settings_screen.dart';
 import 'admin_finance_screen.dart';
+import '../services/report_generator_service.dart';
 
 class FinanceScreen extends StatefulWidget {
   const FinanceScreen({super.key});
@@ -164,7 +165,8 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                           return d.year == _selectedMonth.year && d.month == _selectedMonth.month;
                         }).toList(), 
                         statsTheme: statsTheme, 
-                        isGlass: isGlass
+                        isGlass: isGlass,
+                         selectedMonth: _selectedMonth,
                       ),
                       _AiTab(statsTheme: statsTheme, isGlass: isGlass, onRefresh: _loadData),
                       _SettingsTab(isAdmin: _isAdmin, statsTheme: statsTheme, isGlass: isGlass, onRefresh: _loadData),
@@ -536,8 +538,9 @@ class _StatsTab extends StatelessWidget {
   final List<Map<String, dynamic>> transactions;
   final StatsTheme statsTheme;
   final bool isGlass;
+  final DateTime selectedMonth;
 
-  const _StatsTab({required this.transactions, required this.statsTheme, required this.isGlass});
+  const _StatsTab({required this.transactions, required this.statsTheme, required this.isGlass, required this.selectedMonth});
 
   @override
   Widget build(BuildContext context) {
@@ -571,7 +574,7 @@ class _StatsTab extends StatelessWidget {
                   IconButton(
                     tooltip: "Excel yuklash",
                     onPressed: () {
-                      final monthName = DateFormat('MMMM').format(_selectedMonth);
+                      final monthName = DateFormat('MMMM').format(selectedMonth);
                       ReportGeneratorService.generateExcel(transactions, "Moliya_Hisoboti_$monthName", ["description", "amount", "type", "created_at"]);
                     }, 
                     icon: Icon(Icons.description_outlined, size: 20, color: statsTheme.income),
@@ -579,7 +582,7 @@ class _StatsTab extends StatelessWidget {
                   IconButton(
                     tooltip: "PDF yuklash",
                     onPressed: () {
-                      final monthName = DateFormat('MMMM').format(_selectedMonth);
+                      final monthName = DateFormat('MMMM').format(selectedMonth);
                       ReportGeneratorService.generatePdf(transactions, "Moliya_Hisoboti_$monthName", ["description", "amount", "type", "created_at"]);
                     }, 
                     icon: Icon(Icons.picture_as_pdf_outlined, size: 20, color: statsTheme.expense),
