@@ -19,6 +19,76 @@ class _AiChatScreenState extends State<AiChatScreen> {
   final _supabase = Supabase.instance.client;
   bool _isTyping = false;
 
+  bool _isGroqModelNotFound(http.Response res) {
+    if (res.statusCode != 404) return false;
+    try {
+      final body = jsonDecode(utf8.decode(res.bodyBytes));
+      final code = body?["error"]?["code"]?.toString();
+      if (code == "model_not_found") return true;
+      final msg = body?["error"]?["message"]?.toString().toLowerCase() ?? "";
+      return msg.contains("does not exist") || msg.contains("do not have access");
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<http.Response> _groqChat({
+    required String apiKey,
+    required String model,
+    required String systemPrompt,
+    required String userText,
+  }) {
+    final trimmedModel = model.trim();
+    final isCompound = trimmedModel == "groq/compound";
+
+    final body = <String, dynamic>{
+      "model": trimmedModel,
+      "messages": [
+        {"role": "system", "content": systemPrompt},
+        {"role": "user", "content": userText},
+      ],
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "generate_report",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "format": {
+                  "type": "string",
+                  "enum": ["pdf", "excel", "jpg"]
+                },
+                "data_type": {
+                  "type": "string",
+                  "enum": ["finance", "orders", "remnants"]
+                }
+              },
+              "required": ["format", "data_type"]
+            }
+          }
+        }
+      ],
+    };
+
+    if (isCompound) {
+      body["compound_custom"] = {
+        "tools": {
+          "enabled_tools": ["web_search", "code_interpreter", "visit_website"]
+        }
+      };
+    }
+
+    return http.post(
+      Uri.parse("https://api.groq.com/openai/v1/chat/completions"),
+      headers: {
+        "Authorization": "Bearer $apiKey",
+        "Content-Type": "application/json",
+      },
+      body: jsonEncode(body),
+    );
+  }
+
   Future<String> _getDbContext(bool isAdmin) async {
     try {
       if (!isAdmin) return "Foydalanuvchi huquqlari cheklangan.";
@@ -64,9 +134,9 @@ class _AiChatScreenState extends State<AiChatScreen> {
       final bool isAdmin = profile["is_super_admin"] ?? false;
       final settings = await _supabase.from("app_settings").select("*");
       
-      String groqMdl = settings.firstWhere((s) => s["key"] == "groq_model_name", orElse: () => {"value": "groq/compound"})["value"];
-      String geminiMdl = settings.firstWhere((s) => s["key"] == "gemini_model_name", orElse: () => {"value": "gemini-2.5-flash"})["value"];
-      String globalPrm = settings.firstWhere((s) => s["key"] == "global_system_prompt", orElse: () => {"value": ""})["value"];
+      String groqMdl = (settings.firstWhere((s) => s["key"] == "groq_model_name", orElse: () => {"value": "groq/compound"})["value"] ?? "groq/compound").toString().trim();
+      String geminiMdl = (settings.firstWhere((s) => s["key"] == "gemini_model_name", orElse: () => {"value": "gemini-2.5-flash"})["value"] ?? "gemini-2.5-flash").toString().trim();
+      String globalPrm = (settings.firstWhere((s) => s["key"] == "global_system_prompt", orElse: () => {"value": ""})["value"] ?? "").toString();
       
       String groqK = EncryptionService.decryptText(profile["groq_api_key"] ?? "");
       String geminiK = EncryptionService.decryptText(profile["gemini_api_key"] ?? "");
@@ -76,26 +146,38 @@ class _AiChatScreenState extends State<AiChatScreen> {
       bool success = false;
 
       if (groqK.isNotEmpty) {
-        final res = await http.post(Uri.parse("https://api.groq.com/openai/v1/chat/completions"),
-          headers: {"Authorization": "Bearer $groqK", "Content-Type": "application/json"},
-          body: jsonEncode({
-            "model": groqMdl,
-            "messages": [{"role": "system", "content": prompt}, {"role": "user", "content": text}],
-            "tools": [{"type": "function", "function": {"name": "generate_report", "parameters": {"type": "object", "properties": {"format": {"type": "string", "enum": ["pdf", "excel", "jpg"]}, "data_type": {"type": "string", "enum": ["finance", "orders", "remnants"]}}, "required": ["format", "data_type"]}}}]
-          })
-        );
-        if (res.statusCode == 200) {
-          final data = jsonDecode(utf8.decode(res.bodyBytes));
-          final msg = data["choices"][0]["message"];
-          if (msg["tool_calls"] != null) {
-            final args = jsonDecode(msg["tool_calls"][0]["function"]["arguments"]);
-            await _executeToolCall(args["format"], args["data_type"]);
-          } else {
-            setState(() => _messages.add({"role": "ai", "text": msg["content"], "model": "⚡ $groqMdl"}));
+        final triedModels = <String>[
+          groqMdl,
+          if (groqMdl == "groq/compound") "llama-3.3-70b-versatile",
+          "llama-3.1-8b-instant",
+        ].map((m) => m.trim()).where((m) => m.isNotEmpty).toSet().toList();
+
+        http.Response? lastRes;
+        String usedModel = groqMdl;
+
+        for (final mdl in triedModels) {
+          usedModel = mdl;
+          final res = await _groqChat(apiKey: groqK, model: mdl, systemPrompt: prompt, userText: text);
+          lastRes = res;
+
+          if (res.statusCode == 200) {
+            final data = jsonDecode(utf8.decode(res.bodyBytes));
+            final msg = data["choices"][0]["message"];
+            if (msg["tool_calls"] != null) {
+              final args = jsonDecode(msg["tool_calls"][0]["function"]["arguments"]);
+              await _executeToolCall(args["format"], args["data_type"]);
+            } else {
+              setState(() => _messages.add({"role": "ai", "text": msg["content"], "model": "⚡ $usedModel"}));
+            }
+            success = true;
+            break;
           }
-          success = true;
-        } else {
-          setState(() => _messages.add({"role": "ai", "text": "Groq Xatosi (${res.statusCode}): ${res.body}", "model": "Error"}));
+
+          if (!_isGroqModelNotFound(res)) break;
+        }
+
+        if (!success && lastRes != null) {
+          setState(() => _messages.add({"role": "ai", "text": "Groq Xatosi (${lastRes.statusCode}): ${lastRes.body}", "model": "Error"}));
         }
       }
 
