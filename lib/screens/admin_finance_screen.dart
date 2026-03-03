@@ -1,6 +1,7 @@
-import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
+import '../theme/app_themes.dart';
+import '../widgets/glass_card.dart';
 
 class AdminFinanceScreen extends StatefulWidget {
   const AdminFinanceScreen({super.key});
@@ -12,6 +13,7 @@ class AdminFinanceScreen extends StatefulWidget {
 class _AdminFinanceScreenState extends State<AdminFinanceScreen> {
   final _supabase = Supabase.instance.client;
   bool _isLoading = true;
+  DateTime _selectedMonth = DateTime.now();
 
   // Statistika
   double _totalIncome = 0;
@@ -59,23 +61,30 @@ class _AdminFinanceScreenState extends State<AdminFinanceScreen> {
       // 4. XODIMLAR RO'YXATI (Admin qo'lda pul berishi uchun)
       final workersRes = await _supabase.from('profiles').select('id, full_name, role').neq('role', 'admin');
 
-      if (mounted) {
-        setState(() {
-          _totalIncome = income;
-          _totalPaid = paid;
-          _companyBalance = income - paid;
-          _pendingRequests = List<Map<String, dynamic>>.from(requests);
-          _history = List<Map<String, dynamic>>.from(historyRes);
-          _workers = List<Map<String, dynamic>>.from(workersRes);
-          _isLoading = false;
-        });
-      }
+      _applyFilters(income, paid, requests, historyRes, workersRes);
     } catch (e) {
       debugPrint("Moliya yuklashda xato: $e");
-      if (mounted) {
-        setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e"), backgroundColor: Colors.red));
-      }
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _applyFilters(double income, double paid, List requests, List history, List workers) {
+    if (mounted) {
+      setState(() {
+        _totalIncome = income;
+        _totalPaid = paid;
+        _companyBalance = income - paid;
+        _pendingRequests = List<Map<String, dynamic>>.from(requests).where((r) {
+          final date = DateTime.parse(r['created_at']);
+          return date.year == _selectedMonth.year && date.month == _selectedMonth.month;
+        }).toList();
+        _history = List<Map<String, dynamic>>.from(history).where((h) {
+          final date = DateTime.parse(h['created_at']);
+          return date.year == _selectedMonth.year && date.month == _selectedMonth.month;
+        }).toList();
+        _workers = List<Map<String, dynamic>>.from(workers);
+        _isLoading = false;
+      });
     }
   }
 
@@ -163,143 +172,116 @@ class _AdminFinanceScreenState extends State<AdminFinanceScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final statsTheme = theme.extension<StatsTheme>()!;
+    final isGlass = theme.scaffoldBackgroundColor == Colors.transparent;
     final formatter = NumberFormat("#,###");
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F6F8),
+      backgroundColor: isGlass ? Colors.transparent : theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        title: const Text("Moliya va Kassa", style: TextStyle(color: Colors.black)),
-        backgroundColor: Colors.white,
-        elevation: 1,
-        iconTheme: const IconThemeData(color: Colors.black),
+        title: const Text("MOLIYAVIY NAZORAT", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: -0.5, fontStyle: FontStyle.italic)),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        centerTitle: true,
       ),
-      
-      // YANGI TUGMA: ADMIN QO'LDA PUL YAZISHI UCHUN
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _showGiveMoneyDialog,
-        backgroundColor: Colors.green.shade600,
-        icon: const Icon(Icons.payments, color: Colors.white),
-        label: const Text("PUL BERISH", style: TextStyle(color: Colors.white)),
+        backgroundColor: statsTheme.income,
+        icon: const Icon(Icons.payments_rounded, color: Colors.white),
+        label: const Text("PUL BERISH", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
       ),
-
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 1. KASSA KARTASI
-                  _buildCompanyBalanceCard(formatter),
-                  const SizedBox(height: 25),
-
-                  // 2. KUTILAYOTGAN SO'ROVLAR
-                  const Text("Kutilayotgan so'rovlar", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
-                  const SizedBox(height: 10),
-                  _pendingRequests.isEmpty
-                      ? const Card(child: Padding(padding: EdgeInsets.all(20), child: Center(child: Text("Yangi so'rovlar yo'q", style: TextStyle(color: Colors.grey)))))
-                      : ListView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: _pendingRequests.length,
-                          itemBuilder: (ctx, i) {
-                            final req = _pendingRequests[i];
-                            final profile = req['profiles'];
-                            return Card(
-                              elevation: 2,
-                              margin: const EdgeInsets.only(bottom: 10),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                              child: ListTile(
-                                leading: CircleAvatar(
-                                  backgroundColor: Colors.orange.shade100,
-                                  child: const Icon(Icons.timer, color: Colors.orange),
-                                ),
-                                title: Text(profile?['full_name'] ?? "Noma'lum", style: const TextStyle(fontWeight: FontWeight.bold)),
-                                subtitle: Text("${formatter.format(req['amount']).replaceAll(',', ' ')} so'm"),
-                                trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    IconButton(
-                                      icon: const Icon(Icons.cancel, color: Colors.red, size: 28),
-                                      onPressed: () => _processRequest(req['id'], false),
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(Icons.check_circle, color: Colors.green, size: 28),
-                                      onPressed: () => _processRequest(req['id'], true),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-
-                  const SizedBox(height: 25),
-                  const Text("To'lovlar Tarixi", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
-                  const SizedBox(height: 10),
-                  
-                  // 3. TARIX
-                  ListView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: _history.length,
-                    itemBuilder: (ctx, i) {
-                      final item = _history[i];
-                      final profile = item['profiles'];
-                      bool isApproved = item['status'] == 'approved';
-                      
-                      return Card(
-                        elevation: 1,
-                        margin: const EdgeInsets.only(bottom: 8),
-                        child: ListTile(
-                          leading: Icon(
-                            isApproved ? Icons.done_all : Icons.block, 
-                            color: isApproved ? Colors.green : Colors.red
-                          ),
-                          title: Text(profile?['full_name'] ?? "Noma'lum"),
-                          subtitle: Text(item['created_at'].toString().split('T')[0]),
-                          trailing: Text(
-                            "${isApproved ? '-' : ''} ${formatter.format(item['amount']).replaceAll(',', ' ')} so'm",
-                            style: TextStyle(
-                              color: isApproved ? Colors.red.shade700 : Colors.grey,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 15
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 60), // FAB tugma pastni to'sib qo'ymasligi uchun
+                   _buildMonthSelector(statsTheme),
+                  const SizedBox(height: 20),
+                  _buildCompanyBalanceCard(formatter, statsTheme),
+                  const SizedBox(height: 30),
+                  _buildSectionHeader("Kutilayotgan so'rovlar", Icons.timer_outlined, statsTheme.pending),
+                  const SizedBox(height: 15),
+                  _buildPendingList(formatter, statsTheme),
+                  const SizedBox(height: 30),
+                  _buildSectionHeader("To'lovlar Tarixi", Icons.history_rounded, statsTheme.income),
+                  const SizedBox(height: 15),
+                  _buildHistoryList(formatter, statsTheme),
+                  const SizedBox(height: 100),
                 ],
               ),
             ),
     );
   }
 
-  Widget _buildCompanyBalanceCard(NumberFormat formatter) {
+  Widget _buildSectionHeader(String title, IconData icon, Color color) {
+    return Row(
+      children: [
+        Icon(icon, size: 20, color: color),
+        const SizedBox(width: 8),
+        Text(title.toUpperCase(), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.grey, letterSpacing: 2)),
+      ],
+    );
+  }
+
+  Widget _buildMonthSelector(StatsTheme statsTheme) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: List.generate(6, (i) {
+          final date = DateTime.now().subtract(Duration(days: 30 * i));
+          final isSelected = date.year == _selectedMonth.year && date.month == _selectedMonth.month;
+          return Padding(
+            padding: const EdgeInsets.only(right: 10),
+            child: ChoiceChip(
+              label: Text(DateFormat('MMMM').format(date).toUpperCase(), style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: isSelected ? Colors.white : statsTheme.textSecondary)),
+              selected: isSelected,
+              onSelected: (v) {
+                if (v) {
+                  setState(() {
+                    _selectedMonth = date;
+                    _loadFinanceData();
+                  });
+                }
+              },
+              selectedColor: statsTheme.income,
+              backgroundColor: statsTheme.cardColor,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+              side: BorderSide.none,
+              showCheckmark: false,
+            ),
+          );
+        }).reversed.toList(),
+      ),
+    );
+  }
+
+  Widget _buildCompanyBalanceCard(NumberFormat formatter, StatsTheme statsTheme) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(25),
       decoration: BoxDecoration(
-        gradient: LinearGradient(colors: [Colors.blue.shade900, Colors.blue.shade600]),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: Colors.blue.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5))]
+        color: statsTheme.cardColor,
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        boxShadow: [BoxShadow(color: statsTheme.income.withOpacity(0.1), blurRadius: 20, offset: const Offset(0, 10))],
       ),
       child: Column(
         children: [
-          const Text("KORXONA UMUMIY BALANSI", style: TextStyle(color: Colors.white70, letterSpacing: 1.5, fontSize: 12)),
+          const Text("KORXONA UMUMIY BALANSI", style: TextStyle(color: Colors.grey, letterSpacing: 1.5, fontSize: 10, fontWeight: FontWeight.w900)),
           const SizedBox(height: 10),
           Text(
-            "${formatter.format(_companyBalance).replaceAll(',', ' ')} so'm", 
-            style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold)
+            "${formatter.format(_companyBalance)} UZS", 
+            style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900, letterSpacing: -1)
           ),
           const SizedBox(height: 20),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _statItem("Jami Tushum", _totalIncome, Colors.greenAccent, formatter),
-              Container(width: 1, height: 40, color: Colors.white24),
-              _statItem("Ish haqi to'landi", _totalPaid, Colors.orangeAccent, formatter),
+              _statItem("Jami Tushum", _totalIncome, statsTheme.income, formatter),
+              Container(width: 1, height: 35, color: Colors.white.withOpacity(0.1)),
+              _statItem("Ish haqi to'landi", _totalPaid, statsTheme.expense, formatter),
             ],
           )
         ],
@@ -310,13 +292,98 @@ class _AdminFinanceScreenState extends State<AdminFinanceScreen> {
   Widget _statItem(String label, double value, Color color, NumberFormat formatter) {
     return Column(
       children: [
-        Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold)),
         const SizedBox(height: 5),
         Text(
-          formatter.format(value).replaceAll(',', ' '), 
-          style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 16)
+          formatter.format(value), 
+          style: TextStyle(color: color, fontWeight: FontWeight.w900, fontSize: 14)
         ),
       ],
+    );
+  }
+
+  Widget _buildPendingList(NumberFormat formatter, StatsTheme statsTheme) {
+    if (_pendingRequests.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(30),
+        decoration: BoxDecoration(color: statsTheme.cardColor, borderRadius: BorderRadius.circular(25)),
+        child: const Center(child: Text("Yangi so'rovlar yo'q", style: TextStyle(color: Colors.grey, fontSize: 12))),
+      );
+    }
+    return Column(
+      children: _pendingRequests.map((req) {
+        final profile = req['profiles'];
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(15),
+          decoration: BoxDecoration(
+            color: statsTheme.cardColor,
+            borderRadius: BorderRadius.circular(25),
+            border: Border.all(color: Colors.white.withOpacity(0.03)),
+          ),
+          child: Row(
+            children: [
+              CircleAvatar(backgroundColor: statsTheme.pending.withOpacity(0.1), child: Icon(Icons.timer_outlined, color: statsTheme.pending, size: 20)),
+              const SizedBox(width: 15),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(profile?['full_name'] ?? "Noma'lum", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                    Text("${formatter.format(req['amount'])} UZS", style: TextStyle(color: statsTheme.pending, fontWeight: FontWeight.bold, fontSize: 12)),
+                  ],
+                ),
+              ),
+              Row(
+                children: [
+                  IconButton(icon: const Icon(Icons.cancel_rounded, color: Colors.redAccent), onPressed: () => _processRequest(req['id'], false)),
+                  IconButton(icon: const Icon(Icons.check_circle_rounded, color: Colors.greenAccent), onPressed: () => _processRequest(req['id'], true)),
+                ],
+              ),
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildHistoryList(NumberFormat formatter, StatsTheme statsTheme) {
+    if (_history.isEmpty) {
+      return const Center(child: Text("Hozircha ma'lumot yo'q", style: TextStyle(color: Colors.grey)));
+    }
+    return Column(
+      children: _history.map((item) {
+        final profile = item['profiles'];
+        final isApproved = item['status'] == 'approved';
+        return Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.all(15),
+          decoration: BoxDecoration(
+            color: statsTheme.cardColor,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white.withOpacity(0.02)),
+          ),
+          child: Row(
+            children: [
+              Icon(isApproved ? Icons.done_all_rounded : Icons.block_rounded, color: isApproved ? statsTheme.income : statsTheme.textSecondary, size: 18),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(profile?['full_name'] ?? "Noma'lum", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    Text(DateFormat('dd MMM, yyyy').format(DateTime.parse(item['created_at'])), style: TextStyle(color: Colors.grey, fontSize: 10)),
+                  ],
+                ),
+              ),
+              Text(
+                "${isApproved ? '-' : ''} ${formatter.format(item['amount'])}",
+                style: TextStyle(color: isApproved ? statsTheme.expense : Colors.grey, fontWeight: FontWeight.w900, fontSize: 14),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
     );
   }
 }
