@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:http/http.dart' as http;
 import 'ai_settings_screen.dart';
 import '../services/ai_service.dart';
 import '../services/encryption_service.dart';
@@ -17,9 +18,30 @@ class AiChatScreen extends StatefulWidget {
 
 class _AiChatScreenState extends State<AiChatScreen> {
   final TextEditingController _msgCtrl = TextEditingController();
+  final ScrollController _scrollCtrl = ScrollController();
   final List<Map<String, String>> _messages = [];
   final _supabase = Supabase.instance.client;
   bool _isTyping = false;
+  String _statusMessage = "";
+
+  @override
+  void dispose() {
+    _msgCtrl.dispose();
+    _scrollCtrl.dispose();
+    super.dispose();
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollCtrl.hasClients) {
+        _scrollCtrl.animateTo(
+          _scrollCtrl.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
 
   Future<String> _getDbContext({
     required String userId,
@@ -30,25 +52,21 @@ class _AiChatScreenState extends State<AiChatScreen> {
     try {
       final now = DateTime.now();
       final startOfThisMonth = DateTime(now.year, now.month, 1);
-      final startOfLastMonth =
-          DateTime(now.year, now.month - 1, 1); // Dart handles month underflow
+      final startOfLastMonth = DateTime(now.year, now.month - 1, 1);
 
       Map<String, dynamic> companyFinance = {};
       if (canViewCompanyFinance) {
-        final summary =
-            await _supabase.from("ai_erp_summary").select().single();
+        final summary = await _supabase.from("ai_erp_summary").select().single();
         final num companyBalanceNum = (summary["total_balance"] ?? 0) as num;
-        final num pendingOrdersNum =
-            (summary["pending_orders_count"] ?? 0) as num;
-        final num totalItemsNum =
-            (summary["total_items_quantity"] ?? 0) as num;
+        final num pendingOrdersNum = (summary["pending_orders_count"] ?? 0) as num;
+        final num totalItemsNum = (summary["total_items_quantity"] ?? 0) as num;
 
-        // O'tgan oy daromadi (zakazlar bo'yicha)
         final lastMonthOrders = await _supabase
             .from("orders")
             .select("total_price, created_at")
             .gte("created_at", startOfLastMonth.toIso8601String())
             .lt("created_at", startOfThisMonth.toIso8601String());
+        
         double lastMonthRevenue = 0;
         for (final o in lastMonthOrders) {
           final num v = (o["total_price"] ?? 0) as num;
@@ -63,12 +81,12 @@ class _AiChatScreenState extends State<AiChatScreen> {
         };
       }
 
-      // Foydalanuvchining shaxsiy balansi: bajarilgan ishlar - olgan avanslar
       final works = await _supabase
           .from("work_logs")
           .select("total_sum, created_at")
           .eq("worker_id", userId)
           .eq("is_approved", true);
+          
       final withdraws = await _supabase
           .from("withdrawals")
           .select("amount, created_at")
@@ -87,9 +105,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
         final num v = (w["amount"] ?? 0) as num;
         paid += v.toDouble();
         final createdAt = DateTime.tryParse(w["created_at"]?.toString() ?? "");
-        if (createdAt != null &&
-            !createdAt.isBefore(startOfLastMonth) &&
-            createdAt.isBefore(startOfThisMonth)) {
+        if (createdAt != null && !createdAt.isBefore(startOfLastMonth) && createdAt.isBefore(startOfThisMonth)) {
           lastMonthPaid += v.toDouble();
         }
       }
@@ -114,20 +130,19 @@ class _AiChatScreenState extends State<AiChatScreen> {
 
       return jsonEncode(ctx);
     } catch (e) {
-      return jsonEncode({
-        "error": "context_fetch_failed",
-        "message": e.toString(),
-      });
+      return jsonEncode({"error": "context_fetch_failed", "message": e.toString()});
     }
   }
 
-  Future<void> _executeToolCall(
-    String format,
-    String dataType, {
-    String? fromDate,
-    String? toDate,
-  }) async {
-    setState(() => _messages.add({"role": "ai", "text": "⚙️ $dataType bo'yicha $format hisoboti tayyorlanmoqda...", "model": "System"}));
+  Future<void> _executeToolCall(Map<String, dynamic> args) async {
+    final format = args["format"]?.toString() ?? "pdf";
+    final dataType = args["data_type"]?.toString() ?? "finance";
+
+    setState(() {
+      _statusMessage = "⚙️ ${dataType.toUpperCase()} bo'yicha $format hisoboti tayyorlanmoqda...";
+      _messages.add({"role": "ai", "text": "⚙️ Hisobot tayyorlanmoqda...", "model": "System"});
+    });
+    
     try {
       List<Map<String, dynamic>> data = [];
       List<String> columns = [];
@@ -143,17 +158,27 @@ class _AiChatScreenState extends State<AiChatScreen> {
       }
 
       if (format == "pdf") await ReportGeneratorService.generatePdf(data, dataType.toUpperCase(), columns);
-      if (format == "excel") await ReportGeneratorService.generateExcel(data, dataType.toUpperCase(), columns);
-      if (format == "jpg") await ReportGeneratorService.generateImageInfographic({"Jami": "${data.length}"}, dataType.toUpperCase());
+      else if (format == "excel") await ReportGeneratorService.generateExcel(data, dataType.toUpperCase(), columns);
+      else if (format == "jpg") await ReportGeneratorService.generateImageInfographic({"Jami": "${data.length}"}, dataType.toUpperCase());
+      
+      setState(() => _statusMessage = "✅ Hisobot tayyor!");
     } catch (e) {
       setState(() => _messages.add({"role": "ai", "text": "❌ Xato: $e", "model": "Error"}));
+      setState(() => _statusMessage = "❌ Hisobotda xatolik");
     }
   }
+
   Future<void> _sendMessage() async {
     final text = _msgCtrl.text.trim();
     if (text.isEmpty) return;
-    setState(() { _messages.add({"role": "user", "text": text, "model": "User"}); _isTyping = true; });
+
+    setState(() {
+      _messages.add({"role": "user", "text": text, "model": "User"});
+      _isTyping = true;
+      _statusMessage = "AI o'ylamoqda...";
+    });
     _msgCtrl.clear();
+    _scrollToBottom();
 
     try {
       final userId = _supabase.auth.currentUser!.id;
@@ -162,10 +187,9 @@ class _AiChatScreenState extends State<AiChatScreen> {
           .select("*, app_roles(name, role_type, permissions)")
           .eq("id", userId)
           .single();
+      
       final bool isSuperAdmin = profile["is_super_admin"] ?? false;
-
-      Map<String, dynamic> customPermissions =
-          Map<String, dynamic>.from(profile["custom_permissions"] ?? {});
+      Map<String, dynamic> customPermissions = Map<String, dynamic>.from(profile["custom_permissions"] ?? {});
       Map<String, dynamic> rolePermissions = {};
       String roleType = "worker";
 
@@ -175,32 +199,22 @@ class _AiChatScreenState extends State<AiChatScreen> {
         roleType = (ar["role_type"] ?? "worker").toString();
       }
 
-      bool hasPermissionLocal(String action) {
+      bool hasPermission(String action) {
         if (isSuperAdmin) return true;
-        if (customPermissions[action] == true) return true;
-        if (rolePermissions[action] == true) return true;
-        return false;
+        return (customPermissions[action] == true || rolePermissions[action] == true);
       }
 
-      final bool canViewCompanyFinance = hasPermissionLocal("can_view_finance");
+      final bool canViewCompanyFinance = hasPermission("can_view_finance");
       final settings = await _supabase.from("app_settings").select("*");
       
-      String groqMdl = (settings.firstWhere((s) => s["key"] == "groq_model_name", orElse: () => {"value": "groq/compound"})["value"] ?? "groq/compound").toString().trim();
-      String geminiMdl = (settings.firstWhere((s) => s["key"] == "gemini_model_name", orElse: () => {"value": "gemini-2.5-flash"})["value"] ?? "gemini-2.5-flash").toString().trim();
-      String globalPrm = (settings.firstWhere((s) => s["key"] == "global_system_prompt", orElse: () => {"value": ""})["value"] ?? "").toString();
+      final groqMdl = (settings.firstWhere((s) => s["key"] == "groq_model_name", orElse: () => {"value": "groq/compound"})["value"] ?? "groq/compound").toString();
+      final geminiMdl = (settings.firstWhere((s) => s["key"] == "gemini_model_name", orElse: () => {"value": "gemini-2.5-flash"})["value"] ?? "gemini-2.5-flash").toString();
+      final globalPrm = (settings.firstWhere((s) => s["key"] == "global_system_prompt", orElse: () => {"value": ""})["value"] ?? "").toString();
       
-      // AI keys: personal -> (optional) admin default keys from --dart-define
-      String groqK = "";
-      String geminiK = "";
-      try {
-        final keys = await AiService().getValidAiKeys();
-        groqK = keys["groq"] ?? "";
-        geminiK = keys["gemini"] ?? "";
-      } catch (_) {
-        // Fallback to legacy per-profile keys (older behavior)
-        groqK = EncryptionService.decryptText(profile["groq_api_key"] ?? "");
-        geminiK = EncryptionService.decryptText(profile["gemini_api_key"] ?? "");
-      }
+      final keys = await AiService().getValidAiKeys();
+      final groqK = keys["groq"] ?? "";
+      final geminiK = keys["gemini"] ?? "";
+
       final ctxJson = await _getDbContext(
         userId: userId,
         canViewCompanyFinance: canViewCompanyFinance,
@@ -208,277 +222,247 @@ class _AiChatScreenState extends State<AiChatScreen> {
         roleType: roleType,
       );
 
-      final prompt = """
+      final systemPrompt = """
 Siz Aristokrat Mebel ERP yordamchisisiz.
 $globalPrm
 
-Quyidagi JSON obyekt ERP bazasidan, foydalanuvchi ruxsatlariga moslab tayyorlangan:
+Foydalanuvchi ruxsatlari va baza holati (JSON):
 $ctxJson
 
 Qoidalar:
-- Agar savol kompaniya moliyasi yoki boshqa xodimlar ma'lumotlari haqida bo'lsa VA user.can_view_company_finance = false bo'lsa, qisqa qilib "Sizda bu ma'lumotni ko'rish huquqi yo'q" mazmunida javob bering va hech qanday raqam yoki taxmin keltirmang.
-- Agar savol foydalanuvchining shaxsiy balansi, avanslari yoki ishlari haqida bo'lsa, faqat personal_finance bo'limidagi ma'lumotlardan foydalaning.
-- Har bir javobda balanslarni keraksiz takrorlamang; faqat savol shu mavzuga oid bo'lsa yozing.
-- Hech qachon "Reasoning", "Data from the JSON" kabi bo'limlar yozmang, ichki tahlilingizni ko'rsatmang; faqat yakuniy javobni aniq, qisqa matn ko'rinishida bering.
+- Faqat berilgan JSON ma'lumotlariga tayanib javob bering.
+- Agar foydalanuvchida ruxsat bo'lmasa ("can_view_company_finance": false), kompaniya moliyasi haqida "Sizda bu ma'lumotni ko'rish huquqi yo'q" deb javob bering.
+- "Reasoning" yoki ichki tahlilingizni ko'rsatmang. Faqat yakuniy javobni o'zbek tilida bering.
 """;
-      bool success = false;
 
       if (groqK.isNotEmpty) {
-        final triedModels = <String>[
-          groqMdl,
-          if (groqMdl == "groq/compound") "llama-3.3-70b-versatile",
-          "llama-3.1-8b-instant",
-        ].map((m) => m.trim()).where((m) => m.isNotEmpty).toSet().toList();
-
-        http.Response? lastRes;
-        String usedModel = groqMdl;
-
-        for (final mdl in triedModels) {
-          usedModel = mdl;
-          final res = await _groqChat(apiKey: groqK, model: mdl, systemPrompt: prompt, userText: text);
-          lastRes = res;
-
-          if (res.statusCode == 200) {
-            final data = jsonDecode(utf8.decode(res.bodyBytes));
-            final msg = data["choices"][0]["message"];
-            if (msg["tool_calls"] != null) {
-              final args =
-                  jsonDecode(msg["tool_calls"][0]["function"]["arguments"]);
-              await _executeToolCall(
-                args["format"],
-                args["data_type"],
-                fromDate: args["from_date"],
-                toDate: args["to_date"],
-              );
-            } else {
-              String content = (msg["content"] ?? "").toString();
-              // Ba'zi modellarda "Reasoning" / "Data from the JSON" kabi ichki
-              // izohlar bo'ladi. Foydalanuvchiga faqat yakuniy javobni ko'rsatamiz.
-              if (content.contains("**Answer**")) {
-                content = content.split("**Answer**").last.trim();
-              }
-              setState(() => _messages.add(
-                  {"role": "ai", "text": content, "model": "⚡ $usedModel"}));
-            }
-            success = true;
-            break;
-          }
-
-          if (!_isGroqModelNotFound(res)) break;
-        }
-
-        if (!success && lastRes != null) {
-          final res = lastRes;
-          setState(() => _messages.add({"role": "ai", "text": "Groq Xatosi (${res!.statusCode}): ${res.body}", "model": "Error"}));
-        }
-      }
-
-      if (!success && geminiK.isNotEmpty) {
-        final res = await http.post(Uri.parse("https://generativelanguage.googleapis.com/v1beta/models/$geminiMdl:generateContent?key=$geminiK"),
-          headers: {"Content-Type": "application/json"},
-          body: jsonEncode({"systemInstruction": {"parts": [{"text": prompt}]}, "contents": [{"parts": [{"text": text}]}]})
+        setState(() => _statusMessage = "Groq orqali ulanmoqda...");
+        final result = await GroqService.chatWithFallback(
+          apiKey: groqK,
+          primaryModel: groqMdl,
+          systemPrompt: systemPrompt,
+          userText: text,
+          onToolCall: _executeToolCall,
         );
-        if (res.statusCode == 200) {
-          final data = jsonDecode(utf8.decode(res.bodyBytes));
-          setState(() => _messages.add({"role": "ai", "text": data["candidates"][0]["content"]["parts"][0]["text"], "model": "✨ $geminiMdl"}));
-        } else {
-          setState(() => _messages.add({"role": "ai", "text": "Gemini Xatosi (${res.statusCode}): ${res.body}", "model": "Error"}));
+
+        if (result.content != null) {
+          setState(() => _messages.add({"role": "ai", "text": result.content!, "model": "⚡ ${result.usedModel}"}));
+          setState(() => _statusMessage = "Tayyor");
+          _scrollToBottom();
+          return;
+        } else if (result.lastResponse?.statusCode != 200 && geminiK.isEmpty) {
+          throw Exception("Groq xatosi: ${result.lastResponse?.body}");
         }
       }
+
+      if (geminiK.isNotEmpty) {
+        setState(() => _statusMessage = "Gemini orqali ulanmoqda...");
+        final geminiRes = await GeminiService.chat(
+          apiKey: geminiK,
+          model: geminiMdl,
+          systemPrompt: systemPrompt,
+          userText: text,
+        );
+
+        if (geminiRes != null) {
+          setState(() => _messages.add({"role": "ai", "text": geminiRes, "model": "✨ $geminiMdl"}));
+          setState(() => _statusMessage = "Tayyor");
+        } else {
+          throw Exception("Gemini xatosi yuz berdi");
+        }
+      } else if (groqK.isEmpty) {
+        throw Exception("API kalitlari topilmadi. Sozlamalarni tekshiring.");
+      }
+
     } catch (e) {
-      setState(() => _messages.add({"role": "ai", "text": "Exception: $e", "model": "Exception"}));
-    } finally { if (mounted) setState(() => _isTyping = false); }
+      setState(() {
+        _messages.add({"role": "ai", "text": "Xato: $e", "model": "Error"});
+        _statusMessage = "Xato yuz berdi";
+      });
+    } finally {
+      if (mounted) setState(() => _isTyping = false);
+      _scrollToBottom();
+    }
   }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Aristokrat AI"),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text("Aristokrat AI", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            if (_statusMessage.isNotEmpty)
+              Text(
+                _statusMessage,
+                style: TextStyle(fontSize: 11, color: theme.colorScheme.primary.withOpacity(0.8), fontWeight: FontWeight.w400),
+              ),
+          ],
+        ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const AiSettingsScreen()),
-            ),
+            icon: const Icon(Icons.refresh, size: 20),
+            onPressed: () => setState(() => _messages.clear()),
+            tooltip: "Chatni tozalash",
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings_outlined, size: 20),
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AiSettingsScreen())),
           ),
         ],
       ),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              theme.colorScheme.surface,
-              theme.colorScheme.surfaceVariant.withOpacity(0.8),
-            ],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
+      body: Column(
+        children: [
+          // Dynamic status notification at the top
+          if (_isTyping)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              color: theme.colorScheme.primary.withOpacity(0.1),
+              child: const Center(
+                child: Text(
+                  "AI yozmoqda...",
+                  style: TextStyle(fontSize: 11, fontStyle: FontStyle.italic),
+                ),
+              ),
+            ),
+          
+          Expanded(
+            child: ListView.builder(
+              controller: _scrollCtrl,
+              padding: const EdgeInsets.all(16),
+              itemCount: _messages.length,
+              itemBuilder: (context, index) {
+                final msg = _messages[index];
+                final isUser = msg["role"] == "user";
+                return _buildMessageBubble(msg, isUser, theme);
+              },
+            ),
           ),
-        ),
-        child: SafeArea(
-          child: Column(
-            children: [
-              Expanded(
-                child: ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: _messages.length,
-                  itemBuilder: (context, index) {
-                    final msg = _messages[index];
-                    final isUser = msg["role"] == "user";
-                    final bubbleColor =
-                        isUser ? theme.colorScheme.primary : theme.cardColor;
-                    final textColor =
-                        isUser ? Colors.white : theme.colorScheme.onSurface;
 
-                    return Align(
-                      alignment: isUser
-                          ? Alignment.centerRight
-                          : Alignment.centerLeft,
-                      child: Container(
-                        margin: const EdgeInsets.only(bottom: 10),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 12),
-                        decoration: BoxDecoration(
-                          color: bubbleColor,
-                          borderRadius: BorderRadius.circular(20),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.06),
-                              blurRadius: 10,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text(
-                              msg["text"] ?? "",
-                              style: TextStyle(color: textColor, fontSize: 14),
-                            ),
-                            if (!isUser && msg["model"] != null)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 4),
-                                child: Text(
-                                  msg["model"]!,
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    color: textColor.withOpacity(0.6),
-                                    fontStyle: FontStyle.italic,
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-              if (_isTyping) const _TypingIndicator(),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _msgCtrl,
-                        decoration: InputDecoration(
-                          hintText: "Savol yoki buyruq yozing...",
-                          filled: true,
-                          fillColor: theme.cardColor,
-                          contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 12),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(24),
-                            borderSide: BorderSide.none,
-                          ),
-                        ),
-                        onSubmitted: (_) => _sendMessage(),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    CircleAvatar(
-                      backgroundColor: theme.colorScheme.primary,
-                      child: IconButton(
-                        icon: const Icon(Icons.send, color: Colors.white),
-                        onPressed: _sendMessage,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+          // Message Input Field (Fintech style)
+          _buildInputArea(theme, isDark),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMessageBubble(Map<String, String> msg, bool isUser, ThemeData theme) {
+    return Align(
+      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        maxWidth: MediaQuery.of(context).size.width * 0.8,
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: isUser 
+              ? theme.colorScheme.primary 
+              : (theme.brightness == Brightness.dark ? Colors.grey[900] : Colors.white),
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(20),
+            topRight: const Radius.circular(20),
+            bottomLeft: Radius.circular(isUser ? 20 : 4),
+            bottomRight: Radius.circular(isUser ? 4 : 20),
           ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          children: [
+            Text(
+              msg["text"] ?? "",
+              style: TextStyle(
+                color: isUser ? Colors.white : theme.textTheme.bodyLarge?.color,
+                fontSize: 15,
+                height: 1.4,
+              ),
+            ),
+            if (!isUser && msg["model"] != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  msg["model"]!,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: (theme.textTheme.bodyLarge?.color ?? Colors.black).withOpacity(0.5),
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );
   }
 
-}
-
-class _TypingIndicator extends StatefulWidget {
-  const _TypingIndicator();
-
-  @override
-  State<_TypingIndicator> createState() => _TypingIndicatorState();
-}
-
-class _TypingIndicatorState extends State<_TypingIndicator>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 900),
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: theme.cardColor,
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                "AI yozmoqda",
-                style: TextStyle(fontSize: 12),
+  Widget _buildInputArea(ThemeData theme, bool isDark) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+      decoration: BoxDecoration(
+        color: theme.scaffoldBackgroundColor,
+        boxShadow: [
+          if (!isDark)
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, -2),
+            ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Container(
+              decoration: BoxDecoration(
+                color: isDark ? Colors.grey[900] : Colors.grey[100],
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(
+                  color: isDark ? Colors.white10 : Colors.black.withOpacity(0.03),
+                ),
               ),
-              const SizedBox(width: 8),
-              AnimatedBuilder(
-                animation: _controller,
-                builder: (context, _) {
-                  final value = _controller.value;
-                  int dots = (value * 3).floor() + 1;
-                  if (dots > 3) dots = 3;
-                  return Text("." * dots,
-                      style: const TextStyle(fontSize: 16));
-                },
+              child: TextField(
+                controller: _msgCtrl,
+                style: const TextStyle(fontSize: 15),
+                decoration: const InputDecoration(
+                  hintText: "Savol yozing...",
+                  contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  border: InputBorder.none,
+                ),
+                onSubmitted: (_) => _sendMessage(),
               ),
-            ],
+            ),
           ),
-        ),
+          const SizedBox(width: 12),
+          GestureDetector(
+            onTap: _sendMessage,
+            child: Container(
+              height: 48,
+              width: 48,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: theme.colorScheme.primary.withOpacity(0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: const Icon(Icons.send_rounded, color: Colors.white, size: 22),
+            ),
+          ),
+        ],
       ),
     );
   }
