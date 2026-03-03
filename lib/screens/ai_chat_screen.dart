@@ -296,6 +296,7 @@ Qoidalar:
 - Agar savol kompaniya moliyasi yoki boshqa xodimlar ma'lumotlari haqida bo'lsa VA user.can_view_company_finance = false bo'lsa, qisqa qilib "Sizda bu ma'lumotni ko'rish huquqi yo'q" mazmunida javob bering va hech qanday raqam yoki taxmin keltirmang.
 - Agar savol foydalanuvchining shaxsiy balansi, avanslari yoki ishlari haqida bo'lsa, faqat personal_finance bo'limidagi ma'lumotlardan foydalaning.
 - Har bir javobda balanslarni keraksiz takrorlamang; faqat savol shu mavzuga oid bo'lsa yozing.
+- Hech qachon "Reasoning", "Data from the JSON" kabi bo'limlar yozmang, ichki tahlilingizni ko'rsatmang; faqat yakuniy javobni aniq, qisqa matn ko'rinishida bering.
 """;
       bool success = false;
 
@@ -317,16 +318,24 @@ Qoidalar:
           if (res.statusCode == 200) {
             final data = jsonDecode(utf8.decode(res.bodyBytes));
             final msg = data["choices"][0]["message"];
-          if (msg["tool_calls"] != null) {
-            final args = jsonDecode(msg["tool_calls"][0]["function"]["arguments"]);
-            await _executeToolCall(
-              args["format"],
-              args["data_type"],
-              fromDate: args["from_date"],
-              toDate: args["to_date"],
-            );
+            if (msg["tool_calls"] != null) {
+              final args =
+                  jsonDecode(msg["tool_calls"][0]["function"]["arguments"]);
+              await _executeToolCall(
+                args["format"],
+                args["data_type"],
+                fromDate: args["from_date"],
+                toDate: args["to_date"],
+              );
             } else {
-              setState(() => _messages.add({"role": "ai", "text": msg["content"], "model": "⚡ $usedModel"}));
+              String content = (msg["content"] ?? "").toString();
+              // Ba'zi modellarda "Reasoning" / "Data from the JSON" kabi ichki
+              // izohlar bo'ladi. Foydalanuvchiga faqat yakuniy javobni ko'rsatamiz.
+              if (content.contains("**Answer**")) {
+                content = content.split("**Answer**").last.trim();
+              }
+              setState(() => _messages.add(
+                  {"role": "ai", "text": content, "model": "⚡ $usedModel"}));
             }
             success = true;
             break;
