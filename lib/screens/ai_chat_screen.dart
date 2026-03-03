@@ -98,27 +98,64 @@ class _AiChatScreenState extends State<AiChatScreen> {
     );
   }
 
-  Future<String> _getDbContext(String userId, bool isAdmin) async {
+  Future<String> _getDbContext({
+    required String userId,
+    required bool canViewCompanyFinance,
+    required bool isSuperAdmin,
+    required String roleType,
+  }) async {
     try {
-      final summary = await _supabase.from("ai_erp_summary").select().single();
-      final num companyBalanceNum = (summary["total_balance"] ?? 0) as num;
-      final num pendingOrdersNum = (summary["pending_orders_count"] ?? 0) as num;
-      final num totalItemsNum = (summary["total_items_quantity"] ?? 0) as num;
+      final now = DateTime.now();
+      final startOfThisMonth = DateTime(now.year, now.month, 1);
+      final startOfLastMonth =
+          DateTime(now.year, now.month - 1, 1); // Dart handles month underflow
+
+      Map<String, dynamic> companyFinance = {};
+      if (canViewCompanyFinance) {
+        final summary =
+            await _supabase.from("ai_erp_summary").select().single();
+        final num companyBalanceNum = (summary["total_balance"] ?? 0) as num;
+        final num pendingOrdersNum =
+            (summary["pending_orders_count"] ?? 0) as num;
+        final num totalItemsNum =
+            (summary["total_items_quantity"] ?? 0) as num;
+
+        // O'tgan oy daromadi (zakazlar bo'yicha)
+        final lastMonthOrders = await _supabase
+            .from("orders")
+            .select("total_price, created_at")
+            .gte("created_at", startOfLastMonth.toIso8601String())
+            .lt("created_at", startOfThisMonth.toIso8601String());
+        double lastMonthRevenue = 0;
+        for (final o in lastMonthOrders) {
+          final num v = (o["total_price"] ?? 0) as num;
+          lastMonthRevenue += v.toDouble();
+        }
+
+        companyFinance = {
+          "balance": companyBalanceNum,
+          "pending_orders": pendingOrdersNum.toInt(),
+          "stock_items": totalItemsNum.toInt(),
+          "last_month_revenue": lastMonthRevenue,
+        };
+      }
 
       // Foydalanuvchining shaxsiy balansi: bajarilgan ishlar - olgan avanslar
       final works = await _supabase
           .from("work_logs")
-          .select("total_sum")
+          .select("total_sum, created_at")
           .eq("worker_id", userId)
           .eq("is_approved", true);
       final withdraws = await _supabase
           .from("withdrawals")
-          .select("amount")
+          .select("amount, created_at")
           .eq("worker_id", userId)
           .eq("status", "approved");
 
       double earned = 0;
       double paid = 0;
+      double lastMonthPaid = 0;
+
       for (final w in works) {
         final num v = (w["total_sum"] ?? 0) as num;
         earned += v.toDouble();
@@ -126,15 +163,38 @@ class _AiChatScreenState extends State<AiChatScreen> {
       for (final w in withdraws) {
         final num v = (w["amount"] ?? 0) as num;
         paid += v.toDouble();
+        final createdAt = DateTime.tryParse(w["created_at"]?.toString() ?? "");
+        if (createdAt != null &&
+            !createdAt.isBefore(startOfLastMonth) &&
+            createdAt.isBefore(startOfThisMonth)) {
+          lastMonthPaid += v.toDouble();
+        }
       }
+
       final personalBalance = earned - paid;
 
-      return "KORXONA BALANSI: ${companyBalanceNum.toStringAsFixed(0)} so'm. "
-          "KUTILAYOTGAN ZAKAZLAR: ${pendingOrdersNum.toInt()} ta. "
-          "OMBOR QOLDIQ: ${totalItemsNum.toInt()} dona.\n"
-          "SIZNING SHAXSIY BALANSINGIZ: ${personalBalance.toStringAsFixed(0)} so'm (bajarilgan ishlar minus tasdiqlangan avanslar).";
+      final ctx = {
+        "user": {
+          "id": userId,
+          "is_super_admin": isSuperAdmin,
+          "role_type": roleType,
+          "can_view_company_finance": canViewCompanyFinance,
+        },
+        if (canViewCompanyFinance) "company_finance": companyFinance,
+        "personal_finance": {
+          "current_balance": personalBalance,
+          "total_earned": earned,
+          "total_withdrawn": paid,
+          "last_month_withdrawn": lastMonthPaid,
+        },
+      };
+
+      return jsonEncode(ctx);
     } catch (e) {
-      return "Baza bilan bog'lanishda xato.";
+      return jsonEncode({
+        "error": "context_fetch_failed",
+        "message": e.toString(),
+      });
     }
   }
 
@@ -174,8 +234,32 @@ class _AiChatScreenState extends State<AiChatScreen> {
 
     try {
       final userId = _supabase.auth.currentUser!.id;
-      final profile = await _supabase.from("profiles").select("*").eq("id", userId).single();
-      final bool isAdmin = profile["is_super_admin"] ?? false;
+      final profile = await _supabase
+          .from("profiles")
+          .select("*, app_roles(name, role_type, permissions)")
+          .eq("id", userId)
+          .single();
+      final bool isSuperAdmin = profile["is_super_admin"] ?? false;
+
+      Map<String, dynamic> customPermissions =
+          Map<String, dynamic>.from(profile["custom_permissions"] ?? {});
+      Map<String, dynamic> rolePermissions = {};
+      String roleType = "worker";
+
+      if (profile["app_roles"] != null) {
+        final ar = Map<String, dynamic>.from(profile["app_roles"]);
+        rolePermissions = Map<String, dynamic>.from(ar["permissions"] ?? {});
+        roleType = (ar["role_type"] ?? "worker").toString();
+      }
+
+      bool hasPermissionLocal(String action) {
+        if (isSuperAdmin) return true;
+        if (customPermissions[action] == true) return true;
+        if (rolePermissions[action] == true) return true;
+        return false;
+      }
+
+      final bool canViewCompanyFinance = hasPermissionLocal("can_view_finance");
       final settings = await _supabase.from("app_settings").select("*");
       
       String groqMdl = (settings.firstWhere((s) => s["key"] == "groq_model_name", orElse: () => {"value": "groq/compound"})["value"] ?? "groq/compound").toString().trim();
@@ -194,9 +278,25 @@ class _AiChatScreenState extends State<AiChatScreen> {
         groqK = EncryptionService.decryptText(profile["groq_api_key"] ?? "");
         geminiK = EncryptionService.decryptText(profile["gemini_api_key"] ?? "");
       }
-      String ctx = await _getDbContext(userId, isAdmin);
+      final ctxJson = await _getDbContext(
+        userId: userId,
+        canViewCompanyFinance: canViewCompanyFinance,
+        isSuperAdmin: isSuperAdmin,
+        roleType: roleType,
+      );
 
-      final prompt = "Siz Aristokrat Mebel ERP yordamchisisisiz. $globalPrm\n$ctx";
+      final prompt = """
+Siz Aristokrat Mebel ERP yordamchisisiz.
+$globalPrm
+
+Quyidagi JSON obyekt ERP bazasidan, foydalanuvchi ruxsatlariga moslab tayyorlangan:
+$ctxJson
+
+Qoidalar:
+- Agar savol kompaniya moliyasi yoki boshqa xodimlar ma'lumotlari haqida bo'lsa VA user.can_view_company_finance = false bo'lsa, qisqa qilib "Sizda bu ma'lumotni ko'rish huquqi yo'q" mazmunida javob bering va hech qanday raqam yoki taxmin keltirmang.
+- Agar savol foydalanuvchining shaxsiy balansi, avanslari yoki ishlari haqida bo'lsa, faqat personal_finance bo'limidagi ma'lumotlardan foydalaning.
+- Har bir javobda balanslarni keraksiz takrorlamang; faqat savol shu mavzuga oid bo'lsa yozing.
+""";
       bool success = false;
 
       if (groqK.isNotEmpty) {
