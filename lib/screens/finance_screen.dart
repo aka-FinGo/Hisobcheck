@@ -101,7 +101,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
     _balance = _totalIncome - _totalExpense;
   }
 
-  void _showAddTransaction() {
+  void _showAddTransaction({Map<String, dynamic>? initialData}) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -109,6 +109,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
       builder: (ctx) => _AddTransactionModal(
         onSaved: _loadData,
         usdRate: _usdRate,
+        initialData: initialData,
       ),
     );
   }
@@ -158,6 +159,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                         expense: _totalExpense, 
                         balance: _balance,
                         usdBalance: _usdBalance,
+                        onEdit: (tx) => _showAddTransaction(initialData: tx),
                       ),
                       _StatsTab(
                         transactions: _transactions.where((t) {
@@ -262,7 +264,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
           
           // Center Droplet Button
           GestureDetector(
-            onTap: _showAddTransaction,
+            onTap: () => _showAddTransaction(),
             child: Container(
               height: 65,
               width: 65,
@@ -316,6 +318,7 @@ class _DashboardTab extends StatelessWidget {
   final double expense;
   final double balance;
   final double usdBalance;
+  final Function(Map<String, dynamic>) onEdit;
 
   const _DashboardTab({
     required this.transactions, 
@@ -325,6 +328,7 @@ class _DashboardTab extends StatelessWidget {
     required this.expense, 
     required this.balance,
     required this.usdBalance,
+    required this.onEdit,
   });
 
   @override
@@ -495,7 +499,7 @@ class _DashboardTab extends StatelessWidget {
     );
   }
 
-  Widget _buildTransactionItem(Map<String, dynamic> tx, NumberFormat fmt) {
+  Widget _buildTransactionItem(Map<String, dynamic> tx, NumberFormat fmt, Function(Map<String, dynamic>) onEdit) {
     final isIncome = tx['type'] == 'income';
     final date = DateTime.parse(tx['created_at']);
     return Container(
@@ -528,6 +532,13 @@ class _DashboardTab extends StatelessWidget {
             ),
           ),
           Text("${isIncome ? '+' : '-'}${fmt.format(tx['amount'])}", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: isIncome ? statsTheme.income : statsTheme.expense)),
+          const SizedBox(width: 8),
+          IconButton(
+            onPressed: () => onEdit(tx),
+            icon: Icon(Icons.edit_rounded, size: 16, color: Colors.grey.withOpacity(0.5)),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+          ),
         ],
       ),
     );
@@ -917,7 +928,8 @@ class _SettingsTab extends StatelessWidget {
 class _AddTransactionModal extends StatefulWidget {
   final VoidCallback onSaved;
   final double usdRate;
-  const _AddTransactionModal({required this.onSaved, required this.usdRate});
+  final Map<String, dynamic>? initialData;
+  const _AddTransactionModal({required this.onSaved, required this.usdRate, this.initialData});
 
   @override
   State<_AddTransactionModal> createState() => _AddTransactionModalState();
@@ -927,9 +939,29 @@ class _AddTransactionModalState extends State<_AddTransactionModal> {
   final _supabase = Supabase.instance.client;
   final _amountCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
+  final _rateCtrl = TextEditingController();
   String _type = 'expense';
   bool _isUsd = false;
   bool _isSubmitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _rateCtrl.text = widget.usdRate.toString();
+    if (widget.initialData != null) {
+      final data = widget.initialData!;
+      _type = data['type'] ?? 'expense';
+      _amountCtrl.text = (data['amount'] ?? 0).toString();
+      _descCtrl.text = data['description'] ?? '';
+      _selectedCat = data['category'];
+      _selectedSub = data['subcategory'];
+      
+      // Check if it was USD (simple check for $ in description or if we add a currency field later)
+      if (_descCtrl.text.contains('\$')) {
+        _isUsd = true;
+      }
+    }
+  }
 
   // Hierarchical categories (Simplified for now)
   String? _selectedCat;
@@ -948,21 +980,25 @@ class _AddTransactionModalState extends State<_AddTransactionModal> {
     setState(() => _isSubmitting = true);
 
     try {
-      double amount = double.parse(_amountCtrl.text.replaceAll(',', ''));
-      String description = "${_selectedCat ?? ''} -> ${_selectedSub ?? ''}: ${_descCtrl.text}".trim();
-      
-      if (_isUsd) {
-        description += " (\$${_amountCtrl.text} @ ${widget.usdRate})";
-        amount *= widget.usdRate;
-      }
+      final amt = double.parse(_amountCtrl.text);
+      final rate = double.tryParse(_rateCtrl.text) ?? widget.usdRate;
+      final finalAmt = _isUsd ? amt * rate : amt;
+      final desc = _isUsd ? "${_descCtrl.text} (\$${_amountCtrl.text})" : _descCtrl.text;
 
-      await _supabase.from('personal_transactions').insert({
+      final data = {
         'user_id': _supabase.auth.currentUser!.id,
-        'amount': amount,
+        'amount': finalAmt,
         'type': _type,
-        'description': description,
-      });
+        'category': _selectedCat,
+        'subcategory': _selectedSub,
+        'description': desc,
+      };
 
+      if (widget.initialData != null) {
+        await _supabase.from('personal_transactions').update(data).eq('id', widget.initialData!['id']);
+      } else {
+        await _supabase.from('personal_transactions').insert(data);
+      }
       widget.onSaved();
       if (mounted) Navigator.pop(context);
     } catch (e) {
@@ -1005,6 +1041,14 @@ class _AddTransactionModalState extends State<_AddTransactionModal> {
             ],
           ),
           const SizedBox(height: 20),
+          if (_isUsd) ...[
+            TextField(
+              controller: _rateCtrl,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: "Dollar kursi (UZS)", border: OutlineInputBorder(), prefixIcon: Icon(Icons.currency_exchange)),
+            ),
+            const SizedBox(height: 15),
+          ],
           TextField(
             controller: _amountCtrl,
             keyboardType: TextInputType.number,
