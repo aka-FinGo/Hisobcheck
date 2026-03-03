@@ -174,7 +174,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         const SizedBox(height: 5),
         TextField(
           controller: controller,
-          style: const TextStyle(fontSize: 15),
+          style: const TextStyle(fontSize: 15, color: Colors.black87),
           decoration: InputDecoration(
             hintText: hint,
             hintStyle: TextStyle(color: Colors.black.withOpacity(0.3), fontSize: 13),
