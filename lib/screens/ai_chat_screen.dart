@@ -1,11 +1,12 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:http/http.dart' as http;
 import 'ai_settings_screen.dart';
 import '../services/ai_service.dart';
 import '../services/encryption_service.dart';
 import '../services/report_generator_service.dart';
+import '../services/groq_service.dart';
+import '../services/gemini_service.dart';
 
 class AiChatScreen extends StatefulWidget {
   const AiChatScreen({super.key});
@@ -19,84 +20,6 @@ class _AiChatScreenState extends State<AiChatScreen> {
   final List<Map<String, String>> _messages = [];
   final _supabase = Supabase.instance.client;
   bool _isTyping = false;
-
-  bool _isGroqModelNotFound(http.Response res) {
-    if (res.statusCode != 404) return false;
-    try {
-      final body = jsonDecode(utf8.decode(res.bodyBytes));
-      final code = body?["error"]?["code"]?.toString();
-      if (code == "model_not_found") return true;
-      final msg = body?["error"]?["message"]?.toString().toLowerCase() ?? "";
-      return msg.contains("does not exist") || msg.contains("do not have access");
-    } catch (_) {
-      return false;
-    }
-  }
-
-  Future<http.Response> _groqChat({
-    required String apiKey,
-    required String model,
-    required String systemPrompt,
-    required String userText,
-  }) {
-    final trimmedModel = model.trim();
-    final isCompound = trimmedModel == "groq/compound";
-
-    final body = <String, dynamic>{
-      "model": trimmedModel,
-      "messages": [
-        {"role": "system", "content": systemPrompt},
-        {"role": "user", "content": userText},
-      ],
-    };
-
-    if (isCompound) {
-      body["compound_custom"] = {
-        "tools": {
-          "enabled_tools": ["web_search", "code_interpreter", "visit_website"]
-        }
-      };
-    } else {
-      // groq/compound does NOT support OpenAI-style tool calling.
-      body["tools"] = [
-        {
-          "type": "function",
-          "function": {
-            "name": "generate_report",
-            "parameters": {
-              "type": "object",
-              "properties": {
-                "format": {
-                  "type": "string",
-                  "enum": ["pdf", "excel", "jpg"]
-                },
-                "data_type": {
-                  "type": "string",
-                  "enum": ["finance", "orders", "remnants"]
-                },
-                "from_date": {
-                  "type": "string"
-                },
-                "to_date": {
-                  "type": "string"
-                }
-              },
-              "required": ["format", "data_type"]
-            }
-          }
-        }
-      ];
-    }
-
-    return http.post(
-      Uri.parse("https://api.groq.com/openai/v1/chat/completions"),
-      headers: {
-        "Authorization": "Bearer $apiKey",
-        "Content-Type": "application/json",
-      },
-      body: jsonEncode(body),
-    );
-  }
 
   Future<String> _getDbContext({
     required String userId,
