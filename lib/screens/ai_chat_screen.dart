@@ -177,7 +177,8 @@ class _AiChatScreenState extends State<AiChatScreen> {
         }
 
         if (!success && lastRes != null) {
-          setState(() => _messages.add({"role": "ai", "text": "Groq Xatosi (${lastRes.statusCode}): ${lastRes.body}", "model": "Error"}));
+          final res = lastRes;
+          setState(() => _messages.add({"role": "ai", "text": "Groq Xatosi (${res!.statusCode}): ${res.body}", "model": "Error"}));
         }
       }
 
