@@ -956,6 +956,12 @@ class _AddTransactionModalState extends State<_AddTransactionModal> {
       _selectedCat = data['category'];
       _selectedSub = data['subcategory'];
       
+      // Validate category exists in our map
+      if (_selectedCat != null && !_categories.containsKey(_selectedCat)) {
+        _selectedCat = null;
+        _selectedSub = null;
+      }
+
       // Check if it was USD (simple check for $ in description or if we add a currency field later)
       if (_descCtrl.text.contains('\$')) {
         _isUsd = true;
@@ -980,7 +986,12 @@ class _AddTransactionModalState extends State<_AddTransactionModal> {
     setState(() => _isSubmitting = true);
 
     try {
-      final amt = double.parse(_amountCtrl.text);
+      final amt = double.tryParse(_amountCtrl.text.replaceAll(',', '')) ?? 0;
+      if (amt <= 0) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Iltimos, amal miqdorini to'g'ri kiriting")));
+        setState(() => _isSubmitting = false);
+        return;
+      }
       final rate = double.tryParse(_rateCtrl.text) ?? widget.usdRate;
       final finalAmt = _isUsd ? amt * rate : amt;
       final desc = _isUsd ? "${_descCtrl.text} (\$${_amountCtrl.text})" : _descCtrl.text;
@@ -1024,7 +1035,7 @@ class _AddTransactionModalState extends State<_AddTransactionModal> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text("YANGI AMAL", style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+              Text(widget.initialData != null ? "AMALNI TAHRIRLASH" : "YANGI AMAL", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
               Switch(
                 value: _isUsd, 
                 onChanged: (v) => setState(() => _isUsd = v),
@@ -1073,7 +1084,7 @@ class _AddTransactionModalState extends State<_AddTransactionModal> {
             DropdownButtonFormField<String>(
               value: _selectedSub,
               decoration: const InputDecoration(labelText: "Podkategoriya", border: OutlineInputBorder()),
-              items: _categories[_selectedCat]!.map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
+              items: (_categories[_selectedCat] ?? []).map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
               onChanged: (v) => setState(() => _selectedSub = v),
             ),
           ],
