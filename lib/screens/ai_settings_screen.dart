@@ -2,13 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/encryption_service.dart';
 
-class AiSettingsScreen extends StatefulWidget {
-  const AiSettingsScreen({super.key});
-
-  @override
-  State<AiSettingsScreen> createState() => _AiSettingsScreenState();
-}
-
 class _AiSettingsScreenState extends State<AiSettingsScreen> {
   final _supabase = Supabase.instance.client;
   bool _isLoading = true;
@@ -18,7 +11,10 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
   final _groqKeyCtrl = TextEditingController();
   final _geminiKeyCtrl = TextEditingController();
   final _customPromptCtrl = TextEditingController();
-  final _globalPromptCtrl = TextEditingController(); // YANGI: Admin uchun
+  final _globalPromptCtrl = TextEditingController();
+  // YANGI: Model nomlari uchun kontrollerlar
+  final _groqModelCtrl = TextEditingController();
+  final _geminiModelCtrl = TextEditingController();
 
   @override
   void initState() {
@@ -30,45 +26,52 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
     setState(() => _isLoading = true);
     try {
       final user = _supabase.auth.currentUser;
-      final profile = await _supabase.from('profiles').select('is_super_admin, groq_api_key, gemini_api_key, custom_ai_prompt').eq('id', user!.id).single();
+      final profile = await _supabase.from("profiles").select("is_super_admin, groq_api_key, gemini_api_key, custom_ai_prompt").eq("id", user!.id).single();
 
-      _isSuperAdmin = profile['is_super_admin'] ?? false;
-      _groqKeyCtrl.text = EncryptionService.decryptText(profile['groq_api_key'] ?? '');
-      _geminiKeyCtrl.text = EncryptionService.decryptText(profile['gemini_api_key'] ?? '');
-      _customPromptCtrl.text = profile['custom_ai_prompt'] ?? '';
+      _isSuperAdmin = profile["is_super_admin"] ?? false;
+      _groqKeyCtrl.text = EncryptionService.decryptText(profile["groq_api_key"] ?? "");
+      _geminiKeyCtrl.text = EncryptionService.decryptText(profile["gemini_api_key"] ?? "");
+      _customPromptCtrl.text = profile["custom_ai_prompt"] ?? "";
 
       if (_isSuperAdmin) {
-        final aiSetting = await _supabase.from('app_settings').select('value').eq('key', 'allow_default_ai').maybeSingle();
-        if (aiSetting != null) _allowDefaultAi = aiSetting['value'] == 'true';
-
-        // YANGI: Global promptni bazadan o'qiymiz
-        final globalPrompt = await _supabase.from('app_settings').select('value').eq('key', 'global_system_prompt').maybeSingle();
-        if (globalPrompt != null) _globalPromptCtrl.text = globalPrompt['value'] ?? '';
+        final settings = await _supabase.from("app_settings").select("*");
+        for (var s in settings) {
+          if (s["key"] == "allow_default_ai") _allowDefaultAi = s["value"] == "true";
+          if (s["key"] == "global_system_prompt") _globalPromptCtrl.text = s["value"] ?? "";
+          if (s["key"] == "groq_model_name") _groqModelCtrl.text = s["value"] ?? "groq/compound";
+          if (s["key"] == "gemini_model_name") _geminiModelCtrl.text = s["value"] ?? "gemini-2.0-flash";
+        }
       }
     } catch (e) {
-      debugPrint("Sozlamalarni yuklashda xato: $e");
+      debugPrint("Yuklashda xato: $e");
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
   Future<void> _saveSettings() async {
-    final encGroq = EncryptionService.encryptText(_groqKeyCtrl.text.trim());
-    final encGemini = EncryptionService.encryptText(_geminiKeyCtrl.text.trim());
-    
-    await _supabase.from('profiles').update({
-      'groq_api_key': encGroq,
-      'gemini_api_key': encGemini,
-      'custom_ai_prompt': _customPromptCtrl.text.trim(),
-    }).eq('id', _supabase.auth.currentUser!.id);
+    try {
+      final encGroq = EncryptionService.encryptText(_groqKeyCtrl.text.trim());
+      final encGemini = EncryptionService.encryptText(_geminiKeyCtrl.text.trim());
+      
+      await _supabase.from("profiles").update({
+        "groq_api_key": encGroq,
+        "gemini_api_key": encGemini,
+        "custom_ai_prompt": _customPromptCtrl.text.trim(),
+      }).eq("id", _supabase.auth.currentUser!.id);
 
-    // YANGI: Admin o'zgartirgan Global Promptni saqlaymiz
-    if (_isSuperAdmin) {
-      await _supabase.from('app_settings').upsert({'key': 'global_system_prompt', 'value': _globalPromptCtrl.text.trim()});
+      if (_isSuperAdmin) {
+        await _supabase.from("app_settings").upsert({"key": "global_system_prompt", "value": _globalPromptCtrl.text.trim()});
+        await _supabase.from("app_settings").upsert({"key": "groq_model_name", "value": _groqModelCtrl.text.trim()});
+        await _supabase.from("app_settings").upsert({"key": "gemini_model_name", "value": _geminiModelCtrl.text.trim()});
+      }
+      
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Sozlamalar saqlandi!")));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e")));
     }
-    
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("AI Sozlamalari xavfsiz saqlandi!")));
   }
+
   Widget _buildAdminPanel() {
     return Container(
       margin: const EdgeInsets.only(bottom: 20),
@@ -77,32 +80,26 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text("👑 SUPERADMIN SOZLAMALARI", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange)),
+          const Text("👑 ADMIN BOSHQARUVI", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange)),
           const SizedBox(height: 10),
+          TextField(controller: _groqModelCtrl, decoration: const InputDecoration(labelText: "Groq Model Nomi", hintText: "Masalan: groq/compound")),
+          const SizedBox(height: 10),
+          TextField(controller: _geminiModelCtrl, decoration: const InputDecoration(labelText: "Gemini Model Nomi", hintText: "Masalan: gemini-2.0-flash")),
+          const SizedBox(height: 10),
+          TextField(controller: _globalPromptCtrl, maxLines: 3, decoration: const InputDecoration(labelText: "Global System Prompt", border: OutlineInputBorder())),
           SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text("Tizim kalitlaridan ommaviy foydalanish", style: TextStyle(fontWeight: FontWeight.bold)),
+            title: const Text("Ommaviy API ishlatish"),
             value: _allowDefaultAi,
-            activeColor: Colors.orange,
             onChanged: (val) async {
               setState(() => _allowDefaultAi = val);
-              await _supabase.from('app_settings').upsert({'key': 'allow_default_ai', 'value': val.toString()});
-              final statusText = val ? "yoqildi" : "o'chirildi";
-              if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Ommaviy ruxsat $statusText!")));
+              await _supabase.from("app_settings").upsert({"key": "allow_default_ai", "value": val.toString()});
             },
-          ),
-          const Divider(color: Colors.orange),
-          const SizedBox(height: 10),
-          // YANGI: System promptni koddasiz tahrirlash oynasi
-          TextField(
-            controller: _globalPromptCtrl, 
-            maxLines: 4, 
-            decoration: const InputDecoration(labelText: "Global System Prompt (Butun tizim uchun AI miyasi)", border: OutlineInputBorder(), hintText: "Sen Aristokrat Mebel ERP tizimi uchun yordamchisan...")
           ),
         ],
       ),
     );
   }
+  // Build metodi va qolgan UI qismlari o'zgarishsiz qoladi...
 
   @override
   Widget build(BuildContext context) {
