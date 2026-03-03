@@ -6,6 +6,7 @@ import '../screens/manage_users_screen.dart';
 import '../screens/manage_roles_screen.dart'; 
 import '../screens/admin_approvals.dart';
 import '../screens/orders_list_screen.dart';
+import '../screens/finance_screen.dart';
 
 class HomeActionGrid extends StatelessWidget {
   final bool isAdmin;
@@ -92,6 +93,13 @@ class HomeActionGrid extends StatelessWidget {
             
             _ActionCard(title: "Statistika", icon: Icons.insights, color: Colors.purple, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StatsScreen()))),
             
+            _ActionCard(
+              title: "Moliya", 
+              icon: Icons.account_balance_wallet, 
+              color: Colors.teal, 
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FinanceScreen())),
+            ),
+
             if (canManageUsers) ...[
               _ActionCard(title: "Hodimlar", icon: Icons.group_add, color: Colors.orange, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ManageUsersScreen()))),
               _ActionCard(title: "Lavozimlar", icon: Icons.verified_user, color: Colors.teal, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ManageRolesScreen()))),
