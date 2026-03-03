@@ -353,7 +353,7 @@ class _DashboardTab extends StatelessWidget {
               TextButton(onPressed: () {}, child: const Text("HAMMASI", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold))),
             ],
           ),
-          ...transactions.take(5).map((tx) => _buildTransactionItem(tx, fmt)),
+          ...transactions.take(5).map((tx) => _buildTransactionItem(tx, fmt, onEdit)),
           const SizedBox(height: 100),
         ],
       ),
