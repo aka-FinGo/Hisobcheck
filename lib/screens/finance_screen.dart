@@ -10,6 +10,7 @@ import '../services/groq_service.dart';
 import '../services/gemini_service.dart';
 import '../services/ai_service.dart';
 import '../services/report_generator_service.dart';
+import '../services/encryption_service.dart';
 
 class FinanceScreen extends StatefulWidget {
   const FinanceScreen({super.key});
@@ -24,6 +25,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
   bool _isLoading = true;
   bool _isAdmin = false;
   String _currentUserId = '';
+  DateTime _selectedMonth = DateTime.now();
 
   // Data
   List<Map<String, dynamic>> _transactions = [];
@@ -68,7 +70,14 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
     _totalIncome = 0;
     _totalExpense = 0;
     _usdBalance = 0;
-    for (var tx in _transactions) {
+    
+    // Filter by selected month
+    final filtered = _transactions.where((t) {
+      final date = DateTime.parse(t['created_at']);
+      return date.year == _selectedMonth.year && date.month == _selectedMonth.month;
+    }).toList();
+
+    for (var tx in filtered) {
       final amt = (tx['amount'] ?? 0).toDouble();
       final isIncome = tx['type'] == 'income';
       
@@ -137,7 +146,10 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                     index: _currentIndex,
                     children: [
                       _DashboardTab(
-                        transactions: _transactions, 
+                        transactions: _transactions.where((t) {
+                          final d = DateTime.parse(t['created_at']);
+                          return d.year == _selectedMonth.year && d.month == _selectedMonth.month;
+                        }).toList(), 
                         statsTheme: statsTheme, 
                         isGlass: isGlass, 
                         income: _totalIncome, 
@@ -145,9 +157,16 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                         balance: _balance,
                         usdBalance: _usdBalance,
                       ),
-                      _StatsTab(transactions: _transactions, statsTheme: statsTheme, isGlass: isGlass),
+                      _StatsTab(
+                        transactions: _transactions.where((t) {
+                          final d = DateTime.parse(t['created_at']);
+                          return d.year == _selectedMonth.year && d.month == _selectedMonth.month;
+                        }).toList(), 
+                        statsTheme: statsTheme, 
+                        isGlass: isGlass
+                      ),
                       _AiTab(statsTheme: statsTheme, isGlass: isGlass, onRefresh: _loadData),
-                      _SettingsTab(isAdmin: _isAdmin, statsTheme: statsTheme, isGlass: isGlass),
+                      _SettingsTab(isAdmin: _isAdmin, statsTheme: statsTheme, isGlass: isGlass, onRefresh: _loadData),
                     ],
                   ),
                 ),
@@ -178,21 +197,56 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: Column(
         children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(title, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.black, letterSpacing: -1, fontStyle: FontStyle.italic)),
-              Container(height: 3, width: 40, decoration: BoxDecoration(color: statsTheme.income, borderRadius: BorderRadius.circular(2))),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: -1, fontStyle: FontStyle.italic)),
+                  Container(height: 3, width: 40, decoration: BoxDecoration(color: statsTheme.income, borderRadius: BorderRadius.circular(2))),
+                ],
+              ),
+              IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close_rounded, size: 28)),
             ],
           ),
-          IconButton(
-            onPressed: () => Navigator.pop(context),
-            icon: const Icon(Icons.close_rounded, size: 28),
-          ),
+          const SizedBox(height: 15),
+          _buildMonthSelector(statsTheme),
         ],
+      ),
+    );
+  }
+
+  Widget _buildMonthSelector(StatsTheme statsTheme) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: List.generate(6, (i) {
+          final date = DateTime.now().subtract(Duration(days: 30 * i));
+          final isSelected = date.year == _selectedMonth.year && date.month == _selectedMonth.month;
+          return Padding(
+            padding: const EdgeInsets.only(right: 10),
+            child: ChoiceChip(
+              label: Text(DateFormat('MMMM').format(date).toUpperCase(), style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: isSelected ? Colors.white : statsTheme.textSecondary)),
+              selected: isSelected,
+              onSelected: (v) {
+                if (v) {
+                  setState(() {
+                    _selectedMonth = date;
+                    _calculateTotals();
+                  });
+                }
+              },
+              selectedColor: statsTheme.income,
+              backgroundColor: statsTheme.cardColor,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+              side: BorderSide.none,
+              showCheckmark: false,
+            ),
+          );
+        }).reversed.toList(),
       ),
     );
   }
@@ -277,14 +331,14 @@ class _DashboardTab extends StatelessWidget {
           const SizedBox(height: 10),
           _buildBalanceCard(fmt),
           const SizedBox(height: 25),
-          const Text("HARAKATLAR DINAMIKASI", style: TextStyle(fontSize: 10, fontWeight: FontWeight.black, color: Colors.grey, letterSpacing: 2)),
+          const Text("HARAKATLAR DINAMIKASI", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.grey, letterSpacing: 2)),
           const SizedBox(height: 15),
           _buildAreaChart(),
           const SizedBox(height: 25),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text("SO'NGGI AMALLAR", style: TextStyle(fontSize: 10, fontWeight: FontWeight.black, color: Colors.grey, letterSpacing: 2)),
+              const Text("SO'NGGI AMALLAR", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.grey, letterSpacing: 2)),
               TextButton(onPressed: () {}, child: const Text("HAMMASI", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold))),
             ],
           ),
@@ -313,7 +367,7 @@ class _DashboardTab extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text(fmt.format(balance), style: const TextStyle(fontSize: 38, fontWeight: FontWeight.black, letterSpacing: -1)),
+              Text(fmt.format(balance), style: const TextStyle(fontSize: 38, fontWeight: FontWeight.w900, letterSpacing: -1)),
               const Padding(
                 padding: EdgeInsets.only(bottom: 8, left: 5),
                 child: Text("UZS", style: TextStyle(color: Colors.teal, fontWeight: FontWeight.bold)),
@@ -357,7 +411,7 @@ class _DashboardTab extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 5),
-            Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.black), overflow: TextOverflow.ellipsis),
+            Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900), overflow: TextOverflow.ellipsis),
           ],
         ),
       ),
@@ -365,10 +419,31 @@ class _DashboardTab extends StatelessWidget {
   }
 
   Widget _buildAreaChart() {
+    final last7Days = List.generate(7, (i) => DateTime.now().subtract(Duration(days: i))).reversed.toList();
+    
+    List<FlSpot> incomeSpots = [];
+    List<FlSpot> expenseSpots = [];
+
+    for (int i = 0; i < last7Days.length; i++) {
+      final day = last7Days[i];
+      double dayIncome = 0;
+      double dayExpense = 0;
+      
+      for (var tx in transactions) {
+        final txDate = DateTime.parse(tx['created_at']);
+        if (txDate.year == day.year && txDate.month == day.month && txDate.day == day.day) {
+          if (tx['type'] == 'income') dayIncome += (tx['amount'] ?? 0).toDouble();
+          else dayExpense += (tx['amount'] ?? 0).toDouble();
+        }
+      }
+      incomeSpots.add(FlSpot(i.toDouble(), dayIncome));
+      expenseSpots.add(FlSpot(i.toDouble(), dayExpense));
+    }
+
     return Container(
-      height: 180,
+      height: 200,
       width: double.infinity,
-      padding: const EdgeInsets.only(right: 20, top: 20),
+      padding: const EdgeInsets.only(right: 20, top: 20, left: 10, bottom: 10),
       decoration: BoxDecoration(
         color: statsTheme.cardColor,
         borderRadius: BorderRadius.circular(30),
@@ -380,24 +455,28 @@ class _DashboardTab extends StatelessWidget {
           titlesData: const FlTitlesData(show: false),
           borderData: FlBorderData(show: false),
           lineBarsData: [
-            LineChartBarData(
-              spots: transactions.length < 2 ? [const FlSpot(0, 0), const FlSpot(1, 0)] : 
-                transactions.reversed.take(7).toList().asMap().entries.map((e) => FlSpot(e.key.toDouble(), (e.value['amount'] ?? 0).toDouble())).toList(),
-              isCurved: true,
-              color: statsTheme.income,
-              barWidth: 4,
-              isStrokeCapRound: true,
-              dotData: const FlDotData(show: false),
-              belowBarData: BarAreaData(
-                show: true,
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [statsTheme.income.withOpacity(0.3), statsTheme.income.withOpacity(0)],
-                ),
-              ),
-            ),
+            _lineData(incomeSpots, statsTheme.income),
+            _lineData(expenseSpots, statsTheme.expense),
           ],
+        ),
+      ),
+    );
+  }
+
+  LineChartBarData _lineData(List<FlSpot> spots, Color color) {
+    return LineChartBarData(
+      spots: spots,
+      isCurved: true,
+      color: color,
+      barWidth: 3,
+      isStrokeCapRound: true,
+      dotData: const FlDotData(show: false),
+      belowBarData: BarAreaData(
+        show: true,
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [color.withOpacity(0.2), color.withOpacity(0)],
         ),
       ),
     );
@@ -435,7 +514,7 @@ class _DashboardTab extends StatelessWidget {
               ],
             ),
           ),
-          Text("${isIncome ? '+' : '-'}${fmt.format(tx['amount'])}", style: TextStyle(fontWeight: FontWeight.black, fontSize: 15, color: isIncome ? statsTheme.income : statsTheme.expense)),
+          Text("${isIncome ? '+' : '-'}${fmt.format(tx['amount'])}", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: isIncome ? statsTheme.income : statsTheme.expense)),
         ],
       ),
     );
@@ -475,7 +554,7 @@ class _StatsTab extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text("XARAJATLAR TAHLILI", style: TextStyle(fontSize: 10, fontWeight: FontWeight.black, color: Colors.grey, letterSpacing: 2)),
+              const Text("XARAJATLAR TAHLILI", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.grey, letterSpacing: 2)),
               Row(
                 children: [
                   IconButton(
@@ -535,7 +614,7 @@ class _StatsTab extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 30),
-          const Text("OYLIK HISOBOT", style: TextStyle(fontSize: 10, fontWeight: FontWeight.black, color: Colors.grey, letterSpacing: 2)),
+          const Text("OYLIK HISOBOT", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.grey, letterSpacing: 2)),
           const SizedBox(height: 15),
           // Simple month-over-month bar chart or similar could go here
           ...categories.entries.map((e) => _buildCategoryBar(e.key, e.value, categories.values.reduce((a, b) => a + b))),
@@ -730,16 +809,111 @@ Misol: "Tushlikka 45000 sarfladim" -> {"amount": 45000, "type": "expense", "desc
   }
 }
 
-class _SettingsTab extends StatelessWidget {
+class _SettingsTab extends StatefulWidget {
   final bool isAdmin;
   final StatsTheme statsTheme;
   final bool isGlass;
+  final VoidCallback onRefresh;
 
-  const _SettingsTab({required this.isAdmin, required this.statsTheme, required this.isGlass});
+  const _SettingsTab({required this.isAdmin, required this.statsTheme, required this.isGlass, required this.onRefresh});
+
+  @override
+  State<_SettingsTab> createState() => _SettingsTabState();
+}
+
+class _SettingsTabState extends State<_SettingsTab> {
+  final _supabase = Supabase.instance.client;
+  final _groqCtrl = TextEditingController();
+  final _geminiCtrl = TextEditingController();
+  bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadKeys();
+  }
+
+  Future<void> _loadKeys() async {
+    final userId = _supabase.auth.currentUser!.id;
+    final res = await _supabase.from('profiles').select('groq_api_key, gemini_api_key').eq('id', userId).single();
+    setState(() {
+      _groqCtrl.text = EncryptionService.decryptText(res['groq_api_key'] ?? '');
+      _geminiCtrl.text = EncryptionService.decryptText(res['gemini_api_key'] ?? '');
+    });
+  }
+
+  Future<void> _saveKeys() async {
+    setState(() => _isSaving = true);
+    try {
+      final userId = _supabase.auth.currentUser!.id;
+      await _supabase.from('profiles').update({
+        'groq_api_key': EncryptionService.encryptText(_groqCtrl.text.trim()),
+        'gemini_api_key': EncryptionService.encryptText(_geminiCtrl.text.trim()),
+      }).eq('id', userId);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("API Keylar saqlandi!")));
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e")));
+    } finally {
+      setState(() => _isSaving = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return const Center(child: Text("Profil va Sozlamalar"));
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(25),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text("AI INTEGRATSIYA", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.grey, letterSpacing: 2)),
+          const SizedBox(height: 20),
+          _buildInput("Groq API Key", _groqCtrl, Icons.key_rounded),
+          const SizedBox(height: 15),
+          _buildInput("Gemini API Key", _geminiCtrl, Icons.auto_awesome_rounded),
+          const SizedBox(height: 25),
+          _isSaving 
+            ? const Center(child: CircularProgressIndicator())
+            : SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _saveKeys,
+                  icon: const Icon(Icons.save_rounded, color: Colors.white),
+                  label: const Text("SAQLASH", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
+                  style: ElevatedButton.styleFrom(backgroundColor: widget.statsTheme.income, padding: const EdgeInsets.symmetric(vertical: 18), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))),
+                ),
+              ),
+          const SizedBox(height: 40),
+          if (widget.isAdmin) ...[
+            const Text("ADMINISTRATOR", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.grey, letterSpacing: 2)),
+            const SizedBox(height: 15),
+            ListTile(
+              leading: Icon(Icons.people_alt_rounded, color: widget.statsTheme.income),
+              title: const Text("Xodimlar hisoboti", style: TextStyle(fontWeight: FontWeight.bold)),
+              subtitle: const Text("Barcha xodimlarning moliyaviy amallari"),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () {
+                // Future: Navigate to AdminFinanceScreen
+              },
+            ),
+          ],
+          const SizedBox(height: 100),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInput(String label, TextEditingController ctrl, IconData icon) {
+    return TextField(
+      controller: ctrl,
+      obscureText: true,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon, size: 20),
+        filled: true,
+        fillColor: widget.statsTheme.cardColor,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
+      ),
+    );
   }
 }
 
@@ -819,7 +993,7 @@ class _AddTransactionModalState extends State<_AddTransactionModal> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text("YANGI AMAL", style: TextStyle(fontSize: 20, fontWeight: FontWeight.black)),
+              const Text("YANGI AMAL", style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
               Switch(
                 value: _isUsd, 
                 onChanged: (v) => setState(() => _isUsd = v),
