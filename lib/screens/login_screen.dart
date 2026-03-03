@@ -2,21 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../widgets/main_wrapper.dart';
+import 'register_screen.dart';
+import 'forgot_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
+
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  // --- [ 1. BOSHQARUVCHILAR ] ---
   final _email = TextEditingController();
   final _pass = TextEditingController();
-  final _name = TextEditingController();
 
   bool _isLoading = false;
-  bool _isLogin = true;
   bool _obscurePassword = true;
   bool _rememberMe = false;
 
@@ -30,11 +30,9 @@ class _LoginScreenState extends State<LoginScreen> {
   void dispose() {
     _email.dispose();
     _pass.dispose();
-    _name.dispose();
     super.dispose();
   }
 
-  // --- [ 2. ESLAB QOLISH VA YUKLASH ] ---
   Future<void> _loadSavedCredentials() async {
     final prefs = await SharedPreferences.getInstance();
     if (mounted) {
@@ -59,8 +57,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // --- [ 3. ASOSIY AUTH FUNKSIYASI ] ---
-  Future<void> _auth() async {
+  Future<void> _login() async {
     if (_email.text.isEmpty || _pass.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Email va parolni kiriting!")),
@@ -70,28 +67,12 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      if (_isLogin) {
-        await Supabase.instance.client.auth.signInWithPassword(
-          email: _email.text.trim(),
-          password: _pass.text.trim(),
-        );
-      } else {
-        await Supabase.instance.client.auth.signUp(
-          email: _email.text.trim(),
-          password: _pass.text.trim(),
-          data: {'full_name': _name.text.trim()},
-        );
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Ro'yxatdan o'tdingiz!")),
-          );
-          setState(() => _isLogin = true);
-        }
-      }
-
+      await Supabase.instance.client.auth.signInWithPassword(
+        email: _email.text.trim(),
+        password: _pass.text.trim(),
+      );
       await _saveCredentials();
-
-      if (mounted && _isLogin) {
+      if (mounted) {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => const MainWrapper()),
@@ -108,152 +89,210 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // --- [ 4. UI QISMI ] ---
+  void _showComingSoon() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Ushbu xizmat tez orada ishga tushadi")),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+    
     return Scaffold(
-      backgroundColor: Colors.white,
-      body: Center(
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFF5EB4A8), // Lighter teal
+              Color(0xFF2E5B55), // Darker teal
+            ],
+          ),
+        ),
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 400),
-            child: Column(
-              children: [
-                const SizedBox(height: 40),
-
-                // LOGO
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.shade50,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    Icons.house_siding_rounded,
-                    size: 60,
-                    color: Colors.blue.shade900,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  "ARISTOKRAT MEBEL",
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(height: size.height * 0.15),
+              const Padding(
+                padding: EdgeInsets.only(left: 40),
+                child: Text(
+                  "Kirish",
                   style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1.5,
-                    color: Colors.blue.shade900,
+                    color: Colors.white,
+                    fontSize: 40,
+                    fontWeight: FontWeight.w400,
                   ),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  _isLogin ? "Hisobingizga kiring" : "Yangi hisob yaratish",
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
-                ),
-                const SizedBox(height: 36),
-
-                // ISM (faqat ro'yxatdan o'tishda)
-                if (!_isLogin) ...[
-                  TextField(
-                    controller: _name,
-                    decoration: const InputDecoration(
-                      labelText: "To'liq ismingiz",
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.person_outline),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                ],
-
-                // EMAIL
-                TextField(
-                  controller: _email,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(
-                    labelText: "Email",
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.email_outlined),
+              ),
+              SizedBox(height: size.height * 0.05),
+              Container(
+                width: double.infinity,
+                constraints: BoxConstraints(minHeight: size.height * 0.8),
+                decoration: const BoxDecoration(
+                  color: Color(0xFFF1FAF8), // Very light mint/teal surface
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(60),
                   ),
                 ),
-                const SizedBox(height: 16),
-
-                // PAROL
-                TextField(
-                  controller: _pass,
-                  obscureText: _obscurePassword,
-                  decoration: InputDecoration(
-                    labelText: "Parol",
-                    border: const OutlineInputBorder(),
-                    prefixIcon: const Icon(Icons.lock_outline),
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        _obscurePassword
-                            ? Icons.visibility_off
-                            : Icons.visibility,
-                      ),
-                      onPressed: () => setState(
-                          () => _obscurePassword = !_obscurePassword),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-
-                // ESLAB QOLISH
-                Row(
+                padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 40),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Checkbox(
-                      value: _rememberMe,
-                      onChanged: (v) =>
-                          setState(() => _rememberMe = v ?? false),
-                      activeColor: Colors.blue.shade900,
+                    const SizedBox(height: 20),
+                    _buildInputField(
+                      label: "Username",
+                      hint: "User ID yoki Email kiring",
+                      controller: _email,
                     ),
-                    const Text("Eslab qolish"),
+                    const SizedBox(height: 30),
+                    _buildInputField(
+                      label: "Password",
+                      hint: "Parol kiriting",
+                      controller: _pass,
+                      isPassword: true,
+                      obscure: _obscurePassword,
+                      onObscureChanged: () => setState(() => _obscurePassword = !_obscurePassword),
+                    ),
+                    const SizedBox(height: 10),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ForgotPasswordScreen())),
+                        child: const Text(
+                          "Parolni unutdingizmi?",
+                          style: TextStyle(color: Color(0xFF2E5B55), fontSize: 13),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Row(
+                      children: [
+                        Checkbox(
+                          value: _rememberMe,
+                          onChanged: (v) => setState(() => _rememberMe = v ?? false),
+                          activeColor: const Color(0xFF2E5B55),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                        ),
+                        const Text("Eslab qolish", style: TextStyle(color: Color(0xFF2E5B55), fontSize: 13, fontWeight: FontWeight.w500)),
+                        const Spacer(),
+                        _isLoading 
+                          ? const CircularProgressIndicator(color: Color(0xFF2E5B55))
+                          : ElevatedButton(
+                              onPressed: _login,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF2E5B55),
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 12),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                                elevation: 0,
+                              ),
+                              child: const Text("Kirish", style: TextStyle(fontWeight: FontWeight.bold)),
+                            ),
+                      ],
+                    ),
+                    const SizedBox(height: 40),
+                    Row(
+                      children: [
+                        const Expanded(child: Divider(color: Colors.black12)),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 10),
+                          child: Text("yoki", style: TextStyle(color: Colors.black26, fontSize: 12)),
+                        ),
+                        const Expanded(child: Divider(color: Colors.black12)),
+                      ],
+                    ),
+                    const SizedBox(height: 30),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _buildSocialIcon(Icons.g_mobiledata, _showComingSoon),
+                        const SizedBox(width: 30),
+                        _buildSocialIcon(Icons.apple, _showComingSoon),
+                      ],
+                    ),
+                    const SizedBox(height: 40),
+                    Center(
+                      child: TextButton(
+                        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterScreen())),
+                        child: const Text(
+                          "Hisobingiz yo'qmi? Ro'yxatdan o'ting",
+                          style: TextStyle(color: Color(0xFF2E5B55), fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
-                const SizedBox(height: 20),
-
-                // ASOSIY TUGMA
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: _isLoading
-                      ? const Center(child: CircularProgressIndicator())
-                      : ElevatedButton(
-                          onPressed: _auth,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blue.shade900,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          child: Text(
-                            _isLogin ? "KIRISH" : "RO'YXATDAN O'TISH",
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 1,
-                            ),
-                          ),
-                        ),
-                ),
-                const SizedBox(height: 16),
-
-                // REJIM ALMASHTIRISH
-                TextButton(
-                  onPressed: () => setState(() => _isLogin = !_isLogin),
-                  child: Text(
-                    _isLogin
-                        ? "Hisobingiz yo'qmi? Ro'yxatdan o'ting"
-                        : "Hisobingiz bormi? Kirish",
-                    style: TextStyle(color: Colors.blue.shade700),
-                  ),
-                ),
-
-                const SizedBox(height: 40),
-              ],
-            ),
+              ),
+            ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInputField({
+    required String label,
+    required String hint,
+    required TextEditingController controller,
+    bool isPassword = false,
+    bool obscure = false,
+    VoidCallback? onObscureChanged,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            color: Color(0xFF2E5B55),
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 5),
+        TextField(
+          controller: controller,
+          obscureText: obscure,
+          style: const TextStyle(fontSize: 15),
+          decoration: InputDecoration(
+            hintText: hint,
+            hintStyle: TextStyle(color: Colors.black.withOpacity(0.3), fontSize: 13),
+            enabledBorder: const UnderlineInputBorder(
+              borderSide: BorderSide(color: Colors.black12, width: 1),
+            ),
+            focusedBorder: const UnderlineInputBorder(
+              borderSide: BorderSide(color: Color(0xFF2E5B55), width: 2),
+            ),
+            suffixIcon: isPassword 
+              ? IconButton(
+                  icon: Icon(obscure ? Icons.visibility_off : Icons.visibility, color: const Color(0xFF2E5B55), size: 18),
+                  onPressed: onObscureChanged,
+                ) 
+              : null,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSocialIcon(IconData icon, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.black12),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Icon(
+          icon,
+          size: 30,
+          color: const Color(0xFF2E5B55),
         ),
       ),
     );
