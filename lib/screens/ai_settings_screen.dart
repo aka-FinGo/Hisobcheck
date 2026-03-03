@@ -91,7 +91,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
         children: [
           const Text("👑 ADMIN BOSHQARUVI", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange)),
           const SizedBox(height: 15),
-          TextField(controller: _groqModelCtrl, decoration: const InputDecoration(labelText: "Groq Model Nomi (masalan: groq/compound)", border: OutlineInputBorder())),
+          TextField(controller: _groqModelCtrl, decoration: const InputDecoration(labelText: "Groq Model Nomi (masalan: groq/compound yoki llama-3.3-70b-versatile)", border: OutlineInputBorder())),
           const SizedBox(height: 10),
           TextField(controller: _geminiModelCtrl, decoration: const InputDecoration(labelText: "Gemini Model Nomi (masalan: gemini-2.5-flash)", border: OutlineInputBorder())),
           const SizedBox(height: 10),
