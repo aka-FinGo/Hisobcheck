@@ -1,8 +1,15 @@
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
+import 'package:fl_chart/fl_chart.dart';
 import '../theme/app_themes.dart';
 import '../widgets/glass_card.dart';
+import '../services/groq_service.dart';
+import '../services/gemini_service.dart';
+import '../services/ai_service.dart';
+import '../services/report_generator_service.dart';
 
 class FinanceScreen extends StatefulWidget {
   const FinanceScreen({super.key});
@@ -13,54 +20,32 @@ class FinanceScreen extends StatefulWidget {
 
 class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProviderStateMixin {
   final _supabase = Supabase.instance.client;
-  late TabController _tabController;
-  
+  int _currentIndex = 0; // Internal Tab Index: 0-Dashboard, 1-Stats, 2-AI, 3-Settings
   bool _isLoading = true;
   bool _isAdmin = false;
   String _currentUserId = '';
-  
-  List<Map<String, dynamic>> _myTransactions = [];
-  List<Map<String, dynamic>> _employeeList = [];
-  
-  // Filtering
-  DateTime _selectedMonth = DateTime(DateTime.now().year, DateTime.now().month, 1);
-  
-  // For Admin view
-  String? _selectedEmployeeId;
-  String? _selectedEmployeeName;
-  List<Map<String, dynamic>> _selectedEmployeeTransactions = [];
-  bool _isLoadingEmployeeDetails = false;
 
-  final _fmt = NumberFormat('#,###');
+  // Data
+  List<Map<String, dynamic>> _transactions = [];
+  double _totalIncome = 0;
+  double _totalExpense = 0;
+  double _balance = 0;
+  double _usdBalance = 0;
+  double _usdRate = 12900; // Mock rate
 
   @override
   void initState() {
     super.initState();
     _currentUserId = _supabase.auth.currentUser!.id;
-    _tabController = TabController(length: 2, vsync: this);
-    _loadInitialData();
+    _checkRoleAndLoad();
   }
 
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _loadInitialData() async {
+  Future<void> _checkRoleAndLoad() async {
     setState(() => _isLoading = true);
     try {
       final profile = await _supabase.from('profiles').select('is_super_admin, app_roles(role_type)').eq('id', _currentUserId).single();
       _isAdmin = (profile['is_super_admin'] == true) || (profile['app_roles']?['role_type'] == 'aup');
-      
-      if (!_isAdmin) {
-        _tabController = TabController(length: 1, vsync: this);
-      } else {
-        final employees = await _supabase.from('profiles').select('id, full_name').order('full_name');
-        _employeeList = List<Map<String, dynamic>>.from(employees);
-      }
-
-      await _loadMyTransactions();
+      await _loadData();
     } catch (e) {
       debugPrint("Finance Init Error: $e");
     } finally {
@@ -68,210 +53,51 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
     }
   }
 
-  Future<void> _loadMyTransactions() async {
-    final start = DateTime(_selectedMonth.year, _selectedMonth.month, 1);
-    final end = DateTime(_selectedMonth.year, _selectedMonth.month + 1, 0, 23, 59, 59);
-
+  Future<void> _loadData() async {
     final res = await _supabase.from('personal_transactions')
         .select()
         .eq('user_id', _currentUserId)
-        .gte('created_at', start.toIso8601String())
-        .lte('created_at', end.toIso8601String())
         .order('created_at', ascending: false);
     
-    setState(() {
-      _myTransactions = List<Map<String, dynamic>>.from(res);
-    });
+    _transactions = List<Map<String, dynamic>>.from(res);
+    _calculateTotals();
+    setState(() {});
   }
 
-  Future<void> _loadEmployeeTransactions(String userId) async {
-    setState(() => _isLoadingEmployeeDetails = true);
-    try {
-      final start = DateTime(_selectedMonth.year, _selectedMonth.month, 1);
-      final end = DateTime(_selectedMonth.year, _selectedMonth.month + 1, 0, 23, 59, 59);
+  void _calculateTotals() {
+    _totalIncome = 0;
+    _totalExpense = 0;
+    _usdBalance = 0;
+    for (var tx in _transactions) {
+      final amt = (tx['amount'] ?? 0).toDouble();
+      final isIncome = tx['type'] == 'income';
+      
+      if (isIncome) {
+        _totalIncome += amt;
+      } else {
+        _totalExpense += amt;
+      }
 
-      final res = await _supabase.from('personal_transactions')
-          .select()
-          .eq('user_id', userId)
-          .gte('created_at', start.toIso8601String())
-          .lte('created_at', end.toIso8601String())
-          .order('created_at', ascending: false);
-          
-      setState(() {
-        _selectedEmployeeTransactions = List<Map<String, dynamic>>.from(res);
-      });
-    } catch (e) {
-      debugPrint("Load Employee Trans Error: $e");
-    } finally {
-      setState(() => _isLoadingEmployeeDetails = false);
+      // Check for USD in description (e.g., "$50")
+      final desc = tx['description']?.toString() ?? '';
+      if (desc.contains('\$')) {
+        try {
+          final usdVal = double.parse(desc.split('\$').last.split(' ').first);
+          _usdBalance += (isIncome ? 1 : -1) * usdVal;
+        } catch (_) {}
+      }
     }
+    _balance = _totalIncome - _totalExpense;
   }
 
-  void _addTransaction() {
-    final amountCtrl = TextEditingController();
-    final rateCtrl = TextEditingController();
-    final descCtrl = TextEditingController();
-    bool isUsd = false;
-    DateTime selectedDate = DateTime.now();
-
+  void _showAddTransaction() {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setModalState) {
-          final theme = Theme.of(context);
-          final statsTheme = theme.extension<StatsTheme>();
-          final isGlass = theme.scaffoldBackgroundColor == Colors.transparent;
-
-          return Container(
-            decoration: BoxDecoration(
-              color: isGlass ? Colors.black.withOpacity(0.8) : theme.scaffoldBackgroundColor,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
-            ),
-            padding: EdgeInsets.only(
-              bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-              left: 25, right: 25, top: 25,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text("Maosh/Daromad qo'shish", 
-                         style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: statsTheme?.income ?? theme.primaryColor)),
-                    IconButton(onPressed: () => Navigator.pop(ctx), icon: const Icon(Icons.close)),
-                  ],
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  children: [
-                    Expanded(
-                      flex: 2,
-                      child: TextField(
-                        controller: amountCtrl,
-                        keyboardType: TextInputType.number,
-                        style: TextStyle(color: theme.textTheme.bodyLarge?.color),
-                        decoration: InputDecoration(
-                          labelText: isUsd ? "Summa (USD)" : "Summa (UZS)",
-                          prefixIcon: Icon(isUsd ? Icons.attach_money : Icons.money_rounded),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: isUsd ? Colors.green.withOpacity(0.1) : Colors.grey.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        children: [
-                          const Text("USD"),
-                          Switch(
-                            value: isUsd, 
-                            onChanged: (v) => setModalState(() => isUsd = v),
-                            activeColor: Colors.green,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                if (isUsd) ...[
-                  const SizedBox(height: 15),
-                  TextField(
-                    controller: rateCtrl,
-                    keyboardType: TextInputType.number,
-                    style: TextStyle(color: theme.textTheme.bodyLarge?.color),
-                    decoration: InputDecoration(
-                      labelText: "Kurs (1 USD = ? UZS)",
-                      hintText: "Masalan: 12850",
-                      prefixIcon: const Icon(Icons.trending_up),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 15),
-                TextField(
-                  controller: descCtrl,
-                  style: TextStyle(color: theme.textTheme.bodyLarge?.color),
-                  decoration: InputDecoration(
-                    labelText: "Izoh",
-                    prefixIcon: const Icon(Icons.notes),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
-                  ),
-                ),
-                const SizedBox(height: 15),
-                OutlinedButton.icon(
-                  onPressed: () async {
-                    final d = await showDatePicker(
-                      context: context,
-                      initialDate: selectedDate,
-                      firstDate: DateTime(2020),
-                      lastDate: DateTime.now(),
-                    );
-                    if (d != null) setModalState(() => selectedDate = d);
-                  },
-                  icon: const Icon(Icons.calendar_today, size: 18),
-                  label: Text(DateFormat('dd.MM.yyyy').format(selectedDate)),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 20),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                  ),
-                ),
-                const SizedBox(height: 25),
-                SizedBox(
-                  width: double.infinity,
-                  height: 55,
-                  child: ElevatedButton(
-                    onPressed: () async {
-                      final rawAmt = double.tryParse(amountCtrl.text.replaceAll(RegExp(r'[^0-9.]'), '')) ?? 0;
-                      if (rawAmt <= 0) return;
-                      
-                      double finalUzzAmt = rawAmt;
-                      String finalDesc = descCtrl.text.trim();
-                      
-                      if (isUsd) {
-                        final rate = double.tryParse(rateCtrl.text.replaceAll(RegExp(r'[^0-9.]'), '')) ?? 0;
-                        if (rate <= 0) {
-                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Valyuta kursini kiriting!")));
-                          return;
-                        }
-                        finalUzzAmt = rawAmt * rate;
-                        finalDesc = "$finalDesc (Maosh: ${rawAmt}\$ Kurs: ${rate})".trim();
-                      }
-
-                      try {
-                        await _supabase.from('personal_transactions').insert({
-                          'user_id': _currentUserId,
-                          'type': 'salary',
-                          'amount': finalUzzAmt,
-                          'category': 'Ish haqi',
-                          'description': finalDesc,
-                          'created_at': DateTime(selectedDate.year, selectedDate.month, selectedDate.day, 12).toIso8601String(),
-                        });
-                        Navigator.pop(ctx);
-                        _loadMyTransactions();
-                      } catch (e) {
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e")));
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: statsTheme?.income ?? theme.primaryColor,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                    ),
-                    child: const Text("Saqlash", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
+      builder: (ctx) => _AddTransactionModal(
+        onSaved: _loadData,
+        usdRate: _usdRate,
       ),
     );
   }
@@ -286,238 +112,795 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
 
     return Scaffold(
       backgroundColor: isGlass ? Colors.transparent : theme.scaffoldBackgroundColor,
-      appBar: AppBar(
-        title: const Text("Moliya"),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(100),
-          child: Column(
-            children: [
-              if (_isAdmin) TabBar(
-                controller: _tabController,
-                tabs: const [Tab(text: "Mening tarixim"), Tab(text: "Xodimlar")],
-              ),
-              _buildMonthSelector(theme, statsTheme),
-            ],
-          ),
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _addTransaction,
-        backgroundColor: statsTheme.income,
-        child: const Icon(Icons.add, color: Colors.white),
-      ),
-      body: _isAdmin 
-        ? TabBarView(
-            controller: _tabController,
-            children: [
-              _buildTransactionList(_myTransactions, statsTheme, isGlass),
-              _buildAdminView(theme, statsTheme, isGlass),
-            ],
-          )
-        : _buildTransactionList(_myTransactions, statsTheme, isGlass),
-    );
-  }
-
-  Widget _buildMonthSelector(ThemeData theme, StatsTheme statsTheme) {
-    final months = [
-      "Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun", 
-      "Iyul", "Avgust", "Sentabr", "Oktabr", "Noyabr", "Dekabr"
-    ];
-
-    return Container(
-      height: 50,
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 15),
-        itemCount: 12,
-        itemBuilder: (ctx, i) {
-          final monthDate = DateTime(DateTime.now().year, i + 1, 1);
-          final isSelected = _selectedMonth.month == monthDate.month;
-          return Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: ChoiceChip(
-              label: Text(months[i]),
-              selected: isSelected,
-              onSelected: (selected) {
-                if (selected) {
-                  setState(() {
-                    _selectedMonth = monthDate;
-                  });
-                  _loadMyTransactions();
-                  if (_selectedEmployeeId != null) _loadEmployeeTransactions(_selectedEmployeeId!);
-                }
-              },
-              selectedColor: statsTheme.income.withOpacity(0.2),
-              labelStyle: TextStyle(
-                color: isSelected ? statsTheme.income : theme.textTheme.bodyMedium?.color,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+      body: Stack(
+        children: [
+          // Background Gradient for Standalone feel
+          if (!isGlass) Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  theme.scaffoldBackgroundColor,
+                  theme.scaffoldBackgroundColor.withBlue(theme.scaffoldBackgroundColor.blue + 20),
+                ],
               ),
             ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildTransactionList(List<Map<String, dynamic>> items, StatsTheme statsTheme, bool isGlass) {
-    double total = 0;
-    for (var item in items) total += (item['amount'] ?? 0).toDouble();
-
-    if (items.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.account_balance_wallet_outlined, size: 60, color: statsTheme.textSecondary.withOpacity(0.3)),
-            const SizedBox(height: 15),
-            Text("Ushbu oy uchun ma'lumot yo'q", style: TextStyle(color: statsTheme.textSecondary)),
-          ],
-        ),
-      );
-    }
-
-    return Column(
-      children: [
-        _buildSummaryCard(total, statsTheme, isGlass),
-        Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-            itemCount: items.length,
-            itemBuilder: (ctx, i) {
-              final item = items[i];
-              final date = DateTime.parse(item['created_at']);
-              return _buildTransactionItem(item, date, statsTheme, isGlass);
-            },
           ),
-        ),
-      ],
+          
+          SafeArea(
+            child: Column(
+              children: [
+                _buildHeader(theme, statsTheme),
+                Expanded(
+                  child: IndexedStack(
+                    index: _currentIndex,
+                    children: [
+                      _DashboardTab(
+                        transactions: _transactions, 
+                        statsTheme: statsTheme, 
+                        isGlass: isGlass, 
+                        income: _totalIncome, 
+                        expense: _totalExpense, 
+                        balance: _balance,
+                        usdBalance: _usdBalance,
+                      ),
+                      _StatsTab(transactions: _transactions, statsTheme: statsTheme, isGlass: isGlass),
+                      _AiTab(statsTheme: statsTheme, isGlass: isGlass, onRefresh: _loadData),
+                      _SettingsTab(isAdmin: _isAdmin, statsTheme: statsTheme, isGlass: isGlass),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // FAB
+          Positioned(
+            bottom: 120,
+            right: 25,
+            child: FloatingActionButton(
+              onPressed: _showAddTransaction,
+              backgroundColor: statsTheme.income,
+              child: const Icon(Icons.add_rounded, color: Colors.white, size: 30),
+            ),
+          ),
+        ],
+      ),
+      bottomNavigationBar: _buildBottomNav(theme, statsTheme, isGlass),
     );
   }
 
-  Widget _buildSummaryCard(double total, StatsTheme statsTheme, bool isGlass) {
-    Widget content = Padding(
-      padding: const EdgeInsets.all(20),
+  Widget _buildHeader(ThemeData theme, StatsTheme statsTheme) {
+    String title = "DASHBOARD";
+    if (_currentIndex == 1) title = "STATISTIKA";
+    if (_currentIndex == 2) title = "AI ANALYST";
+    if (_currentIndex == 3) title = "SOZLAMALAR";
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text("Oy bo'yicha jami", style: TextStyle(color: statsTheme.textSecondary, fontSize: 13)),
-              const SizedBox(height: 5),
-              Text("${_fmt.format(total)} so'm", style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+              Text(title, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.black, letterSpacing: -1, fontStyle: FontStyle.italic)),
+              Container(height: 3, width: 40, decoration: BoxDecoration(color: statsTheme.income, borderRadius: BorderRadius.circular(2))),
             ],
           ),
-          CircleAvatar(
-            backgroundColor: statsTheme.income.withOpacity(0.1),
-            child: Icon(Icons.summarize, color: statsTheme.income),
+          IconButton(
+            onPressed: () => Navigator.pop(context),
+            icon: const Icon(Icons.close_rounded, size: 28),
           ),
         ],
       ),
     );
+  }
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
-      child: isGlass 
-          ? GlassCard(padding: EdgeInsets.zero, child: content)
-          : Container(
-              decoration: BoxDecoration(
-                color: statsTheme.cardColor,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: statsTheme.border.withOpacity(0.1)),
-              ),
-              child: content,
-            ),
+  Widget _buildBottomNav(ThemeData theme, StatsTheme statsTheme, bool isGlass) {
+    return Container(
+      height: 85,
+      margin: const EdgeInsets.only(bottom: 20, left: 20, right: 20),
+      decoration: BoxDecoration(
+        color: isGlass ? Colors.white.withOpacity(0.05) : statsTheme.cardColor,
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: Colors.white.withOpacity(0.1)),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 20)],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _navItem(0, Icons.grid_view_rounded, "Home", statsTheme),
+          _navItem(1, Icons.bar_chart_rounded, "Stats", statsTheme),
+          _navItem(2, Icons.auto_awesome_rounded, "AI", statsTheme, isSpecial: true),
+          _navItem(3, Icons.person_outline_rounded, "User", statsTheme),
+        ],
+      ),
     );
   }
 
-  Widget _buildTransactionItem(Map<String, dynamic> item, DateTime date, StatsTheme statsTheme, bool isGlass) {
-    Widget content = Padding(
+  Widget _navItem(int index, IconData icon, String label, StatsTheme statsTheme, {bool isSpecial = false}) {
+    final isSelected = _currentIndex == index;
+    return GestureDetector(
+      onTap: () => setState(() => _currentIndex = index),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: EdgeInsets.all(isSpecial ? 12 : 8),
+            decoration: BoxDecoration(
+              color: isSpecial 
+                ? statsTheme.income.withOpacity(isSelected ? 1 : 0.1)
+                : (isSelected ? statsTheme.income.withOpacity(0.1) : Colors.transparent),
+              borderRadius: BorderRadius.circular(15),
+              boxShadow: isSpecial && isSelected ? [BoxShadow(color: statsTheme.income.withOpacity(0.4), blurRadius: 10)] : null,
+            ),
+            child: Icon(icon, color: isSpecial && isSelected ? Colors.white : (isSelected ? statsTheme.income : statsTheme.textSecondary), size: isSpecial ? 28 : 24),
+          ),
+          const SizedBox(height: 4),
+          Text(label, style: TextStyle(color: isSelected ? statsTheme.income : statsTheme.textSecondary, fontSize: 10, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
+        ],
+      ),
+    );
+  }
+}
+
+// ── TAB COMPONENTS ──
+
+class _DashboardTab extends StatelessWidget {
+  final List<Map<String, dynamic>> transactions;
+  final StatsTheme statsTheme;
+  final bool isGlass;
+  final double income;
+  final double expense;
+  final double balance;
+  final double usdBalance;
+
+  const _DashboardTab({
+    required this.transactions, 
+    required this.statsTheme, 
+    required this.isGlass, 
+    required this.income, 
+    required this.expense, 
+    required this.balance,
+    required this.usdBalance,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final fmt = NumberFormat('#,###');
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 10),
+          _buildBalanceCard(fmt),
+          const SizedBox(height: 25),
+          const Text("HARAKATLAR DINAMIKASI", style: TextStyle(fontSize: 10, fontWeight: FontWeight.black, color: Colors.grey, letterSpacing: 2)),
+          const SizedBox(height: 15),
+          _buildAreaChart(),
+          const SizedBox(height: 25),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text("SO'NGGI AMALLAR", style: TextStyle(fontSize: 10, fontWeight: FontWeight.black, color: Colors.grey, letterSpacing: 2)),
+              TextButton(onPressed: () {}, child: const Text("HAMMASI", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold))),
+            ],
+          ),
+          ...transactions.take(5).map((tx) => _buildTransactionItem(tx, fmt)),
+          const SizedBox(height: 100),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBalanceCard(NumberFormat fmt) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(25),
+      decoration: BoxDecoration(
+        color: statsTheme.cardColor,
+        borderRadius: BorderRadius.circular(35),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        boxShadow: [BoxShadow(color: statsTheme.income.withOpacity(0.1), blurRadius: 30, offset: const Offset(0, 10))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text("JAMI BALANS", style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1)),
+          const SizedBox(height: 10),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(fmt.format(balance), style: const TextStyle(fontSize: 38, fontWeight: FontWeight.black, letterSpacing: -1)),
+              const Padding(
+                padding: EdgeInsets.only(bottom: 8, left: 5),
+                child: Text("UZS", style: TextStyle(color: Colors.teal, fontWeight: FontWeight.bold)),
+              ),
+              if (usdBalance != 0) ...[
+                const Spacer(),
+                Text("${usdBalance > 0 ? '+' : ''}${fmt.format(usdBalance)} \$", 
+                  style: TextStyle(color: statsTheme.income.withOpacity(0.8), fontSize: 18, fontWeight: FontWeight.bold)),
+              ],
+            ],
+          ),
+          const SizedBox(height: 25),
+          Row(
+            children: [
+              _miniStat("Kirim", fmt.format(income), statsTheme.income, Icons.arrow_downward_rounded),
+              const SizedBox(width: 15),
+              _miniStat("Chiqim", fmt.format(expense), statsTheme.expense, Icons.arrow_upward_rounded),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _miniStat(String label, String value, Color color, IconData icon) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(15),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, size: 14, color: color),
+                const SizedBox(width: 5),
+                Text(label, style: const TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            const SizedBox(height: 5),
+            Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.black), overflow: TextOverflow.ellipsis),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAreaChart() {
+    return Container(
+      height: 180,
+      width: double.infinity,
+      padding: const EdgeInsets.only(right: 20, top: 20),
+      decoration: BoxDecoration(
+        color: statsTheme.cardColor,
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
+      ),
+      child: LineChart(
+        LineChartData(
+          gridData: const FlGridData(show: false),
+          titlesData: const FlTitlesData(show: false),
+          borderData: FlBorderData(show: false),
+          lineBarsData: [
+            LineChartBarData(
+              spots: transactions.length < 2 ? [const FlSpot(0, 0), const FlSpot(1, 0)] : 
+                transactions.reversed.take(7).toList().asMap().entries.map((e) => FlSpot(e.key.toDouble(), (e.value['amount'] ?? 0).toDouble())).toList(),
+              isCurved: true,
+              color: statsTheme.income,
+              barWidth: 4,
+              isStrokeCapRound: true,
+              dotData: const FlDotData(show: false),
+              belowBarData: BarAreaData(
+                show: true,
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [statsTheme.income.withOpacity(0.3), statsTheme.income.withOpacity(0)],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTransactionItem(Map<String, dynamic> tx, NumberFormat fmt) {
+    final isIncome = tx['type'] == 'income';
+    final date = DateTime.parse(tx['created_at']);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: statsTheme.cardColor,
+        borderRadius: BorderRadius.circular(25),
+        border: Border.all(color: Colors.white.withOpacity(0.03)),
+      ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: statsTheme.income.withOpacity(0.1), borderRadius: BorderRadius.circular(15)),
-            child: Icon(Icons.south_west, color: statsTheme.income, size: 24),
+            decoration: BoxDecoration(
+              color: (isIncome ? statsTheme.income : statsTheme.expense).withOpacity(0.1),
+              borderRadius: BorderRadius.circular(15),
+            ),
+            child: Icon(isIncome ? Icons.south_west_rounded : Icons.north_east_rounded, color: isIncome ? statsTheme.income : statsTheme.expense, size: 20),
           ),
           const SizedBox(width: 15),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(item['description']?.isEmpty == true ? "Daromad" : item['description'], 
-                     maxLines: 1, overflow: TextOverflow.ellipsis,
-                     style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                const SizedBox(height: 4),
-                Text(DateFormat('dd MMMM, HH:mm').format(date), 
-                     style: TextStyle(color: statsTheme.textSecondary, fontSize: 11)),
+                Text(tx['description']?.isEmpty == true ? (isIncome ? "Kirim" : "Chiqim") : tx['description'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                const SizedBox(height: 3),
+                Text(DateFormat('dd MMM, HH:mm').format(date), style: TextStyle(color: statsTheme.textSecondary, fontSize: 11)),
               ],
             ),
           ),
-          Text("+${_fmt.format(item['amount'])}", 
-               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: statsTheme.income)),
+          Text("${isIncome ? '+' : '-'}${fmt.format(tx['amount'])}", style: TextStyle(fontWeight: FontWeight.black, fontSize: 15, color: isIncome ? statsTheme.income : statsTheme.expense)),
         ],
       ),
     );
+  }
+}
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: isGlass 
-          ? GlassCard(padding: EdgeInsets.zero, child: content)
-          : Container(
-              decoration: BoxDecoration(
-                color: statsTheme.cardColor,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
+class _StatsTab extends StatelessWidget {
+  final List<Map<String, dynamic>> transactions;
+  final StatsTheme statsTheme;
+  final bool isGlass;
+
+  const _StatsTab({required this.transactions, required this.statsTheme, required this.isGlass});
+
+  @override
+  Widget build(BuildContext context) {
+    final expenses = transactions.where((t) => t['type'] == 'expense').toList();
+    final categories = <String, double>{};
+    for (var tx in expenses) {
+      final desc = tx['description']?.toString().split(':').first.trim() ?? 'Boshqa';
+      categories[desc] = (categories[desc] ?? 0) + (tx['amount'] ?? 0).toDouble();
+    }
+
+    final pieData = categories.entries.map((e) {
+      return PieChartSectionData(
+        value: e.value,
+        title: '',
+        color: Colors.primaries[categories.keys.toList().indexOf(e.key) % Colors.primaries.length],
+        radius: 50,
+      );
+    }).toList();
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text("XARAJATLAR TAHLILI", style: TextStyle(fontSize: 10, fontWeight: FontWeight.black, color: Colors.grey, letterSpacing: 2)),
+              Row(
+                children: [
+                  IconButton(
+                    onPressed: () => ReportGeneratorService.generateExcel(transactions, "Moliya_Hisoboti", ["description", "amount", "type", "created_at"]), 
+                    icon: Icon(Icons.description_outlined, size: 20, color: statsTheme.income),
+                  ),
+                  IconButton(
+                    onPressed: () => ReportGeneratorService.generatePdf(transactions, "Moliya_Hisoboti", ["description", "amount", "type", "created_at"]), 
+                    icon: Icon(Icons.picture_as_pdf_outlined, size: 20, color: statsTheme.expense),
+                  ),
+                ],
               ),
-              child: content,
+            ],
+          ),
+          const SizedBox(height: 10),
+          Container(
+            height: 250,
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: statsTheme.cardColor,
+              borderRadius: BorderRadius.circular(30),
+              border: Border.all(color: Colors.white.withOpacity(0.05)),
             ),
+            child: Row(
+              children: [
+                Expanded(
+                  flex: 2,
+                  child: PieChart(
+                    PieChartData(
+                      sections: pieData.isEmpty ? [PieChartSectionData(value: 1, color: Colors.grey.withOpacity(0.2), radius: 50, title: '')] : pieData,
+                      centerSpaceRadius: 40,
+                      sectionsSpace: 5,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 20),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: categories.entries.take(5).map((e) {
+                      final color = Colors.primaries[categories.keys.toList().indexOf(e.key) % Colors.primaries.length];
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Row(
+                          children: [
+                            Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+                            const SizedBox(width: 8),
+                            Expanded(child: Text(e.key, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis)),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 30),
+          const Text("OYLIK HISOBOT", style: TextStyle(fontSize: 10, fontWeight: FontWeight.black, color: Colors.grey, letterSpacing: 2)),
+          const SizedBox(height: 15),
+          // Simple month-over-month bar chart or similar could go here
+          ...categories.entries.map((e) => _buildCategoryBar(e.key, e.value, categories.values.reduce((a, b) => a + b))),
+          const SizedBox(height: 100),
+        ],
+      ),
     );
   }
 
-  Widget _buildAdminView(ThemeData theme, StatsTheme statsTheme, bool isGlass) {
+  Widget _buildCategoryBar(String label, double value, double total) {
+    final percent = total > 0 ? value / total : 0.0;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 15),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+              Text("${NumberFormat('#,###').format(value)} UZS", style: const TextStyle(fontSize: 11, color: Colors.grey)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(5),
+            child: LinearProgressIndicator(
+              value: percent,
+              backgroundColor: Colors.white.withOpacity(0.05),
+              valueColor: AlwaysStoppedAnimation(statsTheme.expense.withOpacity(0.7)),
+              minHeight: 6,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AiTab extends StatefulWidget {
+  final StatsTheme statsTheme;
+  final bool isGlass;
+  final VoidCallback onRefresh;
+  const _AiTab({required this.statsTheme, required this.isGlass, required this.onRefresh});
+
+  @override
+  State<_AiTab> createState() => _AiTabState();
+}
+
+class _AiTabState extends State<_AiTab> {
+  final TextEditingController _msgCtrl = TextEditingController();
+  final List<Map<String, dynamic>> _messages = [];
+  bool _isTyping = false;
+  final _supabase = Supabase.instance.client;
+  final _aiService = AiService();
+
+  Future<void> _handleSend() async {
+    final text = _msgCtrl.text.trim();
+    if (text.isEmpty || _isTyping) return;
+
+    setState(() {
+      _messages.add({'role': 'user', 'text': text});
+      _isTyping = true;
+    });
+    _msgCtrl.clear();
+
+    try {
+      final keys = await _aiService.getValidAiKeys();
+      final systemPrompt = """Siz moliyaviy yordamchisiz. Foydalanuvchi matnini tahlil qiling va TRANSAKSIYA ma'lumotlarini JSON formatida qaytaring.
+Faqat JSON qaytaring, boshqa matn bo'lmasin.
+Format: {"amount": number, "type": "income" | "expense", "description": string}
+Misol: "Tushlikka 45000 sarfladim" -> {"amount": 45000, "type": "expense", "description": "Tushlik"}
+""";
+
+      String? response;
+      if (keys['groq']?.isNotEmpty == true) {
+        final res = await GroqService.chatWithFallback(
+          apiKey: keys['groq']!,
+          primaryModel: "llama-3.3-70b-versatile",
+          systemPrompt: systemPrompt,
+          userText: text,
+        );
+        response = res.content;
+      } else if (keys['gemini']?.isNotEmpty == true) {
+        response = await GeminiService.chat(
+          apiKey: keys['gemini']!,
+          model: "gemini-1.5-flash",
+          systemPrompt: systemPrompt,
+          userText: text,
+        );
+      }
+
+      if (response != null) {
+        final cleanJson = response.replaceAll(RegExp(r'```json|```'), '').trim();
+        final data = jsonDecode(cleanJson);
+        
+        // Asosiy bazaga qo'shish
+        await _supabase.from('personal_transactions').insert({
+          'user_id': _supabase.auth.currentUser!.id,
+          'amount': data['amount'],
+          'type': data['type'],
+          'description': data['description'],
+        });
+
+        setState(() {
+          _messages.add({
+            'role': 'assistant', 
+            'text': "Tushundim! ${data['description']} uchun ${data['amount']} so'm ${data['type'] == 'income' ? 'kirim' : 'chiqim'} sifatida saqlandi."
+          });
+        });
+        widget.onRefresh();
+      }
+    } catch (e) {
+      setState(() {
+        _messages.add({'role': 'assistant', 'text': "Kechirasiz, xatolik yuz berdi: $e"});
+      });
+    } finally {
+      if (mounted) setState(() => _isTyping = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Column(
       children: [
-        Container(
-          height: 80,
-          padding: const EdgeInsets.symmetric(vertical: 15),
+        Expanded(
           child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            itemCount: _employeeList.length,
+            padding: const EdgeInsets.all(20),
+            itemCount: _messages.length,
             itemBuilder: (ctx, i) {
-              final emp = _employeeList[i];
-              final isSelected = _selectedEmployeeId == emp['id'];
-              return Padding(
-                padding: const EdgeInsets.only(right: 12),
-                child: ChoiceChip(
-                  label: Text(emp['full_name'] ?? "Noma'lum"),
-                  selected: isSelected,
-                  onSelected: (selected) {
-                    if (selected) {
-                      setState(() {
-                        _selectedEmployeeId = emp['id'];
-                        _selectedEmployeeName = emp['full_name'];
-                      });
-                      _loadEmployeeTransactions(emp['id']);
-                    }
-                  },
+              final m = _messages[i];
+              final isUser = m['role'] == 'user';
+              return Align(
+                alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 15),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+                  constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+                  decoration: BoxDecoration(
+                    color: isUser ? widget.statsTheme.income : widget.statsTheme.cardColor,
+                    borderRadius: BorderRadius.circular(22).copyWith(
+                      bottomRight: isUser ? Radius.zero : const Radius.circular(22),
+                      bottomLeft: isUser ? const Radius.circular(22) : Radius.zero,
+                    ),
+                  ),
+                  child: Text(m['text'], style: TextStyle(color: isUser ? Colors.white : null, fontWeight: FontWeight.bold)),
                 ),
               );
             },
           ),
         ),
-        
-        Expanded(
-          child: _selectedEmployeeId == null 
-            ? Center(child: Text("Xodimni tanlang", style: TextStyle(color: statsTheme.textSecondary)))
-            : _isLoadingEmployeeDetails 
-              ? const Center(child: CircularProgressIndicator())
-              : _buildTransactionList(_selectedEmployeeTransactions, statsTheme, isGlass),
+        if (_isTyping) Padding(
+          padding: const EdgeInsets.only(left: 20, bottom: 10),
+          child: Row(
+            children: [
+              SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2, color: widget.statsTheme.income)),
+              const SizedBox(width: 10),
+              Text("AI tahlil qilmoqda...", style: TextStyle(color: widget.statsTheme.textSecondary, fontSize: 10, fontStyle: FontStyle.italic)),
+            ],
+          ),
         ),
+        Padding(
+          padding: const EdgeInsets.all(20),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _msgCtrl,
+                  style: const TextStyle(fontSize: 14),
+                  decoration: InputDecoration(
+                    hintText: "Yozing (masalan: Go'shtga 120k)...",
+                    filled: true,
+                    fillColor: widget.statsTheme.cardColor,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(25), borderSide: BorderSide.none),
+                  ),
+                  onSubmitted: (_) => _handleSend(),
+                ),
+              ),
+              const SizedBox(width: 10),
+              CircleAvatar(
+                backgroundColor: widget.statsTheme.income,
+                radius: 28,
+                child: IconButton(onPressed: _handleSend, icon: const Icon(Icons.send_rounded, color: Colors.white)),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 100),
       ],
+    );
+  }
+}
+
+class _SettingsTab extends StatelessWidget {
+  final bool isAdmin;
+  final StatsTheme statsTheme;
+  final bool isGlass;
+
+  const _SettingsTab({required this.isAdmin, required this.statsTheme, required this.isGlass});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(child: Text("Profil va Sozlamalar"));
+  }
+}
+
+// ── ADD TRANSACTION MODAL ──
+
+class _AddTransactionModal extends StatefulWidget {
+  final VoidCallback onSaved;
+  final double usdRate;
+  const _AddTransactionModal({required this.onSaved, required this.usdRate});
+
+  @override
+  State<_AddTransactionModal> createState() => _AddTransactionModalState();
+}
+
+class _AddTransactionModalState extends State<_AddTransactionModal> {
+  final _supabase = Supabase.instance.client;
+  final _amountCtrl = TextEditingController();
+  final _descCtrl = TextEditingController();
+  String _type = 'expense';
+  bool _isUsd = false;
+  bool _isSubmitting = false;
+
+  // Hierarchical categories (Simplified for now)
+  String? _selectedCat;
+  String? _selectedSub;
+  
+  final Map<String, List<String>> _categories = {
+    'Oziq-ovqat': ['Bozor', 'Supermarket', 'Restoran'],
+    'Transport': ['Benzin', 'Taksi', 'Jamoat'],
+    'Maishiy': ['Ijara', 'Kommal', 'Internet'],
+    'Ish Haqi': ['Avans', 'Oylik', 'Bonus'],
+    'Boshqa': ['Kutilmagan', 'Sovg\'a'],
+  };
+
+  Future<void> _submit() async {
+    if (_amountCtrl.text.isEmpty) return;
+    setState(() => _isSubmitting = true);
+
+    try {
+      double amount = double.parse(_amountCtrl.text.replaceAll(',', ''));
+      String description = "${_selectedCat ?? ''} -> ${_selectedSub ?? ''}: ${_descCtrl.text}".trim();
+      
+      if (_isUsd) {
+        description += " (\$${_amountCtrl.text} @ ${widget.usdRate})";
+        amount *= widget.usdRate;
+      }
+
+      await _supabase.from('personal_transactions').insert({
+        'user_id': _supabase.auth.currentUser!.id,
+        'amount': amount,
+        'type': _type,
+        'description': description,
+      });
+
+      widget.onSaved();
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e")));
+    } finally {
+      setState(() => _isSubmitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: EdgeInsets.fromLTRB(25, 25, 25, MediaQuery.of(context).viewInsets.bottom + 25),
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(40)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text("YANGI AMAL", style: TextStyle(fontSize: 20, fontWeight: FontWeight.black)),
+              Switch(
+                value: _isUsd, 
+                onChanged: (v) => setState(() => _isUsd = v),
+                activeColor: Colors.blue,
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              _typeBtn('expense', "CHIQIM", Colors.red),
+              const SizedBox(width: 10),
+              _typeBtn('income', "KIRIM", Colors.green),
+            ],
+          ),
+          const SizedBox(height: 20),
+          TextField(
+            controller: _amountCtrl,
+            keyboardType: TextInputType.number,
+            style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+            decoration: InputDecoration(
+              hintText: "0.00",
+              prefixText: _isUsd ? "\$ " : "UZS ",
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
+              filled: true,
+              fillColor: Colors.black.withOpacity(0.05),
+            ),
+          ),
+          const SizedBox(height: 20),
+          DropdownButtonFormField<String>(
+            value: _selectedCat,
+            decoration: const InputDecoration(labelText: "Kategoriya", border: OutlineInputBorder()),
+            items: _categories.keys.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+            onChanged: (v) => setState(() { _selectedCat = v; _selectedSub = null; }),
+          ),
+          if (_selectedCat != null) ...[
+            const SizedBox(height: 15),
+            DropdownButtonFormField<String>(
+              value: _selectedSub,
+              decoration: const InputDecoration(labelText: "Podkategoriya", border: OutlineInputBorder()),
+              items: _categories[_selectedCat]!.map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
+              onChanged: (v) => setState(() => _selectedSub = v),
+            ),
+          ],
+          const SizedBox(height: 15),
+          TextField(
+            controller: _descCtrl,
+            decoration: const InputDecoration(labelText: "Izoh", border: OutlineInputBorder()),
+          ),
+          const SizedBox(height: 30),
+          _isSubmitting 
+            ? const Center(child: CircularProgressIndicator())
+            : SizedBox(
+                width: double.infinity,
+                height: 60,
+                child: ElevatedButton(
+                  onPressed: _submit,
+                  style: ElevatedButton.styleFrom(backgroundColor: _type == 'income' ? Colors.green : Colors.red, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))),
+                  child: const Text("SAQLASH", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
+              ),
+        ],
+      ),
+    );
+  }
+
+  Widget _typeBtn(String t, String label, Color color) {
+    final active = _type == t;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _type = t),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: active ? color.withOpacity(0.1) : Colors.transparent,
+            border: Border.all(color: active ? color : Colors.grey.withOpacity(0.3)),
+            borderRadius: BorderRadius.circular(15),
+          ),
+          child: Center(child: Text(label, style: TextStyle(color: active ? color : Colors.grey, fontWeight: FontWeight.bold))),
+        ),
+      ),
     );
   }
 }
