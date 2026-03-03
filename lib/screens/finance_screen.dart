@@ -9,8 +9,9 @@ import '../widgets/glass_card.dart';
 import '../services/groq_service.dart';
 import '../services/gemini_service.dart';
 import '../services/ai_service.dart';
-import '../services/report_generator_service.dart';
 import '../services/encryption_service.dart';
+import 'ai_settings_screen.dart';
+import 'admin_finance_screen.dart';
 
 class FinanceScreen extends StatefulWidget {
   const FinanceScreen({super.key});
@@ -173,16 +174,6 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
               ],
             ),
           ),
-          // FAB
-          Positioned(
-            bottom: 120,
-            right: 25,
-            child: FloatingActionButton(
-              onPressed: _showAddTransaction,
-              backgroundColor: statsTheme.income,
-              child: const Icon(Icons.add_rounded, color: Colors.white, size: 30),
-            ),
-          ),
         ],
       ),
       bottomNavigationBar: _buildBottomNav(theme, statsTheme, isGlass),
@@ -253,47 +244,61 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
 
   Widget _buildBottomNav(ThemeData theme, StatsTheme statsTheme, bool isGlass) {
     return Container(
-      height: 85,
-      margin: const EdgeInsets.only(bottom: 20, left: 20, right: 20),
+      height: 90,
+      margin: const EdgeInsets.only(bottom: 20, left: 15, right: 15),
       decoration: BoxDecoration(
         color: isGlass ? Colors.white.withOpacity(0.05) : statsTheme.cardColor,
-        borderRadius: BorderRadius.circular(30),
+        borderRadius: BorderRadius.circular(35),
         border: Border.all(color: Colors.white.withOpacity(0.1)),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 20)],
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 25, offset: const Offset(0, 10))],
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _navItem(0, Icons.grid_view_rounded, "Home", statsTheme),
+          _navItem(0, Icons.grid_view_rounded, "Asosiy", statsTheme),
           _navItem(1, Icons.bar_chart_rounded, "Stats", statsTheme),
-          _navItem(2, Icons.auto_awesome_rounded, "AI", statsTheme, isSpecial: true),
+          
+          // Center Droplet Button
+          GestureDetector(
+            onTap: _showAddTransaction,
+            child: Container(
+              height: 65,
+              width: 65,
+              decoration: BoxDecoration(
+                color: statsTheme.income,
+                shape: BoxShape.circle,
+                boxShadow: [BoxShadow(color: statsTheme.income.withOpacity(0.4), blurRadius: 15, spreadRadius: 2)],
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [statsTheme.income, statsTheme.income.withBlue(statsTheme.income.blue + 30)],
+                ),
+              ),
+              child: const Icon(Icons.add_rounded, color: Colors.white, size: 35),
+            ),
+          ),
+
+          _navItem(2, Icons.auto_awesome_rounded, "AI", statsTheme),
           _navItem(3, Icons.person_outline_rounded, "User", statsTheme),
         ],
       ),
     );
   }
 
-  Widget _navItem(int index, IconData icon, String label, StatsTheme statsTheme, {bool isSpecial = false}) {
+  Widget _navItem(int index, IconData icon, String label, StatsTheme statsTheme) {
     final isSelected = _currentIndex == index;
     return GestureDetector(
       onTap: () => setState(() => _currentIndex = index),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            padding: EdgeInsets.all(isSpecial ? 12 : 8),
-            decoration: BoxDecoration(
-              color: isSpecial 
-                ? statsTheme.income.withOpacity(isSelected ? 1 : 0.1)
-                : (isSelected ? statsTheme.income.withOpacity(0.1) : Colors.transparent),
-              borderRadius: BorderRadius.circular(15),
-              boxShadow: isSpecial && isSelected ? [BoxShadow(color: statsTheme.income.withOpacity(0.4), blurRadius: 10)] : null,
-            ),
-            child: Icon(icon, color: isSpecial && isSelected ? Colors.white : (isSelected ? statsTheme.income : statsTheme.textSecondary), size: isSpecial ? 28 : 24),
-          ),
-          const SizedBox(height: 4),
-          Text(label, style: TextStyle(color: isSelected ? statsTheme.income : statsTheme.textSecondary, fontSize: 10, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
-        ],
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: isSelected ? statsTheme.income : statsTheme.textSecondary, size: 26),
+            const SizedBox(height: 4),
+            Text(label, style: TextStyle(color: isSelected ? statsTheme.income : statsTheme.textSecondary, fontSize: 10, fontWeight: isSelected ? FontWeight.w900 : FontWeight.normal)),
+          ],
+        ),
       ),
     );
   }
@@ -451,6 +456,12 @@ class _DashboardTab extends StatelessWidget {
       ),
       child: LineChart(
         LineChartData(
+          lineTouchData: LineTouchData(
+            touchTooltipData: LineTouchTooltipData(
+              getTooltipColor: (spot) => statsTheme.cardColor.withOpacity(0.8),
+              getTooltipItems: (spots) => spots.map((s) => LineTooltipItem("${NumberFormat('#,###').format(s.y)} UZS", const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10))).toList(),
+            ),
+          ),
           gridData: const FlGridData(show: false),
           titlesData: const FlTitlesData(show: false),
           borderData: FlBorderData(show: false),
@@ -558,11 +569,19 @@ class _StatsTab extends StatelessWidget {
               Row(
                 children: [
                   IconButton(
-                    onPressed: () => ReportGeneratorService.generateExcel(transactions, "Moliya_Hisoboti", ["description", "amount", "type", "created_at"]), 
+                    tooltip: "Excel yuklash",
+                    onPressed: () {
+                      final monthName = DateFormat('MMMM').format(_selectedMonth);
+                      ReportGeneratorService.generateExcel(transactions, "Moliya_Hisoboti_$monthName", ["description", "amount", "type", "created_at"]);
+                    }, 
                     icon: Icon(Icons.description_outlined, size: 20, color: statsTheme.income),
                   ),
                   IconButton(
-                    onPressed: () => ReportGeneratorService.generatePdf(transactions, "Moliya_Hisoboti", ["description", "amount", "type", "created_at"]), 
+                    tooltip: "PDF yuklash",
+                    onPressed: () {
+                      final monthName = DateFormat('MMMM').format(_selectedMonth);
+                      ReportGeneratorService.generatePdf(transactions, "Moliya_Hisoboti_$monthName", ["description", "amount", "type", "created_at"]);
+                    }, 
                     icon: Icon(Icons.picture_as_pdf_outlined, size: 20, color: statsTheme.expense),
                   ),
                 ],
@@ -584,6 +603,11 @@ class _StatsTab extends StatelessWidget {
                   flex: 2,
                   child: PieChart(
                     PieChartData(
+                      pieTouchData: PieTouchData(
+                        touchCallback: (FlTouchEvent event, pieTouchResponse) {
+                          // Could add setstate here for highlighting
+                        },
+                      ),
                       sections: pieData.isEmpty ? [PieChartSectionData(value: 1, color: Colors.grey.withOpacity(0.2), radius: 50, title: '')] : pieData,
                       centerSpaceRadius: 40,
                       sectionsSpace: 5,
@@ -809,7 +833,7 @@ Misol: "Tushlikka 45000 sarfladim" -> {"amount": 45000, "type": "expense", "desc
   }
 }
 
-class _SettingsTab extends StatefulWidget {
+class _SettingsTab extends StatelessWidget {
   final bool isAdmin;
   final StatsTheme statsTheme;
   final bool isGlass;
@@ -818,100 +842,68 @@ class _SettingsTab extends StatefulWidget {
   const _SettingsTab({required this.isAdmin, required this.statsTheme, required this.isGlass, required this.onRefresh});
 
   @override
-  State<_SettingsTab> createState() => _SettingsTabState();
-}
-
-class _SettingsTabState extends State<_SettingsTab> {
-  final _supabase = Supabase.instance.client;
-  final _groqCtrl = TextEditingController();
-  final _geminiCtrl = TextEditingController();
-  bool _isSaving = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadKeys();
-  }
-
-  Future<void> _loadKeys() async {
-    final userId = _supabase.auth.currentUser!.id;
-    final res = await _supabase.from('profiles').select('groq_api_key, gemini_api_key').eq('id', userId).single();
-    setState(() {
-      _groqCtrl.text = EncryptionService.decryptText(res['groq_api_key'] ?? '');
-      _geminiCtrl.text = EncryptionService.decryptText(res['gemini_api_key'] ?? '');
-    });
-  }
-
-  Future<void> _saveKeys() async {
-    setState(() => _isSaving = true);
-    try {
-      final userId = _supabase.auth.currentUser!.id;
-      await _supabase.from('profiles').update({
-        'groq_api_key': EncryptionService.encryptText(_groqCtrl.text.trim()),
-        'gemini_api_key': EncryptionService.encryptText(_geminiCtrl.text.trim()),
-      }).eq('id', userId);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("API Keylar saqlandi!")));
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e")));
-    } finally {
-      setState(() => _isSaving = false);
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(25),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text("AI INTEGRATSIYA", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.grey, letterSpacing: 2)),
+          const Text("SOZLAMALAR", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.grey, letterSpacing: 2)),
           const SizedBox(height: 20),
-          _buildInput("Groq API Key", _groqCtrl, Icons.key_rounded),
-          const SizedBox(height: 15),
-          _buildInput("Gemini API Key", _geminiCtrl, Icons.auto_awesome_rounded),
-          const SizedBox(height: 25),
-          _isSaving 
-            ? const Center(child: CircularProgressIndicator())
-            : SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: _saveKeys,
-                  icon: const Icon(Icons.save_rounded, color: Colors.white),
-                  label: const Text("SAQLASH", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
-                  style: ElevatedButton.styleFrom(backgroundColor: widget.statsTheme.income, padding: const EdgeInsets.symmetric(vertical: 18), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))),
-                ),
-              ),
-          const SizedBox(height: 40),
-          if (widget.isAdmin) ...[
-            const Text("ADMINISTRATOR", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.grey, letterSpacing: 2)),
+          
+          _buildMenuTile(
+            context,
+            icon: Icons.auto_awesome_rounded,
+            title: "AI Sozlamalari",
+            subtitle: "API kalitlar va promptlarni boshqarish",
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AiSettingsScreen())),
+          ),
+          
+          const SizedBox(height: 30),
+          if (isAdmin) ...[
+            const Text("BOSHQARUV (MANAGER)", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.grey, letterSpacing: 2)),
             const SizedBox(height: 15),
-            ListTile(
-              leading: Icon(Icons.people_alt_rounded, color: widget.statsTheme.income),
-              title: const Text("Xodimlar hisoboti", style: TextStyle(fontWeight: FontWeight.bold)),
-              subtitle: const Text("Barcha xodimlarning moliyaviy amallari"),
-              trailing: const Icon(Icons.chevron_right_rounded),
-              onTap: () {
-                // Future: Navigate to AdminFinanceScreen
-              },
+            _buildMenuTile(
+              context,
+              icon: Icons.analytics_outlined,
+              title: "Moliyaviy Nazorat",
+              subtitle: "Xodimlarning ish haqi va to'lovlari",
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminFinanceScreen())),
             ),
           ],
+          
+          const SizedBox(height: 40),
+          Center(
+            child: Text("Hisobcheck Finance v1.2", style: TextStyle(color: Colors.grey.withOpacity(0.5), fontSize: 10)),
+          ),
           const SizedBox(height: 100),
         ],
       ),
     );
   }
 
-  Widget _buildInput(String label, TextEditingController ctrl, IconData icon) {
-    return TextField(
-      controller: ctrl,
-      obscureText: true,
-      decoration: InputDecoration(
-        labelText: label,
-        prefixIcon: Icon(icon, size: 20),
-        filled: true,
-        fillColor: widget.statsTheme.cardColor,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
+  Widget _buildMenuTile(BuildContext context, {required IconData icon, required String title, required String subtitle, required VoidCallback onTap}) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: statsTheme.cardColor,
+        borderRadius: BorderRadius.circular(25),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        leading: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: statsTheme.income.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(15),
+          ),
+          child: Icon(icon, color: statsTheme.income),
+        ),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+        subtitle: Text(subtitle, style: TextStyle(color: Colors.grey, fontSize: 11)),
+        trailing: const Icon(Icons.chevron_right_rounded, color: Colors.grey),
+        onTap: onTap,
       ),
     );
   }
