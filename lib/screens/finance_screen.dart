@@ -114,6 +114,38 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
     );
   }
 
+  Future<void> _deleteTransaction(int id) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("O'chirish"),
+        content: const Text("Ushbu amalni o'chirishni tasdiqlaysizmi?"),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("BEKOR")),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text("O'CHIRISH", style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        await _supabase.from('personal_transactions').delete().eq('id', id);
+        _loadData();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Amal o'chirildi"), backgroundColor: Colors.orange));
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e"), backgroundColor: Colors.red));
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -160,6 +192,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                         balance: _balance,
                         usdBalance: _usdBalance,
                         onEdit: (tx) => _showAddTransaction(initialData: tx),
+                        onDelete: (id) => _deleteTransaction(id),
                       ),
                       _StatsTab(
                         transactions: _transactions.where((t) {
@@ -319,6 +352,7 @@ class _DashboardTab extends StatelessWidget {
   final double balance;
   final double usdBalance;
   final Function(Map<String, dynamic>) onEdit;
+  final Function(int) onDelete;
 
   const _DashboardTab({
     required this.transactions, 
@@ -329,6 +363,7 @@ class _DashboardTab extends StatelessWidget {
     required this.balance,
     required this.usdBalance,
     required this.onEdit,
+    required this.onDelete,
   });
 
   @override
@@ -353,7 +388,7 @@ class _DashboardTab extends StatelessWidget {
               TextButton(onPressed: () {}, child: const Text("HAMMASI", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold))),
             ],
           ),
-          ...transactions.take(5).map((tx) => _buildTransactionItem(tx, fmt, onEdit)),
+          ...transactions.take(5).map((tx) => _buildTransactionItem(tx, fmt, onEdit, onDelete)),
           const SizedBox(height: 100),
         ],
       ),
@@ -499,7 +534,7 @@ class _DashboardTab extends StatelessWidget {
     );
   }
 
-  Widget _buildTransactionItem(Map<String, dynamic> tx, NumberFormat fmt, Function(Map<String, dynamic>) onEdit) {
+  Widget _buildTransactionItem(Map<String, dynamic> tx, NumberFormat fmt, Function(Map<String, dynamic>) onEdit, Function(int) onDelete) {
     final isIncome = tx['type'] == 'income';
     final date = DateTime.parse(tx['created_at']);
     return Container(
@@ -535,7 +570,14 @@ class _DashboardTab extends StatelessWidget {
           const SizedBox(width: 8),
           IconButton(
             onPressed: () => onEdit(tx),
-            icon: Icon(Icons.edit_rounded, size: 16, color: Colors.grey.withOpacity(0.5)),
+            icon: Icon(Icons.edit_rounded, size: 16, color: Colors.blue.withOpacity(0.5)),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+          ),
+          const SizedBox(width: 5),
+          IconButton(
+            onPressed: () => onDelete(tx['id']),
+            icon: Icon(Icons.delete_outline_rounded, size: 16, color: Colors.red.withOpacity(0.5)),
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(),
           ),
@@ -602,7 +644,40 @@ class _StatsTab extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 15),
+          
+          // Summary Card
+          Container(
+            padding: const EdgeInsets.all(25),
+            decoration: BoxDecoration(
+              color: statsTheme.cardColor,
+              borderRadius: BorderRadius.circular(30),
+              border: Border.all(color: Colors.white.withOpacity(0.05)),
+              boxShadow: [BoxShadow(color: statsTheme.expense.withOpacity(0.1), blurRadius: 20, offset: const Offset(0, 10))],
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text("JAMI XARAJAT", style: TextStyle(color: Colors.grey, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1)),
+                    const SizedBox(height: 10),
+                    Text("${NumberFormat('#,###').format(expenses.fold(0.0, (a, b) => a + (b['amount'] ?? 0)))} UZS", style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
+                  ],
+                ),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(color: statsTheme.expense.withOpacity(0.1), shape: BoxShape.circle),
+                  child: Icon(Icons.trending_down_rounded, color: statsTheme.expense, size: 24),
+                ),
+              ],
+            ),
+          ),
+          
+          const SizedBox(height: 30),
+          
+          // Pie Chart Container
           Container(
             height: 250,
             padding: const EdgeInsets.all(20),
@@ -617,14 +692,9 @@ class _StatsTab extends StatelessWidget {
                   flex: 2,
                   child: PieChart(
                     PieChartData(
-                      pieTouchData: PieTouchData(
-                        touchCallback: (FlTouchEvent event, pieTouchResponse) {
-                          // Could add setstate here for highlighting
-                        },
-                      ),
                       sections: pieData.isEmpty ? [PieChartSectionData(value: 1, color: Colors.grey.withOpacity(0.2), radius: 50, title: '')] : pieData,
-                      centerSpaceRadius: 40,
-                      sectionsSpace: 5,
+                      centerSpaceRadius: 45,
+                      sectionsSpace: 4,
                     ),
                   ),
                 ),
@@ -636,12 +706,12 @@ class _StatsTab extends StatelessWidget {
                     children: categories.entries.take(5).map((e) {
                       final color = Colors.primaries[categories.keys.toList().indexOf(e.key) % Colors.primaries.length];
                       return Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.only(bottom: 12),
                         child: Row(
                           children: [
                             Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-                            const SizedBox(width: 8),
-                            Expanded(child: Text(e.key, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis)),
+                            const SizedBox(width: 10),
+                            Expanded(child: Text(e.key, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis)),
                           ],
                         ),
                       );
@@ -651,11 +721,16 @@ class _StatsTab extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 30),
-          const Text("OYLIK HISOBOT", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.grey, letterSpacing: 2)),
-          const SizedBox(height: 15),
-          // Simple month-over-month bar chart or similar could go here
-          ...categories.entries.map((e) => _buildCategoryBar(e.key, e.value, categories.values.reduce((a, b) => a + b))),
+          
+          const SizedBox(height: 40),
+          const Text("KATEGORIYALAR BO'YICHA", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.grey, letterSpacing: 2)),
+          const SizedBox(height: 20),
+          
+          // Detailed Category Items
+          ...categories.entries.map((e) {
+             final total = categories.values.fold(0.0, (a, b) => a + b);
+             return _buildCategoryBar(e.key, e.value, total);
+          }),
           const SizedBox(height: 100),
         ],
       ),
